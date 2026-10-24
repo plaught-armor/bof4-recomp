@@ -1147,8 +1147,10 @@ tri_setup :: proc(tri: ^Tri, t: ^Target, st: ^Draw_State, m: ^Prim_Mode, va, vb,
 	// A finer target samples between the VRAM pixels and so can reach
 	// texels the GPU never reads, such as the column past a scaled sprite's
 	// edge (lines around sprites). It keeps to the texels the triangle reads
-	// in VRAM.
-	if k > 0 && m.textured {
+	// in VRAM. A sprite whose corners carry its anchor's sub-pixel part
+	// reaches such texels at the VRAM scale too.
+	off_pixel := (v0.sx | v1.sx | v2.sx | v0.sy | v1.sy | v2.sy) & (SUB_PIXEL - 1) != 0
+	if (k > 0 || off_pixel) && m.textured {
 		tri.read = texels_read(
 			{v0, v1, v2},
 			area,
