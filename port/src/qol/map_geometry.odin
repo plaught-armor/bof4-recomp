@@ -817,6 +817,32 @@ quad_may_show :: proc(sxy: [4]u32, sz: [4]i32) -> bool {
 	return behind > 0 || (left < 4 && right < 4 && above < 4 && below < 4)
 }
 
+// quad_may_show for a quad drawn in 3D, by its corners in view space: one
+// drops only when every corner is behind the near plane or past the same
+// side of the screen (the game's margins), each side a plane through the
+// lens.
+@(private = "file")
+world_may_show :: proc(at: [4][3]f32) -> bool {
+	h, of := psx.world_lens()
+	near, left, right, above, below := 0, 0, 0, 0, 0
+	for c in at {
+		near += int(c.z < psx.WORLD_NEAR)
+		left += int(h * c.x + (of.x + 16) * c.z < 0)
+		right += int(h * c.x + (of.x - 336) * c.z >= 0)
+		above += int(h * c.y + (of.y + 16) * c.z < 0)
+		below += int(h * c.y + (of.y - 256) * c.z >= 0)
+	}
+	return near < 4 && left < 4 && right < 4 && above < 4 && below < 4
+}
+
+// NCLIP's sign for view-space corners a, b, c: that of their triple
+// product, which projecting in front of the lens keeps.
+@(private = "file")
+world_turn :: proc(a, b, c: [3]f32) -> i32 {
+	t := linalg.dot(a, linalg.cross(b, c))
+	return t > 0 ? 1 : t < 0 ? -1 : 0
+}
+
 // Project the quad in `d` and put it into the ordering table: a POLY_GT4
 // and, in fog, a grey POLY_G4 blended over it. Spends the cycles of `q`'s copy
 // of the code up to the caller's tail (see Quad_End).
@@ -843,6 +869,17 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 	turn1 := i32(psx.gte_read(24))
 	sxy[3], sz[3] = psx.gte_read(14), i32(psx.gte_read(19))
 	spend(q.project[0], q.project[1])
+	// Drawn in 3D (psx.world_on), the quad is tested by its corners in view
+	// space: the GTE's screen corners are clamped, and nonsense behind the
+	// lens.
+	world := psx.world_on()
+	at: [4][3]f32
+	if world {
+		for &c, i in at {
+			c = psx.world_view(d.v[i])
+		}
+		turn0, turn1 = world_turn(at[0], at[1], at[2]), world_turn(at[1], at[2], at[3])
+	}
 
 	if !d.unculled {
 		on := false
@@ -861,7 +898,7 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 		if !on {
 			return .Culled
 		}
-	} else if !quad_may_show(sxy, sz) {
+	} else if !(world ? world_may_show(at) : quad_may_show(sxy, sz)) {
 		return .Culled
 	}
 	spend(q.back, q.back + 0xc)
@@ -901,6 +938,11 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 		}
 		spend(0x80143cf4 + m, 0x80143d08 + m)
 		depth = i32(u32(depth) - d.depth_base) >> d.depth_shift
+		// Nearer than the table's first slot is the first slot: in 3D the
+		// quad running under the lens is drawn.
+		if world && depth < 0 {
+			depth = 0
+		}
 	}
 	spend(0x80143d0c + m, 0x80143d18 + m)
 	d.fogged = 0
@@ -1031,6 +1073,9 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 		}
 		spend(0x8014448c + l, 0x801444e8 + l)
 	}
+	if world {
+		psx.world_quad_add(p, at)
+	}
 	ot_insert(d.ot + OT_FIRST + u32(depth) * 4, p)
 	d.count += 1
 	d.packet += PACKET_SIZE
@@ -1071,6 +1116,9 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 			psx.w32(at, u32(g) | u32(g) << 8 | u32(g) << 16 | u32(d.tail[i]) << 24)
 		}
 		psx.w32(at + 4, sxy[i])
+	}
+	if world {
+		psx.world_quad_add(p + 8, at)
 	}
 	slot := d.ot + OT_FIRST - 4 + u32(depth) * 4
 	ot_insert(slot, p + 8)

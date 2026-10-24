@@ -459,6 +459,8 @@ Prim_Mode :: struct {
 	// polygon's own).
 	z_mode:     Z_Mode,
 	z_plane:    [3]f32,
+	// A world quad drawn in 3D (world.odin): no size limit.
+	world:      bool,
 	clut_x:     i32,
 	clut_y:     i32,
 }
@@ -1121,7 +1123,7 @@ tri_setup :: proc(tri: ^Tri, t: ^Target, st: ^Draw_State, m: ^Prim_Mode, va, vb,
 	}
 	// Only a polygon whose corners all lie in front of the lens may be big:
 	// one reaching behind it (filed at depth 1) was projected to nonsense.
-	big := gpu_big_triangles && m.depth && min(va.z, vb.z, vc.z) > 1
+	big := (gpu_big_triangles || m.world) && m.depth && min(va.z, vb.z, vc.z) > 1
 	if !big &&
 	   (max(v0.x, v1.x, v2.x) - min(v0.x, v1.x, v2.x) >= 1024 ||
 			   max(v0.y, v1.y, v2.y) - min(v0.y, v1.y, v2.y) >= 512) {
@@ -1725,8 +1727,23 @@ exec_polygon :: proc(words: []u32) {
 			set_tpage(words[i - 1] >> 16)
 		}
 	}
+	// A world quad (world.odin) is drawn as its corners in view space cut
+	// at the lens; the tests on the whole polygon take up to four of them.
+	world: [WORLD_CORNERS]Vertex
+	worlds := 0
+	w: ^World_Quad
+	in_world := false
+	if verts == 4 {
+		w, in_world = world_quad(packet_now)
+	}
 	screen := screens.n > 0 && on_screen(packet_now)
-	if !screen {
+	if in_world {
+		worlds, vs, verts = world_cut(w, vs, &world)
+		if worlds == 0 {
+			return
+		}
+		m.world = true
+	} else if !screen {
 		depth_fill(vs[:verts])
 	}
 	sprite_dump(vs[:verts], &m)
@@ -1833,6 +1850,16 @@ exec_polygon :: proc(words: []u32) {
 	}
 	e := plot_env()
 	for &t in drawn_targets() {
+		if in_world {
+			// A fan over a convex polygon: its triangles cover distinct
+			// pixels.
+			gl_group(t.gl && worlds > 3)
+			for k in 2 ..< worlds {
+				draw_triangle(&t, &e, &m, world[0], world[k - 1], world[k])
+			}
+			gl_group(false)
+			continue
+		}
 		// The halves of a proper quad cover distinct pixels: the GL queue
 		// need not order them.
 		group := t.gl && verts == 4 && quad_halves_apart(vs[0], vs[1], vs[2], vs[3])

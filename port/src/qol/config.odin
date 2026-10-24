@@ -30,6 +30,9 @@
 //                          ; leader goes soft, at detail 2 and 4
 //   color_grade = false    ; third-person field: each map's colour grade
 //   vignette = false       ; third-person field: darkened corners
+//   native_world = false   ; third-person field: the world drawn in true 3D
+//                          ; (exact perspective, cut at the lens) instead of
+//                          ; from the PS1's screen corners
 //
 //   [audio]
 //   latency_ms = 50        ; from a sound being mixed to the speakers, 20..250
@@ -206,6 +209,7 @@ Config :: struct {
 	window_depth_of_field: bool,
 	window_color_grade:    bool,
 	window_vignette:       bool,
+	window_native_world:   bool,
 	audio_latency_ms:      int,
 	disc_instant_loading:  bool,
 	disc_skip_black:       bool,
@@ -364,6 +368,7 @@ init :: proc() -> bool {
 	psx.bloom_effects = config.window_bloom_effects
 	psx.depth_of_field = config.window_depth_of_field
 	psx.vignette = config.window_vignette
+	psx.native_world = config.window_native_world
 	psx.skip_black = config.disc_skip_black
 	psx.audio_apply(config.audio_latency_ms)
 	psx.pad_set_rumble(1)
@@ -444,6 +449,8 @@ apply_setting :: proc(section, key, value: string) -> bool {
 		return parse_bool(value, &config.window_color_grade)
 	case section == "window" && key == "vignette":
 		return parse_bool(value, &config.window_vignette)
+	case section == "window" && key == "native_world":
+		return parse_bool(value, &config.window_native_world)
 	case section == "window":
 		return apply_window_setting(key, value)
 	case section == "audio" && key == "latency_ms":

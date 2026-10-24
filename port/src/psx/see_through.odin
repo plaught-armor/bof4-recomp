@@ -511,6 +511,7 @@ see_end :: proc() {
 	see = {}
 	depth_cache.now += 1
 	depth_cache.seq = 0
+	world_walk_end()
 }
 
 // The view-space point at packet screen position x, y and view depth z.

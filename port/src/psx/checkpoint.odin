@@ -56,6 +56,7 @@ Checkpoint :: struct {
 	next_event: u64,
 	see:        type_of(see_through),
 	depths:     Depth_Undo,
+	worlds:     World_Undo,
 	flats:      type_of(flats),
 	portals:    type_of(portals),
 	pictures:   type_of(pictures),
@@ -186,6 +187,7 @@ checkpoint_save :: proc(cp: ^Checkpoint) -> bool {
 	// its own projections wait for its own walk.
 	cp.see = see_through
 	depth_undo_begin(&cp.depths)
+	world_undo_begin(&cp.worlds)
 	cp.flats = flats
 	cp.portals = portals
 	cp.pictures = pictures
@@ -246,6 +248,7 @@ checkpoint_restore :: proc(cp: ^Checkpoint) {
 	next_event = cp.next_event
 	see_through = cp.see
 	depth_undo_end(&cp.depths)
+	world_undo_end(&cp.worlds)
 	flats = cp.flats
 	portals = cp.portals
 	pictures = cp.pictures

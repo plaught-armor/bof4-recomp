@@ -93,7 +93,7 @@ OPTIONS_PAGE_MAX :: 10
 
 // Options in all; checked against the table as it is built.
 @(private)
-OPTION_COUNT :: 68
+OPTION_COUNT :: 69
 
 @(private)
 options: [OPTION_COUNT]Option
@@ -144,6 +144,7 @@ options_init :: proc() {
 		{page = .Look, section = "window", key = "depth_of_field", label = "Focus", help = "Soften what stands far from the leader", value = &config.window_depth_of_field, apply = apply_effects},
 		{page = .Look, section = "window", key = "color_grade", label = "Grade", help = "Colour each town as its light", value = &config.window_color_grade, apply = apply_effects},
 		{page = .Look, section = "window", key = "vignette", label = "Vignette", help = "Darken the corners of the field", value = &config.window_vignette, apply = apply_effects},
+		{page = .Look, section = "window", key = "native_world", label = "3D world", help = "Draw the field in true 3D", value = &config.window_native_world, apply = apply_effects},
 		{page = .Look, section = "text", key = "subtitles", label = "Subtitles", help = "English lines in the opening movie", value = &config.text_subtitles},
 		{page = .Look, section = "text", key = "descriptions", label = "Gear text", help = "Gear descriptions show hidden effects", value = &config.text_descriptions},
 		{page = .Display, section = "window", key = "fullscreen", label = "Fullscreen", help = "Fill the screen (F11 also toggles)", value = &config.window.fullscreen, apply = apply_window},
@@ -343,6 +344,7 @@ apply_effects :: proc() {
 	psx.bloom_effects = config.window_bloom_effects
 	psx.depth_of_field = config.window_depth_of_field
 	psx.vignette = config.window_vignette
+	psx.native_world = config.window_native_world
 }
 
 @(private = "file")

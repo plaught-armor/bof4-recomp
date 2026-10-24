@@ -684,6 +684,48 @@ the end where a coordinate runs out at the triangle's right or bottom edge,
 never drawn by the PS1 at its own scale, drops one texel. GL clamps with
 the same range (`READ_OK`).
 
+## Native 3D world (third person)
+
+With `[window] native_world` (Look page "3D world", off by default) the
+field's tiles and placed models are drawn from their view-space corners
+instead of the packet's screen positions (`psx/world.odin`). The game still
+builds, culls and orders every packet; only where the corners land changes.
+
+- **Filing.** `quad_draw` (`qol/map_geometry.odin`) computes each quad's
+  corners with the GTE's rotation and translation (`world_view`, through
+  the exact view when on) and files them by packet address
+  (`world_quad_add`), for the textured quad and its fog G4. A table
+  (open addressing, generation per ordering-table walk, undone after
+  frozen-time passes like the depth cache) holds them until `see_end`.
+  Backface and cull tests use the view-space corners
+  (`world_may_show`: all four corners behind the near plane or past the
+  same side of the screen).
+- **Drawing.** `exec_polygon` finds the packet's quad, cuts it at
+  `WORLD_NEAR` (2 view units) and projects each corner exactly in 16ths of
+  a pixel, each at its own depth; the cut polygon draws as a fan
+  (`Prim_Mode.world` lifts the 1024x512 size limit). The whole-polygon
+  tests (see-through cover, door cuts, blacks) get up to four GTE-like
+  corners, pairs made by the cut merged.
+- **Why.** The PS1 GPU takes whole-pixel corners the GTE clamped to
+  +-1024 and files corners behind the lens at depth 0. Walls and floors
+  running past a close camera bent (warping) and tore. In Sarai with the
+  camera zoomed in, walls that bulged with the classic path stand straight.
+- **Off.** With the option off nothing is filed and frames match the
+  classic path exactly (92/92 window dumps of the Sarai route).
+- **Checked.** Canyon 0414.2 into the s3 cave: where the classic path
+  laid a pale smeared plane over the left of the picture, the cave wall
+  stands. Town 1001 plaza: same picture as classic, no new holes (the
+  black blocks for a few frames after a warp are models still loading,
+  in both paths).
+- **Known.** A camera pressed against an interior wall (0204 tavern
+  doorway) now shows the void past the room's edge, which the classic
+  path covered with the smeared behind-lens corner. The spring arm is
+  already at its shortest (`ARM_MIN`, the boom at `BOOM_MAX`) there, so
+  stopping it over cells with no floor changes nothing; it is the room
+  seen from where the camera may stand, interiors having no backdrop
+  (outdoors the sky fills the void). Clipped UVs round to whole texels;
+  the ordering-table depth stays the game's.
+
 ## Frame pacing
 
 Each emulated vblank is one present. On a 60, 120 or 240 Hz display the
