@@ -296,6 +296,9 @@ platform_init :: proc(title: cstring) -> bool {
 		return false
 	}
 	sdl.RenderSetLogicalSize(host.renderer, WINDOW_W, WINDOW_H)
+	if lib := sdl.LoadObject(SDL_LIBRARY); lib != nil {
+		render_set_vsync = auto_cast sdl.LoadFunction(lib, "SDL_RenderSetVSync")
+	}
 	gl_init()
 	if !render_scale_apply() {
 		return false
@@ -578,6 +581,15 @@ VSYNC_SHOWS_MAX :: 4
 // audio_step absorbs its small difference from 60 Hz. Any other refresh rate
 // (144 Hz: 2.4 refreshes a vblank) or speed, or no pacing at all (`paced`
 // false), keeps vsync off.
+// SDL_RenderSetVSync came in SDL 2.0.18, and the SDL2.dll that ships with
+// Odin (the one Windows builds use) is 2.0.16, so it is looked up when the
+// renderer is made; without it vsync stays off.
+@(private)
+render_set_vsync: proc "c" (renderer: ^sdl.Renderer, vsync: sdl.bool) -> i32
+
+@(private)
+SDL_LIBRARY :: "SDL2.dll" when ODIN_OS == .Windows else "libSDL2-2.0.so.0"
+
 @(private)
 vsync_update :: proc(paced: bool) {
 	mode: sdl.DisplayMode
@@ -594,7 +606,7 @@ vsync_update :: proc(paced: bool) {
 	if want == host.vsync {
 		return
 	}
-	if sdl.RenderSetVSync(host.renderer, sdl.bool(want)) != 0 {
+	if render_set_vsync == nil || render_set_vsync(host.renderer, sdl.bool(want)) != 0 {
 		// Backend cannot switch: stay on sleep pacing.
 		want = false
 	}
