@@ -686,8 +686,8 @@ the same range (`READ_OK`).
 
 ## Native 3D world (third person)
 
-With `[window] native_world` (Look page "3D world", on by default) the
-field's tiles and placed models are drawn from their view-space corners
+While the third-person camera is in (`psx.tiles_unculled`) the field's
+tiles and placed models are drawn from their view-space corners
 instead of the packet's screen positions (`psx/world.odin`). The game still
 builds, culls and orders every packet; only where the corners land changes.
 
@@ -710,8 +710,10 @@ builds, culls and orders every packet; only where the corners land changes.
   +-1024 and files corners behind the lens at depth 0. Walls and floors
   running past a close camera bent (warping) and tore. In Sarai with the
   camera zoomed in, walls that bulged with the classic path stand straight.
-- **Off.** With the option off nothing is filed and frames match the
-  classic path exactly (92/92 window dumps of the Sarai route).
+- **Game camera.** Under the game's own camera (third person off, or a
+  scene that takes the view back) nothing is filed and frames match the
+  classic path exactly (92/92 window dumps of the Sarai route, taken
+  while this was still an option, off).
 - **Checked.** Canyon 0414.2 into the s3 cave: where the classic path
   laid a pale smeared plane over the left of the picture, the cave wall
   stands. Town 1001 plaza: same picture as classic, no new holes (the

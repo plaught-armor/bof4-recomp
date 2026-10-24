@@ -1,5 +1,4 @@
-// The third-person field world drawn in 3D ([window] native_world; not a
-// PS1 feature). The game's tile and model code (qol/map_geometry.odin) still
+// The third-person field world drawn in 3D (not a PS1 feature). The game's tile and model code (qol/map_geometry.odin) still
 // builds its packets and orders them, but files each world quad's corners in
 // view space here (world_quad_add), by the packet's address. When the walk
 // reaches such a packet, exec_polygon draws it from those corners instead of
@@ -10,9 +9,6 @@
 package psx
 
 import "core:math"
-
-// Set from the config.
-native_world := false
 
 // The view depth (view units; a cell is 128) a world polygon is cut at.
 WORLD_NEAR :: f32(2)
@@ -61,7 +57,7 @@ World_Undo :: struct {
 
 // Whether the world is drawn in 3D now: the third-person field.
 world_on :: #force_inline proc() -> bool {
-	return native_world && tiles_unculled
+	return tiles_unculled
 }
 
 // The view-space point (view units) the GTE's rotation and translation put
