@@ -27,7 +27,6 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
-import stbi "vendor:stb/image"
 
 // A replayed mask with no later entry stays held this long.
 @(private = "file")
@@ -210,8 +209,7 @@ snapshot_take :: proc() {
 @(private = "file")
 write_png :: proc(path: string, rgb: []u8, w, h: i32) {
 	assert(len(rgb) >= int(w * h * 3), "picture smaller than its size")
-	name := strings.clone_to_cstring(path, context.temp_allocator)
-	if stbi.write_png(name, w, h, 3, raw_data(rgb), w * 3) == 0 {
+	if !png_write(path, rgb, int(w), int(h), 3) {
 		fmt.eprintln("snapshot: png write failed:", path)
 	}
 }

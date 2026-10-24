@@ -9,9 +9,7 @@ package psx
 import "core:fmt"
 import "core:hash"
 import "core:os"
-import "core:strings"
 
-import stbi "vendor:stb/image"
 
 @(private = "file")
 SPRITE_MIN :: 8 // smaller rectangles (font, sparks) are skipped
@@ -77,7 +75,7 @@ sprite_rect :: proc(u0, v0, w, h: i32, m: ^Prim_Mode) {
 	}
 	sprites.seen[key] = true
 	path := fmt.tprintf("%s/%d_%d_%d_%d_%d_%d_%dx%d.png", sprites.dir, gpu.tex_x, gpu.tex_y, m.clut_x, m.clut_y, u0, v0, w, h)
-	if stbi.write_png(strings.clone_to_cstring(path, context.temp_allocator), w, h, 4, raw_data(rgba), w * 4) == 0 {
+	if !png_write(path, rgba, int(w), int(h), 4) {
 		fmt.eprintln("BOF4_SPRITES: png write failed:", path)
 	}
 }

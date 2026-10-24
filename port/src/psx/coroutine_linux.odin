@@ -1,9 +1,9 @@
 // Coroutine switching on Linux: the C library's ucontext calls, on stacks
-// from mmap.
+// mapped with the raw syscall.
 package psx
 
 import "base:runtime"
-import "core:sys/posix"
+import "core:sys/linux"
 
 // glibc's ucontext_t on x86-64 is 968 bytes; uc_link and uc_stack sit at
 // the offsets below.
@@ -51,8 +51,8 @@ co_body :: proc "c" () {
 // Give `co` its stack and a context that enters co_body on it.
 @(private)
 co_start :: proc(co: ^Coroutine) {
-	stack := posix.mmap(nil, CO_STACK, {.READ, .WRITE}, {.PRIVATE, .ANONYMOUS}, -1, 0)
-	assert(stack != posix.MAP_FAILED, "coroutine stack")
+	stack, err := linux.mmap(0, CO_STACK, {.READ, .WRITE}, {.PRIVATE, .ANONYMOUS})
+	assert(err == .NONE, "coroutine stack")
 	co.ctx.stack = stack
 	getcontext(&co.ctx.uc)
 	(^rawptr)(&co.ctx.uc.raw[UC_LINK])^ = nil
@@ -70,6 +70,6 @@ co_swap :: proc(from, to: ^Coroutine) {
 @(private)
 co_free :: proc(co: ^Coroutine) {
 	if co.ctx.stack != nil {
-		posix.munmap(co.ctx.stack, CO_STACK)
+		linux.munmap(co.ctx.stack, CO_STACK)
 	}
 }

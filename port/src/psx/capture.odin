@@ -10,14 +10,14 @@ package psx
 import "core:fmt"
 import "core:os"
 import "core:strconv"
-import "core:sys/posix"
 import "core:time"
 
 @(private = "file")
 capture: struct {
 	path: string,
 	from: u64,
-	pipe: ^posix.FILE,
+	pipe: ^os.File, // ffmpeg's stdin
+	ffmpeg: os.Process,
 	size: [2]i32,
 	start: time.Tick, // when the first picture was sent
 	sent: i64, // video frames written
@@ -45,14 +45,26 @@ capture_frame :: proc() {
 		return
 	}
 	if capture.pipe == nil {
-		cmd := fmt.ctprintf("ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size %dx%d -framerate %d -i - -c:v libx264 -preset ultrafast -crf 18 '%s'",
-			w, h, CAPTURE_FPS, capture.path)
-		capture.pipe = posix.popen(cmd, "w")
-		if capture.pipe == nil {
+		cmd := []string{
+			"ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pixel_format", "rgb24",
+			"-video_size", fmt.tprintf("%dx%d", w, h), "-framerate", fmt.tprint(CAPTURE_FPS),
+			"-i", "-", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", capture.path,
+		}
+		r, pw, pipe_err := os.pipe()
+		if pipe_err != nil {
 			fmt.eprintln("BOF4_CAPTURE: cannot start ffmpeg")
 			capture.dead = true
 			return
 		}
+		ffmpeg, start_err := os.process_start({command = cmd, stdin = r, stdout = os.stdout, stderr = os.stderr})
+		os.close(r)
+		if start_err != nil {
+			os.close(pw)
+			fmt.eprintln("BOF4_CAPTURE: cannot start ffmpeg")
+			capture.dead = true
+			return
+		}
+		capture.pipe, capture.ffmpeg = pw, ffmpeg
 		capture.size = {w, h}
 		capture.start = time.tick_now()
 		capture.last = make([]u8, len(pix))
@@ -79,7 +91,7 @@ capture_write :: proc(pix: []u8) {
 		capture.sent += 1
 		return
 	}
-	if posix.fwrite(raw_data(pix), 1, uint(len(pix)), capture.pipe) != uint(len(pix)) {
+	if n, err := os.write(capture.pipe, pix); err != nil || n != len(pix) {
 		fmt.eprintln("BOF4_CAPTURE: ffmpeg stopped taking frames")
 		capture.dead = true
 	}
@@ -89,7 +101,8 @@ capture_write :: proc(pix: []u8) {
 @(private)
 capture_close :: proc() {
 	if capture.pipe != nil {
-		posix.pclose(capture.pipe)
+		os.close(capture.pipe)
 		capture.pipe = nil
+		_, _ = os.process_wait(capture.ffmpeg)
 	}
 }
