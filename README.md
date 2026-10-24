@@ -11,7 +11,7 @@ See [docs/port-changes.md](docs/port-changes.md) for the full list.
 
 **This repository contains no game code or data.** You need your own copy of
 the disc. The recompiled code (`port/src/rec`) is generated from it on your
-machine by `setup.py`.
+machine by `setup.sh` (`setup.bat` on Windows).
 
 ## Building
 
@@ -21,7 +21,6 @@ Requirements:
 - [Odin](https://odin-lang.org/) (developed with `dev-2026-10`); on Windows
   Odin also needs the MSVC build tools and Windows SDK (see Odin's install
   guide)
-- Python 3
 - OpenGL 4.5 drivers; on Linux also SDL2 (Windows uses the `SDL2.dll` that
   ships with Odin)
 
@@ -30,12 +29,14 @@ Steps:
 1. Rip your disc as a cue plus raw (2352-byte sector) bin tracks. Put
    `Breath of Fire IV.cue`, `Breath of Fire IV (Track 1).bin` and
    `Breath of Fire IV (Track 2).bin` in the repository root.
-2. Run `python3 setup.py` (on Windows, `py setup.py` from an
+2. Run `./setup.sh` (on Windows, `setup.bat` from an
    "x64 Native Tools Command Prompt"). It does the following:
-   - extracts the disc's files to `disc/` (`tools/disc_extract.py`);
+   - builds the tools into `tools/bof4tools` (`tools/build.sh`, or
+     `tools\build.bat` on Windows);
+   - extracts the disc's files to `disc/` (`bof4tools disc-extract`);
    - checks that the executable is the US release;
-   - extracts the code overlays to `overlays/` (`tools/emi_extract.py`);
-   - recompiles everything into `port/src/rec` (`tools/recomp.py`);
+   - extracts the code overlays to `overlays/` (`bof4tools emi-extract`);
+   - recompiles everything into `port/src/rec` (`bof4tools recomp`);
    - builds the port (`port/build.sh`, or `port\build.bat` on Windows,
      which also copies `SDL2.dll` next to `bof4.exe`).
 3. Run the port from `port/`: `cd port && ./bof4` (Windows: `cd port`,
@@ -61,7 +62,7 @@ camp menu's Setting > Extras page. Memory cards are
 | `port/src/psx` | the emulated PS1 and host platform (window, audio, input, renderer) |
 | `port/src/qol` | features and mods, hooked into game functions |
 | `port/src/rec` | generated: the recompiled game code (not in the repo) |
-| `tools/` | recompiler, disc and overlay extractors, map block tool, Ghidra scripts, research helpers |
+| `tools/` | `bof4tools` (in Odin): recompiler, disc and overlay extractors, map block tool, research helpers; Ghidra scripts |
 | `docs/` | reverse-engineering and modding notes: start at [docs/README.md](docs/README.md) |
 
 ## Modding

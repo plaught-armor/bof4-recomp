@@ -55,7 +55,7 @@ up, fix or open up what it already does.
   angle instead of cell to cell.
 - **Native field engine**: collision/ground heights, floors and map drawing
   rewritten natively, same results as the game's code. Edited maps can be
-  loaded from `BOF4_MAPS=<dir>` (`tools/map_block.py` unpacks/packs map
+  loaded from `BOF4_MAPS=<dir>` (`bof4tools map-block` unpacks/packs map
   blocks), including added Z levels. F4 on the field opens an in-game map
   editor (cells, heights, textures, exits) that saves `<map>.edit` patches.
 - **Seamless sections**: neighbouring sections of a map are drawn around the
@@ -80,7 +80,7 @@ up, fix or open up what it already does.
   at a reused packet address hid them).
 - **Dengeki store** (off by default): the store cut from the US release
   reopened in a forest south-west of Mt. Glom, in English when the files from
-  `tools/dengeki_patch.py` are present.
+  `bof4tools dengeki-patch` are present.
 
 ## Text and menus
 

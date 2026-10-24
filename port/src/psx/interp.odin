@@ -48,7 +48,7 @@ interp_run :: proc(start: u32) {
 }
 
 // Average R3000A cost per instruction including memory stalls; matches
-// CYCLES_PER_INSN in tools/recomp.py. Native rewrites use it for the cycles
+// CYCLES_PER_INSN in tools/recomp.odin. Native rewrites use it for the cycles
 // they charge under BOF4_MAPCHECK and old replays (psx.charge_native).
 CYCLES_PER_INSN :: 2
 

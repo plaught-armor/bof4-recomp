@@ -14,7 +14,7 @@
 // again when the option is off, so saves made either way load clean.
 //
 // The fan translation (Dengeki Store Restoration v1.0, by Navarchos, Ratty
-// and FlamePurge) is not shipped. tools/dengeki_patch.py builds its two files
+// and FlamePurge) is not shipped. `bof4tools dengeki-patch` builds its two files
 // from the user's copy of the patch and disc into dengeki/ in the working
 // directory. When they are there and the option is on, the game's file table
 // points those two files at sectors past the disc's end, where

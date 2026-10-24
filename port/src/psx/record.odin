@@ -28,6 +28,8 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 
+import "../png"
+
 // A replayed mask with no later entry stays held this long.
 @(private = "file")
 REPLAY_LAST_HOLD :: u64(1) << 40
@@ -209,7 +211,7 @@ snapshot_take :: proc() {
 @(private = "file")
 write_png :: proc(path: string, rgb: []u8, w, h: i32) {
 	assert(len(rgb) >= int(w * h * 3), "picture smaller than its size")
-	if !png_write(path, rgb, int(w), int(h), 3) {
+	if !png.write(path, rgb, int(w), int(h), 3) {
 		fmt.eprintln("snapshot: png write failed:", path)
 	}
 }

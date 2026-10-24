@@ -29,7 +29,7 @@ To list how every map connects to every other (exits per section, from the
 map overlays):
 
 ```sh
-python3 -I tools/exit_graph.py overlays
+tools/bof4tools exit-graph overlays
 ```
 
 Some known maps:
@@ -83,7 +83,7 @@ player is. Known beats (from `qol/tracker.odin`):
 Which maps set and test which bits:
 
 ```sh
-python3 -I tools/story_flags.py overlays
+tools/bof4tools story-flags overlays
 ```
 
 ### Finding new beats
@@ -301,7 +301,7 @@ exits into the forest; see [Noritake's Town](#noritakes-town-cut-test-village).
   64-byte colour table entry (kind 0x80037c00) to AREAD068 and a 14th entry
   to AREAS052 (type 3 texture, 0x1800 bytes, rows cut from AREAM000.EMI), and
   moves every later file in the executable's file table (+1 sector after
-  AREAD068, +3 after AREAS052). `tools/dengeki_patch.py` rebuilds the two
+  AREAD068, +3 after AREAS052). `bof4tools dengeki-patch` rebuilds the two
   files from the patch's xdelta files and the disc without running its
   Windows programs; the port serves them from `port/dengeki/` at sectors past
   the disc's end (file table entries 0x28e and 0x3b7 rewritten while the
@@ -402,9 +402,9 @@ These maps spawn the party at a default 26,32. On the small ones that cell is
 outside the grid, so a bare `BOF4_WARP=<map>.0` shows only the party in black.
 Give a cell (`BOF4_WARP=1026.0:9,9`).
 
-`tools/emi_extract.py` used to skip map overlays with fewer than four `jr ra`
+`bof4tools emi-extract` used to skip map overlays with fewer than four `jr ra`
 (such as AREAD068's 0x144-byte one), so the exits of about 88 maps were
-missing from `tools/exit_graph.py overlays` and the sweep read the area EMIs
+missing from `bof4tools exit-graph overlays` and the sweep read the area EMIs
 directly. Fixed: an entry that opens with its own id followed by an
 instruction (high half nonzero) counts as code, which adds the 82 small map
 overlays; the data tables that share the id word follow it with a small

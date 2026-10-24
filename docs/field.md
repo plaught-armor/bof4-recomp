@@ -904,7 +904,7 @@ floor's header, attribute cells (hex rows) and the ground height of each cell
 (`GROUND` run natively on the cell, leaving no trace in the game's state).
 A map that shows a second block (a door room swapped in) also gets
 `<map>-1.json`.
-`python3 -I tools/floors_png.py <map>.json <out dir>` draws each floor as a
+`tools/bof4tools floors-png <map>.json <out dir>` draws each floor as a
 PNG (grey by ground height, walls red, exits blue, stairs green).
 
 ### Edited maps
@@ -922,9 +922,9 @@ presents as the disc block (in 1778, out 2049), the block was read once,
 and the town came back from its noted world with the new layer drawn.
 
 ```sh
-python3 -I tools/map_block.py extract disc/BIN 0201 mods/0201.blk
+tools/bof4tools map-block extract disc/BIN 0201 mods/0201.blk
 # edit the "cells" rows of a BOF4_FLOORDUMP file, then
-python3 -I tools/map_block.py cells mods/0201.blk 0201.json mods/0201.blk
+tools/bof4tools map-block cells mods/0201.blk 0201.json mods/0201.blk
 ```
 
 Checked: an unedited block leaves the baseline replay's frames unchanged;
@@ -1004,9 +1004,9 @@ outside them: a block laid out again with gaps between parts plays the same.
 #### Taking a block apart
 
 ```sh
-python3 -I tools/map_block.py unpack mods/1000.blk work/1000
+tools/bof4tools map-block unpack mods/1000.blk work/1000
 # edit work/1000/layer0.json, floor0.json, attrs0.bin ...
-python3 -I tools/map_block.py pack work/1000 mods/1000.blk
+tools/bof4tools map-block pack work/1000 mods/1000.blk
 ```
 
 `unpack` writes `header.bin`, `layer<n>.json`, `group<n>.bin`,
@@ -1074,7 +1074,7 @@ doors on an added level.
 #### Adding a drawn layer
 
 A level of new geometry is a new layer with a floor of its own;
-`tools/add_layer_1000.py` builds one on 1000 (a platform at height 1.50
+`bof4tools add-layer-1000` builds one on 1000 (a platform at height 1.50
 over the plaza west of the arrival spot, a ramp up to it and stairs from
 floor 0). What it takes:
 

@@ -5,13 +5,13 @@ containers on the disc (see [disc-files.md](disc-files.md)) and is loaded into
 fixed RAM regions ("slots") when needed: the field engine when you walk
 around, the camp menu when you open it, a battle's code when one starts.
 
-`tools/emi_extract.py` pulls every code entry out of the disc's EMI files,
+`bof4tools emi-extract` pulls every code entry out of the disc's EMI files,
 merges identical copies, and writes them to `overlays/` as
 `ov_<slot>_<id>.bin` plus `overlays/manifest.tsv` (file, slot, size, ids,
 sha1, and every EMI entry that carries it):
 
 ```sh
-python3 -I tools/emi_extract.py disc/BIN overlays
+tools/bof4tools emi-extract disc/BIN overlays
 ```
 
 An overlay's first word, at its slot address, is its global id. The port uses

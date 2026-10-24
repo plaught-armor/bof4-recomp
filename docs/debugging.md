@@ -60,7 +60,7 @@ Scripted input without a recording (all lists are comma-separated):
 | `BOF4_CAPTURE=<file.mkv>` | record the window as a 60 fps video on the wall clock, from present `BOF4_CAPTURE_FROM` (default 1); a picture shown late is repeated for as long as it stayed up, so stalls show as they were seen. Run paced (no `BOF4_FAST`); needs `ffmpeg` on the PATH; Matroska survives the process being killed |
 
 A RAM dump is 2 MiB, address 0x80000000 at offset 0.
-`python3 -I tools/field_state.py ram.bin [--grid] [--layer=N]` prints the map,
+`tools/bof4tools field-state ram.bin [--grid] [--layer=N]` prints the map,
 exits, party and NPCs it holds; `--layer` picks the collision layer of a
 section with an upper floor.
 
@@ -154,4 +154,4 @@ the save's story: 040f section 1 spawns the party as ids 1 and 2 while the
 leader id stays 0, so nobody takes control there.
 
 Tips: keep each run short, give it a `timeout`, and check the RAM dump with
-`tools/field_state.py` rather than rerunning to look again.
+`bof4tools field-state` rather than rerunning to look again.

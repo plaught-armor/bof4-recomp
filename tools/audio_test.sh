@@ -1,8 +1,8 @@
 #!/bin/bash
 # Paced, silent audio test: the game plays into a PipeWire null sink (clocked
 # in real time like a sound card, heard by no one), pw-record takes the
-# sink's monitor, and tools/audio_check.py looks for dropouts in it and
-# lists the game's .Perf audio report.
+# sink's monitor, and `bof4tools audio-check` looks for dropouts in it and
+# lists the game's .Perf audio report (tools/build.sh builds bof4tools).
 #
 # Usage (from port/): ../tools/audio_test.sh OUT_DIR [VAR=value ...]
 # The VAR=value pairs go to the game's environment, for example
@@ -29,5 +29,5 @@ env SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=pulseaudio PULSE_SINK=bof4_test \
 sleep 0.5
 kill -INT $rec
 wait $rec || true
-python3 -P "$tools/audio_check.py" "$out/played.wav" "$out/log"
+"$tools/bof4tools" audio-check "$out/played.wav" "$out/log"
 exit $status

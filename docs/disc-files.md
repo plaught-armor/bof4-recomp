@@ -4,10 +4,10 @@
 
 The game does not open files by name. The executable holds a table of LBAs
 (start sectors), one u32 per file, at `FILE_TABLE` 0x80172c10, and code loads
-"file N". `tools/file_table.py` matches each index to its ISO path:
+"file N". `bof4tools file-table` matches each index to its ISO path:
 
 ```sh
-python3 -I tools/file_table.py "Breath of Fire IV (Track 1).bin" disc/SLUS_013.24
+tools/bof4tools file-table "Breath of Fire IV (Track 1).bin" disc/SLUS_013.24
 ```
 
 `tools/file_table.tsv` is that output (1009 files: index, LBA, path). Folders:
@@ -58,7 +58,7 @@ Almost every game file is an EMI container (little-endian):
 | 0x10 | entries, 16 bytes each: u32 size, u32 load address (>= 0x80000000 = code overlay) or data kind, u32 info (global overlay id for code), u16 type, padding |
 | 0x800 | entry data, each entry padded to a 2 KiB boundary |
 
-Code entries are what `tools/emi_extract.py` writes to `overlays/` (see
+Code entries are what `bof4tools emi-extract` writes to `overlays/` (see
 [overlays.md](overlays.md)).
 
 ### Textures
@@ -114,7 +114,7 @@ saves in exactly this form (`BOF4-NN.DAT`).
 
 ```sh
 # put a raw save into a memory card image as save number 3
-python3 -I tools/save_to_mcd.py BOF4-02.DAT bof4_slot1.mcd 3
+tools/bof4tools save-to-mcd BOF4-02.DAT bof4_slot1.mcd 3
 ```
 
 Known save fields (offsets in the file):

@@ -48,7 +48,7 @@
 //   dengeki = false        ; open the Dengeki store (cut from the US release),
 //                          ; a forest south-west of Mt. Glom on the world map
 //                          ; (text in English when dengeki/ holds the files
-//                          ; tools/dengeki_patch.py builds from the fan patch)
+//                          ; `bof4tools dengeki-patch` builds from the fan patch)
 //   restored_items = false ; shops also sell the equipment and items the US
 //                          ; release never hands out (Ershin's cut armor, Pole,
 //                          ; Slayer, three seeds, Wassail, Draught, Spanner)

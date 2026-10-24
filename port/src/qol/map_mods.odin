@@ -9,7 +9,7 @@
 // with the edited bytes at the same offsets, and the first chunk writes the
 // whole edited block, so it may be longer than the disc's. It must end by
 // MAP_DATA_END: the party's models (PL*.EMI) load there on every map.
-// tools/map_block.py extracts blocks and writes edited floors back.
+// `bof4tools map-block` extracts blocks and writes edited floors back.
 //
 // The overlay (the map's exit lists among its code) loads raw at OVERLAY;
 // minigames load theirs there too, so its patch carries the vanilla bytes and

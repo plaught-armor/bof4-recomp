@@ -7,7 +7,8 @@ engineering it.
 
 Nothing here contains game data. To run the port or check any of this you need
 your own copy of the disc (`Breath of Fire IV.cue` plus its two `.bin` tracks
-in the repo root). `setup.py` in the repo root extracts its files to `disc/`
+in the repo root). `setup.sh` (`setup.bat` on Windows) in the repo root builds
+the tools (`tools/bof4tools`), extracts the disc's files to `disc/`
 and its code overlays to `overlays/`, then regenerates `port/src/rec` and
 builds the port.
 
@@ -47,7 +48,7 @@ builds the port.
   `port/src`, regenerate it from the repo root:
 
   ```sh
-  python3 tools/address_map.py port/src docs/address-map.md
+  tools/bof4tools address-map port/src docs/address-map.md
   ```
 
   A constant gets a row when it is a top-level `NAME :: 0x8xxxxxxx` (or

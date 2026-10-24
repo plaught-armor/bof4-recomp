@@ -13,7 +13,7 @@ port/src/
 
 ## How the game's code runs
 
-`tools/recomp.py` is a static recompiler. It reads the executable and every
+`bof4tools recomp` is a static recompiler. It reads the executable and every
 code overlay (`overlays/`, see [overlays.md](overlays.md)) and turns each MIPS
 function into an Odin procedure working on the emulated CPU registers
 (`psx.cpu.r[0..31]`) and memory bus (`psx.lw`, `psx.sw`, `psx.lbu`, ...).
@@ -22,8 +22,8 @@ Function boundaries come from `tools/funcs.tsv` (exported from Ghidra with
 
 ```sh
 # from the repo root; regenerates port/src/rec byte-identical
-python3 tools/recomp.py exe disc/SLUS_013.24 overlays tools/funcs.tsv port/src/rec
-python3 tools/recomp.py ovl disc/SLUS_013.24 overlays tools/funcs.tsv port/src/rec
+tools/bof4tools recomp exe disc/SLUS_013.24 overlays tools/funcs.tsv port/src/rec
+tools/bof4tools recomp ovl disc/SLUS_013.24 overlays tools/funcs.tsv port/src/rec
 ```
 
 Every call the game makes goes through `psx.call(addr)` (`psx/cpu.odin`):
@@ -73,7 +73,7 @@ state from outside `psx/` must go through `spu_sync` or `psx.sound_ram()`
 ## Patch points
 
 For a change inside a function that a whole-function hook cannot reach,
-`PATCHES` in `tools/recomp.py` maps an instruction address to an Odin
+`PATCHES` in `tools/recomp.odin` maps an instruction address to an Odin
 condition and a target label in the same function: the generated code
 jumps there when the condition holds. Regenerate after editing it.
 

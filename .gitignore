@@ -5,7 +5,8 @@
 !/.gitignore
 !/README.md
 !/LICENSE
-!/setup.py
+!/setup.sh
+!/setup.bat
 !/docs/
 !/tools/
 !/port/
@@ -14,4 +15,5 @@
 !/port/build.bat
 !/port/src/
 /port/src/rec/
-__pycache__/
+/tools/bof4tools
+/tools/bof4tools.exe

@@ -93,7 +93,7 @@ register_overlay_funcs :: proc(entries: []Ovl_Entry) {
 	}
 }
 
-// Read by recompiled code at patch points (tools/recomp.py PATCHES): skip
+// Read by recompiled code at patch points (tools/recomp.odin PATCHES): skip
 // the game's test that drops a map tile or model part with no projected
 // corner on screen. Set while a camera close to the scenery is in use.
 tiles_unculled: bool

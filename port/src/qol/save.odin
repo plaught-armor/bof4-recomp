@@ -24,7 +24,7 @@
 // SAVE_CHECKSUM, as the save screen computes it. The icon is the one exception:
 // SAVE_BUILD reads it from VRAM, where only the save screen uploads it, so the
 // header gets the save number's icon from SAVE_ICONS (extracted from the disc
-// by tools/emi_extract.py) instead.
+// by `bof4tools emi-extract`) instead.
 package qol
 
 import "core:fmt"
