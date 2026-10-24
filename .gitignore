@@ -1,0 +1,17 @@
+# Only the port, its tools and the notes are tracked. The disc image, what is
+# extracted or generated from it (disc/, overlays/, port/src/rec/), the Ghidra
+# project, saves, builds and debug output stay local.
+/*
+!/.gitignore
+!/README.md
+!/LICENSE
+!/setup.py
+!/docs/
+!/tools/
+!/port/
+/port/*
+!/port/build.sh
+!/port/build.bat
+!/port/src/
+/port/src/rec/
+__pycache__/
