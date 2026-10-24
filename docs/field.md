@@ -302,7 +302,8 @@ overlay at 0x801f0800. An opcode byte below 192 jumps through the table at
 | 0xc4, 0xc6..0xcf | 0x801dfcb0 | 1 | halt: returns without advancing (ops 192 and up first return if +0x4e is set; table 0x801ccb54) |
 | 0x89 | 0x801df18c | 2 | back to the world map: kept yaw 0x200, `AREA_SET(0x805, 0)`, `MAP_REQUEST(0x805, 0, [0x80120dd4], [0x80120dd6], +1)` |
 
-`MAP_REQUEST` is also called by `EXIT_CHECK` (0x801d5c30) and by overlay
+`MAP_REQUEST` is also called by 0x801d5a18 (the call at 0x801d5c30), which
+the step handler runs beside `EXIT_CHECK` (0x801d5828), and by overlay
 code (0x8018dd90, 0x801f8b70, 0x801f8d00). Byte scanning every map overlay
 finds about 120 op 0x5b requests (a scan, so a few may be data): about half
 arrive at 0, 0, leaving the placement to the destination's setup, the rest
@@ -802,15 +803,12 @@ What a load does that the switch redoes by hand:
 - Near a door the world is noted again every frame (`interiors.renote`,
   `world_take`), so the cover draws the town's people where they stood a
   frame before, and the way back goes on from there.
-- The room places the party a cell or two past the doorway. For
-  `PARTY_WALK_VBLANKS` after the switch the party's objects are drawn moved
-  back toward where they stood in the town (`party_walk_call` around
-  `FIELD_DRAW` and `SCENE_DRAW` 0x801420a4, whose `COLLECT` 0x80141f1c
-  projects each sprite), so they walk on in from there. Only real frames move
-  them: in-between pictures blend positions the real frames already drew
-  moved. While the cover is on, party sprites (and the 52-byte copies drawn
-  after each sprite) are tagged in front (`see_flat_add` `front`) and drawn
-  over the cover and the room.
+- The room places the party a cell or two past the doorway, and the party
+  is drawn there from the room's first frame (an earlier walk-in, drawing
+  the party moved back toward the town for a few frames, is gone). While
+  the cover is on, party sprites (and the 52-byte copies drawn after each
+  sprite) are tagged in front (`see_flat_add` `front`) and drawn over the
+  cover and the room.
 - The ground under a door is read a cell inside its own map (`exit_way`) and
   at the arrival cell on the other map (`Door.there`): a room's exit cells may
   lie past its floor (0201's read 768 and lifted the town by 384 view units).

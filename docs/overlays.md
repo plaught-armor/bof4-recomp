@@ -65,6 +65,6 @@ check that the address is a function start in `tools/funcs.tsv`.
 overlay as its own address space (`ov_<slot>_<id>`), `ExportFunctions.java`
 writes `tools/funcs.tsv` (space, entry, min, max, name) for the recompiler,
 `Decomp.java` / `DecompSpace.java` batch-decompile, and `WritersOf.java` lists
-stores to an address. 8508 functions are known; about 1860 have names. Naming
+stores to an address. 8507 functions are known; about 1860 have names. Naming
 more in Ghidra and re-exporting is one of the most useful things a contributor
 can do.

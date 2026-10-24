@@ -38,8 +38,9 @@ Every call the game makes goes through `psx.call(addr)` (`psx/cpu.odin`):
    you see one of those, the function is missing from `funcs.tsv`: add it and
    regenerate.
 
-Under the CPU, `psx/` emulates the rest of the console: GPU (software
-renderer with extensions, see [graphics.md](graphics.md)), GTE, SPU and XA
+Under the CPU, `psx/` emulates the rest of the console: GPU (an OpenGL
+renderer by default, a software one with `[window] hardware` off, both
+with extensions, see [graphics.md](graphics.md)), GTE, SPU and XA
 audio, CD-ROM reading the real disc image, MDEC movies, pads and memory cards,
 timers, DMA, interrupts. Host-side it owns the window, input devices and
 audio output (SDL).
@@ -104,8 +105,8 @@ and is listed in `qol/game.odin`.
 `hook_field(addr, fn)` for FLD_MAIN (field logic, slot 0x801cc800, id 15) and
 `hook_game_mode(addr, fn)` for the game mode overlay (slot 0x8018d800, id 14).
 
-A complete feature, from `qol/fade.odin`, slowing every screen fade down and
-easing it:
+A complete feature, pared down from `qol/fade.odin` (which also eases the
+level), capping every screen fade's speed:
 
 ```odin
 FADE_STEP :: 0x8018f524 // a0 = ^s16 counter, a1 = speed; v0 1 when done
@@ -155,18 +156,19 @@ before a story change is dropped and the map loads from disc.
 
 ## Smooth motion (60 fps) and the in-between pass
 
-The game's logic runs at 30 frames per second on the field and in battle. With
-`[window] smooth_motion`, the port draws an extra picture between two game
-frames (`qol/inbetween.odin`): it saves RAM and VRAM (`psx/checkpoint.odin`),
-blends camera and object positions halfway, re-runs the game's draw code, then
-restores everything. During that pass `psx.events_frozen` is true.
+The game's logic runs once per two or three vblanks on the field and in
+battle, so each picture is shown more than once. With `[window] smooth_motion`,
+the port draws an in-between picture for every repeat (`qol/inbetween.odin`):
+it saves RAM and VRAM (`psx/checkpoint.odin`), blends camera and object
+positions part of the way (with P vblanks per game frame, the k'th repeat k/P
+of the way), re-runs the game's draw code, then restores everything. During that pass `psx.events_frozen` is true.
 
 When the passes run: each game frame records its poses into a small ring of
 notes, and the frame's send queues the in-between pictures for the vblanks
 the frame is shown on. Drawing every pass at the send stalls the main thread
 long enough to starve the sound queue, so the send predraws only as many
 steps as the longest of the last `SPAN_HISTORY` (8) frames' drawings spanned
-(`draw_span`, vblanks from the send to the end of the next frame's drawing,
+(`draw_spans`, vblanks from the send to the end of the next frame's drawing,
 clamped to 2..period) and each remaining step is drawn at its own present. A
 draw-time spike that was not foreseen still costs a repeated picture now and
 then. With the previous frame's span alone, a field alternating between two

@@ -86,6 +86,8 @@ For playing long stretches unattended (`qol/autoplay.odin`):
 
 - `BOF4_CHEAT=1` keeps the party at full HP, and in battle at 999 Pwr, Def
   and Agl (see [battle.md](battle.md)), so confirming the default attack wins.
+  `BOF4_CHEAT=hp` leaves the stats alone and instead zeroes every hit, status
+  and death aimed at the party, so fights last as long as usual.
 - `BOF4_AUTO=<script>` runs a script, one command per line, `#` comments.
   Confirm is pulsed during battles, events and field text boxes that hold
   the leader, so dialogue goes by on its own. A choice takes its first option
@@ -112,14 +114,16 @@ For playing long stretches unattended (`qol/autoplay.odin`):
 | `boss N` | the next battle loads `BWORLD/BOSS<N>.EMI` (1..32) in place of the encounter's area, with its boss setup and scripts: `boss 7` then `fight start` fights Kahn anywhere. The swap happens in the file loader 0x8013b6f4, since the encounter rewrites the area until the file is read |
 | `pulse on\|off\|qte\|manual` | `off` stops the confirm presses autoplay sends through battles and events, so `press` alone drives them; `qte` presses confirm on cue for learned timed hits; `manual` also stops autoplay answering choices and backing out of menus a talk opens (shops, the Dengeki lottery), so the script presses everything |
 | `log TEXT` | print TEXT |
+| `poke A V` | write byte V to RAM address A (hex), to set up a test |
 | `grid` | print the collision grid (`#` wall, `E` exit, `/` stairs, `@` leader), then the raw attribute bytes (hex) of the 7x7 cells round the leader |
 | `snap` | take a snapshot (with `BOF4_DEBUG_DIR`) |
+| `edit` | start or leave the map editor, as F4 |
 | `tour [N]` | visit every reachable exit and back, logging where each leads, N levels deep |
 | `doors [near]` | walk up to every door to a room on this section in turn and face it until the room's slide settles, logging `autoplay: door TTTT.S to RRRR.S slide x y z` (or `not settled`, or `gave up on door RRRR.S: why`); the survey behind the removed stitch table (field.md "Stitch table (removed)"); a slide settles only with door pictures on. With `near`, only the door nearest the leader. A door the walk cannot reach (`no way`, `goal not open`) is given up at once |
 | `talk` | talk to every NPC in the section, nearest first; climbs stairs (kind 0xc cells) to reach NPCs on other layers; a talk set off on the way (a shop counter) blocks that step |
 | `request M S X Z F` | ask for map M (hex) section S, arriving at X, Z (256 a cell) facing F, as script op 0x5b does (see field.md "Scripts"); stands in for scenes not reached yet |
 | `timeout N` | set the timeout for later commands |
-| `clock N` | run the CPU at N times the PS1's clock from here (`psx.clock_set`, testing only) |
+| `clock N` | run the CPU at N times the PS1's clock from here (`psx.clock_set`, which sets `psx.clock_mul`; testing only) |
 | `quit` | exit |
 
 Besides choices, the autopilot plays two Sarai minigames on its own: the

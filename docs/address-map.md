@@ -13,14 +13,14 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 |---|---|---|---|
 | `1f800000` | GROUND_SCRATCH, SCRATCH_BASE | GROUND's working words, through 0x1f8000ab, some the drawing's | `src/psx/bus.odin:11`<br>`src/qol/sections.odin:130` |
 | `1f80006c` | PACKETS | u32, where the next GPU packet goes | `src/qol/sections.odin:123` |
-| `1f80008c` | DRAW_LAYER | u8 | `src/qol/interiors.odin:186`<br>`src/qol/sections.odin:44` |
+| `1f80008c` | DRAW_LAYER | u8 | `src/qol/interiors.odin:190`<br>`src/qol/sections.odin:44` |
 | `1f800090` | TILE_RUN_COUNT | u16 | `src/qol/sections.odin:53` |
 
 ## Kernel area (0x80000000-0x8000ffff)
 
 | Address | Name | Notes | Source |
 |---|---|---|---|
-| `80000000` | RAM_BASE |  | `src/qol/interiors.odin:1613` |
+| `80000000` | RAM_BASE |  | `src/qol/interiors.odin:1617` |
 
 ## Executable SLUS_013.24 code and data (0x80010000-0x8017ffff)
 
@@ -37,14 +37,14 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `8004b000` | ANIM_AT | Free RAM in every stop's town (past the largest entry 1 and before the sprite table; past the sprite table): the animation table rebuilt with the dog's bank after it, and the dog's spawn list. | `src/qol/teacher.odin:76` |
 | `8004e000` | SPRITE_TABLE | The map's sprite table (area entry 0): a u32 count, then 8-byte entries {u16 sprite id, u8 slot, u8 0, u8 texture page x / 64, u8 v, u16 0}. An entry's index picks its animation bank in the table at ANIM_TABLE_PTR (u32 offsets from the table, area entry 1); its slot picks its CLUT, kept in RAM at SPRITE_CLUTS + slot * 32 and in VRAM row 496 + (slot + 16) / 16. | `src/qol/teacher.odin:50` |
 | `8004e7f0` | RECORD_AT |  | `src/qol/teacher.odin:82` |
-| `80069800` | EDIT_BLOCK, MAP_DATA | Where the disc loads a map's data block, and the most it may take. / where a field map's data block loads (map_mods.odin) | `src/qol/interiors.odin:1603`<br>`src/qol/map_editor.odin:27`<br>`src/qol/map_mods.odin:31` |
+| `80069800` | EDIT_BLOCK, MAP_DATA | Where the disc loads a map's data block, and the most it may take. / where a field map's data block loads (map_mods.odin) | `src/qol/interiors.odin:1607`<br>`src/qol/map_editor.odin:27`<br>`src/qol/map_mods.odin:31` |
 | `80083800` | MAP_DATA_END |  | `src/qol/map_mods.odin:33` |
 | `800fa8a8` | MAP_TABLE | 12-byte rows, u16 at +4: map has encounters | `src/qol/encounter.odin:42` |
-| `80101000` | MAP_DATA_MAX |  | `src/qol/interiors.odin:1605` |
+| `80101000` | MAP_DATA_MAX |  | `src/qol/interiors.odin:1609` |
 | `80114850` | GAME_MODE | Game state. u16: 1 loading, 2 field, 4 event, 5 battle, 6 camera turn, 7 shop | `src/qol/game.odin:15` |
-| `80114852` | FIELD_STATE, MODE_PHASE | u16 | `src/qol/camera.odin:76`<br>`src/qol/interiors.odin:1611` |
+| `80114852` | FIELD_STATE, MODE_PHASE | u16 | `src/qol/camera.odin:76`<br>`src/qol/interiors.odin:1615` |
 | `80114860` | PEEK_OFFSET | s16 | `src/qol/camera.odin:78` |
-| `80114870` | FIELD_MODE, GAME_REQUEST | u8, nonzero while a mode change is pending / The field's mode byte (MAP_REQUEST sets 4, a map change) and its state index (the handler f_801be694 runs). | `src/qol/encounter.odin:38`<br>`src/qol/interiors.odin:1609` |
+| `80114870` | FIELD_MODE, GAME_REQUEST | u8, nonzero while a mode change is pending / The field's mode byte (MAP_REQUEST sets 4, a map change) and its state index (the handler f_801be694 runs). | `src/qol/encounter.odin:38`<br>`src/qol/interiors.odin:1613` |
 | `80114871` | ROTATE_LEFT | u8, curve steps left in the turn | `src/qol/camera.odin:80` |
 | `80114872` | ROTATE_SIGN | s8, +1 or -1 | `src/qol/camera.odin:82` |
 | `801148d8` | TITLE_MODE | The title screen's mode (s16) and its step: Cancel sets the title's menu. | `src/qol/setting_menu.odin:70` |
@@ -52,9 +52,9 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `80116b18` | OT_PTR | u32, the ordering table being filled; slot n at +0x88+4n | `src/qol/map_geometry.odin:40` |
 | `80116b20` | GAME_FRAME | u32, counts game frames | `src/qol/speed.odin:22` |
 | `80116bc4` | MAP_ID, MAP_REQUESTED | Field map. u16, the map loaded / u16, the map being loaded | `src/qol/game.odin:39`<br>`src/qol/map_mods.odin:35` |
-| `80116bc6` | ARRIVE_X | The map request (MAP_REQUEST): the arrival cell x and z, 256 a cell, and the direction faced. | `src/qol/interiors.odin:193` |
-| `80116bc8` | ARRIVE_Z |  | `src/qol/interiors.odin:195` |
-| `80116bcb` | ARRIVE_DIRECTION |  | `src/qol/interiors.odin:197` |
+| `80116bc6` | ARRIVE_X | The map request (MAP_REQUEST): the arrival cell x and z, 256 a cell, and the direction faced. | `src/qol/interiors.odin:197` |
+| `80116bc8` | ARRIVE_Z |  | `src/qol/interiors.odin:199` |
+| `80116bcb` | ARRIVE_DIRECTION |  | `src/qol/interiors.odin:201` |
 | `80116bcc` | FADE_IN | u8 each, beside MAP_ID: the fades in and out of a change, 0xff none. | `src/qol/sections.odin:225` |
 | `80116bcd` | FADE_OUT |  | `src/qol/sections.odin:227` |
 | `80116be8` | EXITS, MAP_HEADER | Rotation flags of the current map: byte MAP_SECTION * 3 into the table at [[MAP_HEADER] + 0x30]. 0xff allows any angle; other values pick fixed ones. u32 pointer / u32 -> u32 -> per-section exit lists | `src/qol/camera.odin:60`<br>`src/qol/sections.odin:92`<br>`src/qol/village.odin:135` |
@@ -80,7 +80,7 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `801172af` | LEADER_ID | u8 / u8, id of the controlled object | `src/qol/encounter.odin:36`<br>`src/qol/movement.odin:48` |
 | `801172b0` | NPCS | the people; u8 +0 0 when free | `src/qol/game.odin:45` |
 | `80118bb0` | SHADOWS | The shadows' 52-byte records (SHADOW_SET 0x801423f0 copies the sprite's position, scale and colour into one, drawn right after the sprite). | `src/qol/sections.odin:209`<br>`src/qol/third_person.odin:151` |
-| `801192cc` | MODEL_OBJS | the other objects (models), MODEL_OBJ_COUNT of MODEL_OBJ_SIZE bytes; u8 +0 0 when free | `src/qol/interiors.odin:160`<br>`src/qol/sections.odin:157` |
+| `801192cc` | MODEL_OBJS | the other objects (models), MODEL_OBJ_COUNT of MODEL_OBJ_SIZE bytes; u8 +0 0 when free | `src/qol/interiors.odin:164`<br>`src/qol/sections.odin:157` |
 | `8011a64c` | SLOTS_AT |  | `src/qol/button_text.odin:41` |
 | `8011a84c` | ANIM_TABLE_PTR | u32, ANIM_TABLE | `src/qol/teacher.odin:56` |
 | `8011a850` | SPRITE_TABLE_PTR | u32, SPRITE_TABLE + 4 | `src/qol/teacher.odin:52` |
@@ -107,9 +107,9 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `8011b67c` | ENCOUNTERS | u32 | `src/qol/masters.odin:68` |
 | `8011b694` | MAX_COMBO_HITS | u8 | `src/qol/masters.odin:66` |
 | `8011b6e4` | BALL_RANK | u8, 5 = Tin, 10 = Platinum | `src/qol/masters.odin:70` |
-| `8011b718` | LEFT_MAP | The record of the map left (written by the map setup): u16 map, u16 x, u16 z (the first party member's position / 256), u8 section \| the member's +0x18 byte << 4. | `src/qol/interiors.odin:226` |
+| `8011b718` | LEFT_MAP | The record of the map left (written by the map setup): u16 map, u16 x, u16 z (the first party member's position / 256), u8 section \| the member's +0x18 byte << 4. | `src/qol/interiors.odin:230` |
 | `8011b724` | MAP_INDEX | u8 | `src/qol/encounter.odin:40` |
-| `8011b72c` | WORLD_RETURN_END | After it, the world map's: the return spot (u16 x, u16 z of the first party member / 256 at 0x8011b720, its direction at +5, a copy of 0x8011c948 at +6; field overlay 0x801cf758) and the world map's cursor (a byte at +4, a node pointer at +8; written at 0x801f18cc/0x801f19d8). | `src/qol/interiors.odin:232` |
+| `8011b72c` | WORLD_RETURN_END | After it, the world map's: the return spot (u16 x, u16 z of the first party member / 256 at 0x8011b720, its direction at +5, a copy of 0x8011c948 at +6; field overlay 0x801cf758) and the world map's cursor (a byte at +4, a node pointer at +8; written at 0x801f18cc/0x801f19d8). | `src/qol/interiors.odin:236` |
 | `8011b734` | MAX_COMBO_DAMAGE | Counters. Fishing points: 30 u16 per fish kind. Species: bit set of 8 u32. Faeries: 20 records whose byte at +0 is nonzero. Inventory: 4 lists of 128 (item, count) byte pairs, a slot filled when both are nonzero. u32 | `src/qol/masters.odin:62` |
 | `8011b760` | MAX_HIT_DAMAGE | u32 | `src/qol/masters.odin:64` |
 | `8011b7c0` | POSITION_LO | Resume position inside it (area, section, map, tile x, z), not flags. | `src/qol/tracker.odin:33` |
@@ -121,11 +121,11 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `8011bfb2` | SAVE_SCREEN_SLOT | u8, save number 0..14 the save screen uses | `src/qol/save.odin:71` |
 | `8011c944` | FIELD_MAP | u16, the map the field runs (until a request's map loads, the one left); AREA_KIND's argument | `src/qol/game.odin:40` |
 | `8011c946` | ATTR_LAYER_BASE, MAP_SECTION | u8 added to the layer argument: the floor the party is on / u16 (most read the low byte), the section: the index of its first layer descriptor | `src/qol/collision.odin:23`<br>`src/qol/game.odin:41` |
-| `8011c948` | KEPT_YAW | u16, the camera yaw an exit request keeps for the map it loads. | `src/qol/interiors.odin:189` |
-| `8011c94c` | ARRIVE_POS | Where the map setup (0x801cf760) puts the arrival: s16 x, ground height, z, the vector GROUND_HEIGHT takes in a0 and gives the height of in v0. | `src/qol/interiors.odin:201` |
+| `8011c948` | KEPT_YAW | u16, the camera yaw an exit request keeps for the map it loads. | `src/qol/interiors.odin:193` |
+| `8011c94c` | ARRIVE_POS | Where the map setup (0x801cf760) puts the arrival: s16 x, ground height, z, the vector GROUND_HEIGHT takes in a0 and gives the height of in v0. | `src/qol/interiors.odin:205` |
 | `8011c954` | MAP_BLOCK | u32, the map's data block | `src/qol/game.odin:42` |
 | `8011c99e` | SCREEN_STATE | u8 | `src/qol/rewards.odin:25` |
-| `8011ce10` | SOUND_SLOT | Sound effects: SOUND_SLOTS slots of SOUND_SLOT_SIZE bytes (u8 flags, 0 free; +2 first voice, +3 voice count; u16 sound at +4; u8 at +6; the object it follows at +0x10), and the voices they hold, 8 bytes each. Both mirror the sound chip, so they belong to no world. SOUND_PLAY: a0 sound, a1 the +6 byte, a2 object; SOUND_STOP: a0 slot, keys its voices off. | `src/qol/interiors.odin:211` |
+| `8011ce10` | SOUND_SLOT | Sound effects: SOUND_SLOTS slots of SOUND_SLOT_SIZE bytes (u8 flags, 0 free; +2 first voice, +3 voice count; u16 sound at +4; u8 at +6; the object it follows at +0x10), and the voices they hold, 8 bytes each. Both mirror the sound chip, so they belong to no world. SOUND_PLAY: a0 sound, a1 the +6 byte, a2 object; SOUND_STOP: a0 slot, keys its voices off. | `src/qol/interiors.odin:215` |
 | `8011db9c` | MENU_LOCK | Menu state. u8, nonzero: the tick reads no buttons | `src/qol/camp_menu.odin:45` |
 | `8011dc83` | BUY_COUNT | the list window's count (window 0x8011dc5c + 24, +15) | `src/qol/restored.odin:49` |
 | `8011dc99` | MENU_DRAWN, OPEN_SOUND_AT | u8, set by each draw of the Command window | `src/qol/camp_menu.odin:51`<br>`src/qol/setting_menu.odin:145` |
@@ -162,8 +162,8 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `8011e154` | TARGET_STAT | u16 | `src/qol/status.odin:38` |
 | `8011e156` | GRADE_LEVELS | s8 per grade | `src/qol/status.odin:40` |
 | `8011e15a` | TARGET_LEVELS | s8 per kind | `src/qol/status.odin:42` |
-| `80138184` | CAM_H, EDIT_CAM_H | s32, projection distance | `src/qol/interiors.odin:182`<br>`src/qol/map_editor.odin:638`<br>`src/qol/third_person.odin:104` |
-| `80138188` | CAM_NEAR | s32, nearer depths are not drawn | `src/qol/interiors.odin:184`<br>`src/qol/third_person.odin:106` |
+| `80138184` | CAM_H, EDIT_CAM_H | s32, projection distance | `src/qol/interiors.odin:186`<br>`src/qol/map_editor.odin:638`<br>`src/qol/third_person.odin:104` |
+| `80138188` | CAM_NEAR | s32, nearer depths are not drawn | `src/qol/interiors.odin:188`<br>`src/qol/third_person.odin:106` |
 | `8013818c` | CAM_PITCH | u16, 0x800 level, larger looks further down | `src/qol/third_person.odin:108` |
 | `8013818e` | CAMERA_YAW | Field camera and frame. u16, 0x1000 = full circle | `src/qol/game.odin:52` |
 | `80138190` | CAM_ROLL | u16 | `src/qol/third_person.odin:121` |
@@ -182,8 +182,8 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `8013ae34` | LAYER_ADD, PRIM_COMMIT | a0 = layer 0..5, a1 = bytes: commit the prim at SPRITE_PACKETS / Prims built in place: the next one goes at the address in SPRITE_PACKETS, then PRIM_COMMIT (a0 1, the layer; a1 the prim's bytes) links it in. | `src/qol/inbetween.odin:71`<br>`src/qol/menu_draw.odin:29` |
 | `8013b6f4` | FILE_LOAD | The file loader (a0 = file index). Each field map's overlay carries its own copy of BATTLE_LOAD, which hands it the area's file. | `src/qol/autoplay.odin:120` |
 | `8013ea54` | SOUND | Game routines. a0 sound id | `src/qol/camp_menu.odin:111` |
-| `8013f268` | SOUND_PLAY |  | `src/qol/interiors.odin:219` |
-| `8013f2d4` | SOUND_STOP |  | `src/qol/interiors.odin:221` |
+| `8013f268` | SOUND_PLAY |  | `src/qol/interiors.odin:223` |
+| `8013f2d4` | SOUND_STOP |  | `src/qol/interiors.odin:225` |
 | `801401b8` | BATTLE_DRAW | Background layer list draw (16 slots at 0x80116c00); the battle frame's first drawing call. | `src/qol/inbetween.odin:69` |
 | `80140b2c` | TEXT_DRAW | a0 x, a1 y, a2 colour (CLUT 0..15), a3 most characters, [sp+16] text. Text bytes 0x20.. are glyphs (ASCII), 1 starts a new line 14 below. | `src/qol/menu_draw.odin:25` |
 | `80141104` | NUMBER_DRAW | a0 x, a1 y, a2 width, a3 format, [sp+16] value | `src/qol/camp_menu.odin:127` |
@@ -210,7 +210,7 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `801497a0` | ATTRS_LOOKUP | map block +0xa4 table: attribute grids | `src/qol/collision.odin:20` |
 | `80149ee0` | MODEL_SHOWN | a0 = placed model: v0 = 0 hides it from the camera's octant. A model with byte +2 bit 2 hides from each octant ((CAMERA_YAW + 0x100) >> 9) whose bit is set in byte +0xb: Sarai's awnings, which would hide the stalls from the game's fixed views. | `src/qol/third_person.odin:95` |
 | `8014a8a0` | GROUND, GROUND_HEIGHT | (pos, layer) -> height under x/z / a0 = position (s32 16.16 x, y, z), a1 = layer - section: v0 ground y, 16.16 | `src/qol/free_move.odin:70`<br>`src/qol/sections.odin:128` |
-| `8014a908` | GROUND_HEIGHT |  | `src/qol/interiors.odin:203` |
+| `8014a908` | GROUND_HEIGHT |  | `src/qol/interiors.odin:207` |
 | `8014a9cc` | GROUND_CORE | scratch position and layer descriptor: v0 = s16 ground y (units of 1/256), 0 off the grid | `src/qol/collision.odin:16` |
 | `8014c090` | SHOW_MESSAGE | a0 message id | `src/qol/camp_menu.odin:113` |
 | `8014c0dc` | MESSAGE_TEXT | a0 message id; v0 its text (id >> 13 picks the bank, 2 the item descriptions at 0x80017000) | `src/qol/game.odin:29` |
@@ -229,8 +229,8 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `801541cc` | STOP_MOTION | (pos) clears the lerp's velocity | `src/qol/free_move.odin:74` |
 | `80160b54` | SOUND_MONO |  | `src/qol/options_screen.odin:60` |
 | `80160b64` | SOUND_STEREO |  | `src/qol/options_screen.odin:58` |
-| `80169e04` | SET_ROT | a0 = matrix: GTE rotation | `src/qol/interiors.odin:178` |
-| `80169e34` | SET_TRANS | a0 = matrix: GTE translation from its +20 / a0 = matrix; GTE translation from its +20 | `src/qol/interiors.odin:180`<br>`src/qol/sections.odin:42` |
+| `80169e04` | SET_ROT | a0 = matrix: GTE rotation | `src/qol/interiors.odin:182` |
+| `80169e34` | SET_TRANS | a0 = matrix: GTE translation from its +20 / a0 = matrix; GTE translation from its +20 | `src/qol/interiors.odin:184`<br>`src/qol/sections.odin:42` |
 | `8016c034` | DRAW_OTAG_ENV | a0 = ordering table, a1 = DRAWENV | `src/qol/game.odin:67` |
 | `8016f384` | RAND | v0 = the game's next random number | `src/qol/game.odin:26` |
 | `80172c10` | FILE_TABLE | u32 per game file: its first sector on the disc. | `src/qol/master_faces.odin:26` |
@@ -323,13 +323,13 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `801ccbe0` | ROUND_PHASE | phase 3: the round | `src/qol/quick_battle.odin:37` |
 | `801ccc90` | MAIN_MENU | the command menu's step, a0 = BATTLE_STATE | `src/qol/combo_menu.odin:46` |
 | `801cccbc` | FIELD_DRAW | FLD_MAIN: map draw for the field frame | `src/qol/game.odin:59` |
-| `801cdbdc` | FOLLOWER_FADE | The task fading the party's followers in from black as each steps off the leader (a0 = task): state +4 (0 blacks them all, FADE_WAIT for the next to step off, FADE_STEP raising its colour by 8 a frame, from the count at +78, up to GROUND_LIGHT / 2, then the full colour). | `src/qol/interiors.odin:146` |
-| `801cdfb8` | FADE_RET | after 801cdf5c's call of FOLLOWER_FADE | `src/qol/interiors.odin:172` |
+| `801cdbdc` | FOLLOWER_FADE | The task fading the party's followers in from black as each steps off the leader (a0 = task): state +4 (0 blacks them all, FADE_WAIT for the next to step off, FADE_STEP raising its colour by 8 a frame, from the count at +78, up to GROUND_LIGHT / 2, then the full colour). | `src/qol/interiors.odin:150` |
+| `801cdfb8` | FADE_RET | after 801cdf5c's call of FOLLOWER_FADE | `src/qol/interiors.odin:176` |
 | `801ce370` | COMPASS_TASK | FLD_MAIN | `src/qol/camera.odin:53` |
 | `801cf598` | MAP_REQUEST | a0 map, a1 section, a2/a3 x/z, stack facing: field mode 4 | `src/qol/sections.odin:220` |
 | `801cfa20` | SPELL_INIT | the Magic command's first step | `src/qol/combo_menu.odin:50` |
 | `801cfcd8` | LIST_STEP | The Special list's step (a0 = BATTLE_STATE): reads the cursor and Confirm. | `src/qol/combo_menu.odin:197` |
-| `801cfe5c` | AREA_SET | (a0 map, a1 section): what the field's exit check calls before it requests a map, and where that returns. | `src/qol/interiors.odin:1425` |
+| `801cfe5c` | AREA_SET | (a0 map, a1 section): what the field's exit check calls before it requests a map, and where that returns. | `src/qol/interiors.odin:1429` |
 | `801d10e0` | STAND |  | `src/qol/movement.odin:43` |
 | `801d1458` | EXIT_CHECK_RET |  | `src/qol/free_move.odin:80` |
 | `801d1574` | NEXT_POS_RET |  | `src/qol/free_move.odin:68` |
@@ -342,8 +342,8 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `801d24e0` | ROUND_END | clears every combatant's command and GUARD_FLAGS | `src/qol/guard.odin:20` |
 | `801d378c` | RESIST_CHECK |  | `src/qol/status.odin:29` |
 | `801d5828` | EXIT_CHECK | (pos, direction, 0, out u8) -> out 0xff when nothing | `src/qol/free_move.odin:78` |
-| `801d5c04` | AREA_SET_RET |  | `src/qol/interiors.odin:1427` |
-| `801d5c38` | MAP_REQUEST_RET | where the field's exit check requests a map | `src/qol/interiors.odin:1421` |
+| `801d5c04` | AREA_SET_RET |  | `src/qol/interiors.odin:1431` |
+| `801d5c38` | MAP_REQUEST_RET | where the field's exit check requests a map | `src/qol/interiors.odin:1425` |
 | `801d5c74` | LIST_CURSOR | The list step's Confirm on a spell: the cursor saved for the target step's way back, and its next substep, which slides the window away. | `src/qol/combo_menu.odin:248` |
 | `801d60f8` | PASSABLE | FLD overlay: (from pos, to pos, flags) -> 1 when the step is allowed | `src/qol/collision.odin:25` |
 | `801d6238` | DECIDE | Takes the enemy index (actor id - ENEMY_IDS) in r4. | `src/qol/ai.odin:148` |
@@ -358,10 +358,10 @@ valid while that overlay is loaded (see [overlays.md](overlays.md)).
 | `801d930c` | DASH_HELD |  | `src/qol/free_move.odin:84`<br>`src/qol/movement.odin:45` |
 | `801d94e8` | ROTATE_TRIGGER | FLD_MAIN: L1/R1 starts a camera turn; v0 = 1 if so | `src/qol/third_person.odin:84` |
 | `801d9948` | SCREEN_DIRECTION |  | `src/qol/movement.odin:41` |
-| `801da4b0` | NPC_UPDATE | Each frame: the people's scripts, moves and animations (FLD_MAIN). / each frame: the people's scripts, moves and animations | `src/qol/interiors.odin:265`<br>`src/qol/sections.odin:149` |
+| `801da4b0` | NPC_UPDATE | Each frame: the people's scripts, moves and animations (FLD_MAIN). / each frame: the people's scripts, moves and animations | `src/qol/interiors.odin:269`<br>`src/qol/sections.odin:149` |
 | `801da4f4` | STATUS_SET | (bits u16) on TARGET, less its accessories' blocks | `src/qol/status.odin:31` |
-| `801ddfe0` | SCRIPT_AREA_SET_RET | Script op 0x5b's map request (handler 0x801ddfc0): AREA_SET, the camera yaw kept, then MAP_REQUEST, returning where the op does. The autopilot's `request` stands in with it for scenes not reached yet; it runs between the game's instructions, so every register is put back. | `src/qol/interiors.odin:1791` |
-| `801de044` | SCRIPT_REQUEST_RET |  | `src/qol/interiors.odin:1793` |
+| `801ddfe0` | SCRIPT_AREA_SET_RET | Script op 0x5b's map request (handler 0x801ddfc0): AREA_SET, the camera yaw kept, then MAP_REQUEST, returning where the op does. The autopilot's `request` stands in with it for scenes not reached yet; it runs between the game's instructions, so every register is put back. | `src/qol/interiors.odin:1795` |
+| `801de044` | SCRIPT_REQUEST_RET |  | `src/qol/interiors.odin:1797` |
 | `801dfdbc` | SPAWN | FLD: the map's spawn script, for the section at MAP_SECTION | `src/qol/game.odin:48` |
 | `801dfde8` | SPAWN_LIST | FLD: a0 a spawn list (records, 0xff at the end), run as SPAWN runs the map's. | `src/qol/teacher.odin:103` |
 | `801e0000` | FIGHTERS_TO |  | `src/qol/autoplay.odin:98` |

@@ -20,8 +20,8 @@
 //   masters  BALANCE_MASTER_BONUS (bigger bonuses, bigger trade-offs)
 //
 // Wisdom: STAT_REBUILD (a0 the character record) adds equipment to the
-// after-equipment stats and caps them. Vanilla equipment never adds Wisdom;
-// after it runs, staves add half their attack, robes (armor type 0x22) half
+// after-equipment stats and caps them. Vanilla equipment adds Wisdom only by
+// item id (Wisdom Ring, Sage's Frock, smith armor 57 and 64); after it runs, staves add half their attack, robes (armor type 0x22) half
 // their defence and rings a flat bonus to record + 0x48, capped at 999.
 // The game rebuilds only on equipment changes and battle ends, so after the
 // tables are written (setting turned on or off, or the overlay read again,

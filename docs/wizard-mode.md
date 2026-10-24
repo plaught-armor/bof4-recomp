@@ -45,7 +45,10 @@ already decoded; ones marked *guess* were read from the values alone.
 - +6 (formerly "unknown, 0..0x10") is raised on every weapon to about its
   attack or more: Rune Staff 2 -> 250, Royal Sword 220, Render 225,
   Ouroboros 200. Most likely the weapon's **Wisdom bonus** (matches the
-  "all equipment gives Wisdom" aim). Not yet verified in game.
+  "all equipment gives Wisdom" aim). Not yet verified in game. The
+  unmodded stat rebuild reads no table byte for Wisdom (it adds Wisdom by
+  item id, see [battle.md](battle.md) Weapons), so the mod's appended code
+  would have to read this byte (and armor +5 below).
 - +7 high nibble 1 -> 2 on most one-hit weapons (Ouroboros 0x13 -> 0x33).
   Meaning of that nibble now uncertain (hit count vs something else).
 - Some attack raised: King's Sword 12 -> 25, PointedStick 2 -> 50,
@@ -103,8 +106,8 @@ demo only reaches the early game).
 
 - HP (u32 +0x28) up about 7x (median), e.g. Mage Goo 200 -> 550, Cap
   170 -> 1100, NutTroop 120 -> 6400, Army Bat 8 -> 4250.
-- EXP (+0x10) and zenny (+0x12) mostly unchanged; bosses that gave 0 EXP
-  now give some.
+- Zenny (+0x10) and EXP (+0x12) mostly unchanged; bosses that paid no
+  zenny now pay some.
 - The u16s at +0x2c..+0x36 also change (*guess*: +0x2c AP, then attack,
   defence, agility, wisdom-type stats); bosses get large rises in the last
   one (Maman 10 -> 100, Kham 220 -> 700).
@@ -112,7 +115,7 @@ demo only reaches the early game).
   elemental weakness bytes) along with the trailing action bytes (+0xc0..).
 - Bosses:
 
-| Boss | EXP | HP |
+| Boss | Zenny | HP |
 |---|---|---|
 | Maman | 450 -> 1500 | 3600 -> 28500 |
 | Skulfish | 291 -> 1000 | 2400 -> 19000 |

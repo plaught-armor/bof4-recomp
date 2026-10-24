@@ -196,11 +196,11 @@ and the count use the scaled amounts.
 
 Enemy records come from the battle area file (`BWORLD/AREAB<nnn>.EMI`, the
 entry loaded at 0x801f5800): 0xa0 bytes of formations, then 0x108-byte
-records. Record +0 is the 8-byte name, u16 +0x10 the EXP, u16 +0x12 the zenny,
-u32 +0x28 the HP. The EXP and zenny fields were read from the values alone
-(Cap 8/7, Scorpion 10/20, Zaurus 350/2000, Goo King 1000/3000), not checked
-against the Data window. Zenny per enemy runs about 7-80 in the first
-areas, 200-800 in the middle and 2000-3800 late (Gecko 3800, Cyclops 3500).
+records. Record +0 is the 8-byte name, u16 +0x10 the zenny, u16 +0x12 the EXP,
+u32 +0x28 the HP (zenny/EXP: Cap 8/7, Scorpion 10/20, Zaurus 350/2000, Goo
+King 1000/3000). Checked in game with `BOF4_ENEMY_STATS` (debugging.md): the
+zenny paid is +0x10's. EXP per enemy runs about 7-80 in the first areas,
+200-800 in the middle and 2000-3800 late (Gecko 3800, Cyclops 3500).
 
 Which battle loads is three bytes of the battle state 0x8011ded4: +0x15
 (0x8011dee9) the area, +0x16 the formation, +0x17 (0x8011deeb) the boss id.

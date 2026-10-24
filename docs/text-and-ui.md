@@ -208,8 +208,8 @@ combos"); Masters comes last when its tracker is on.
 
 Select at a battle member's command menu opens the Combo window
 (`qol/combo_menu.odin`, top-left, x 24 y 24 w 272): the title, the target
-enemy's name on the right for a single-target first spell, then up to 5
-combos, each its name (yellow when picked), "Mastery n/5" and a grey line
+enemy's name on the right for a single-target first spell, then the
+combos, 5 at a time (scrolling), each its name (yellow when picked), "Mastery n/5" and a grey line
 "Nina: Sever, then Cray: Frost". Up/Down picks, Left/Right the target,
 Confirm sets it up, Cancel or Select closes; see battle.md "Combo command".
 
@@ -226,9 +226,10 @@ overlay:
 - `FADE_DRAW` 0x8018f474 (a0 level 0..0xff, a1 layer, a2 blend) draws one
   320x240 rectangle (GPU command 0x62), subtractive for fades to black,
   additive for white; the grey level is the fade's progress.
-- `FADE_STEP` 0x8018f524 (a0 pointer to an s16 counter 0..0x7fff, a1 speed)
+- `FADE_STEP` 0x8018f524 (a0 pointer to an s16 counter 0..0x7fff, a1 speed,
+  a2 layer, a3 blend)
   draws level `counter >> 7` and adds the speed; returns 1 when done.
-- 0x8018f5ac (speed, layer) loops it; wrappers from 0x8018f8cc use speeds
+- 0x8018f5ac (a0 s16 speed, a1 blend) loops it a frame per step; wrappers from 0x8018f8cc use speeds
   from ±0x2000 (4 frames) to ±0x100. A map change uses 0x1000 (8 frames).
 - Fade state bytes for a map change: 0x80116bcc / 0x80116bcd.
 
