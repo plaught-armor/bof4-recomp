@@ -30,7 +30,7 @@
 //                          ; leader goes soft, at detail 2 and 4
 //   color_grade = false    ; third-person field: each map's colour grade
 //   vignette = false       ; third-person field: darkened corners
-//   native_world = false   ; third-person field: the world drawn in true 3D
+//   native_world = true    ; third-person field: the world drawn in true 3D
 //                          ; (exact perspective, cut at the lens) instead of
 //                          ; from the PS1's screen corners
 //
@@ -273,6 +273,7 @@ Config :: struct {
 config := Config {
 	window                 = {pause_unfocused = true, detail = .X2},
 	window_hardware        = true,
+	window_native_world    = true,
 	audio_latency_ms       = 50,
 	disc_instant_loading   = true,
 	disc_skip_black        = true,

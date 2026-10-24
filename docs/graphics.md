@@ -686,7 +686,7 @@ the same range (`READ_OK`).
 
 ## Native 3D world (third person)
 
-With `[window] native_world` (Look page "3D world", off by default) the
+With `[window] native_world` (Look page "3D world", on by default) the
 field's tiles and placed models are drawn from their view-space corners
 instead of the packet's screen positions (`psx/world.odin`). The game still
 builds, culls and orders every packet; only where the corners land changes.
