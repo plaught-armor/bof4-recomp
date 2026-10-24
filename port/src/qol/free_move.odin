@@ -242,7 +242,7 @@ free_stand :: proc(obj: u32, stand: psx.Func_Proc) {
 	if !ok {
 		free.checked = false
 	}
-	if ok && steps_bound_cached(obj, x, z, u32(math.round(degrees / 45)) & 7) {
+	if ok && steps_bound_cached(obj, x, z, u32(i32(math.round(degrees / 45))) & 7) {
 		// The engine takes the step from the cell, as on the grid.
 		set_xz(pos, cell_origin(x), cell_origin(z))
 		free.moving = false
@@ -295,7 +295,7 @@ move :: proc(obj: u32, degrees: f64) {
 	set_xz(pos, x, z)
 	set_height(pos)
 
-	direction := u32(math.round(degrees / 45)) & 7
+	direction := u32(i32(math.round(degrees / 45))) & 7
 	psx.sb(obj + OBJ_DIRECTION, direction)
 	psx.sb(obj + OBJ_STEP_DIRECTION, direction)
 	psx.sb(obj + OBJ_GAIT, run ? GAIT_RUN : GAIT_WALK)
