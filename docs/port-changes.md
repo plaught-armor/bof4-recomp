@@ -42,9 +42,9 @@ up, fix or open up what it already does.
 
 ## Field
 
-- **Third-person camera** *(not a game feature)*: low and close behind the
-  leader while walking, free turning on every map, L1/R1 (mouse wheel)
-  zoom. Spring arm and exact sub-pixel view for jitter-free motion. The
+- **Third-person camera** *(not a game feature)*: the game's own height
+  and angle, following behind the leader while walking, free turning on
+  every map, L1/R1 (mouse wheel) zoom. Spring arm and exact sub-pixel view for jitter-free motion. The
   arm comes in before roofs and awnings over the leader, walls beside the
   lens, and walls a turn is about to swing behind the leader.
 - Camera: faster L1/R1 turns (default 3x), hold to keep spinning, right

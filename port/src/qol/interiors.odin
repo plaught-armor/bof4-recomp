@@ -305,6 +305,9 @@ World :: struct {
 	// from.
 	gpu:       psx.Draw_State,
 	disp:      [2]i32,
+	// The game's own camera fields that the third-person camera keeps
+	// written over (third_person_game_fields), as they stood when noted.
+	camera:    [THIRD_PERSON_FIELDS]u32,
 }
 
 @(private = "file")
@@ -492,6 +495,7 @@ Preload_Share :: struct {
 	story:     u64,
 	gpu:       psx.Draw_State,
 	disp:      [2]i32,
+	camera:    [THIRD_PERSON_FIELDS]u32,
 	start:     psx.Draw_Start,
 	vram:      [psx.VRAM_W * psx.VRAM_H]u16,
 	sound:     [psx.SPU_RAM_SIZE]u8,
@@ -616,6 +620,7 @@ world_take :: proc(w: ^World, key: [3]u32) {
 	w.regs = psx.cpu
 	w.gpu, w.disp = psx.gpu, {psx.display.x, psx.display.y}
 	w.scene_ret = psx.cpu.r[31] + 8
+	w.camera = third_person_game_fields()
 }
 
 @(private = "file")
@@ -1524,7 +1529,7 @@ preload_hand_back :: proc(w: ^World) {
 	sh := l.share
 	sh.key, sh.regs, sh.main, sh.scene_ret = w.key, w.regs, w.main, w.scene_ret
 	sh.map_end, sh.bank, sh.lasting, sh.story = w.map_end, w.bank, w.lasting, w.story
-	sh.gpu, sh.disp = w.gpu, w.disp
+	sh.gpu, sh.disp, sh.camera = w.gpu, w.disp, w.camera
 	sh.sound = w.sound^
 	sh.start = w.start^
 	sh.vram = w.vram^
@@ -1567,7 +1572,7 @@ preload_poll :: proc(l: ^Preload) {
 	w.key, w.used, w.stepped, w.rand = sh.key, psx.vblanks(), 0, sh.key[0] ~ 0x9e3779b9
 	w.regs, w.main, w.scene_ret = sh.regs, sh.main, sh.scene_ret
 	w.map_end, w.bank, w.lasting, w.story = sh.map_end, sh.bank, sh.lasting, sh.story
-	w.gpu, w.disp = sh.gpu, sh.disp
+	w.gpu, w.disp, w.camera = sh.gpu, sh.disp, sh.camera
 	w.sound^ = sh.sound
 	w.start^ = sh.start
 	psx.draw_start_adopt(w.start)
@@ -2015,6 +2020,7 @@ world_enter :: proc(w: ^World) {
 		copy(psx.mem_slice(fade_sp, FADE_FRAME), fading[:])
 	}
 	take(w, MAP_DATA, w.map_end)
+	third_person_game_fields_put(w.camera)
 	copy(psx.mem_slice(SOUND_VOICES[0], u32(len(voices))), voices[:])
 	copy(psx.mem_slice(SOUND_SLOT, u32(len(slots))), slots[:])
 	psx.sh(KEPT_YAW, yaw)

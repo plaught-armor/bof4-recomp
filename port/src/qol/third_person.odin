@@ -1,6 +1,6 @@
 // Third-person field camera: while the player walks the field, the camera
-// sits low and close behind the leader, instead of the game's high, distant
-// view.
+// keeps the game's height and angle but turns freely round the leader and
+// follows behind him, and zooms in and out.
 //
 // The exe's VIEW_BUILD (0x8014307c, once or twice per frame) turns the
 // camera block's parameters into the GTE's view: SetGeomScreen(H), the
@@ -18,9 +18,9 @@
 // a scale that matches the geometry at the sprite's depth, relative to the
 // game's framing: about 1 at the leader, larger nearer the camera.
 //
-// With `third_person`, the hook writes its own pitch, distance and target
-// (lowered) for the call and puts the game's values back after it, so nothing
-// else sees them. H and the near limit are read while drawing, so they stay
+// With `third_person`, the hook writes its own pitch (the arm's boom) and
+// distance (zoom, arm) for the call and puts the game's values back after
+// it, so nothing else sees them. H and the near limit are read while drawing, so they stay
 // written; a value that differs from the one last written is the game's own
 // (new) value. The change blends in over BLEND_S while the leader is under
 // player control on the field and back out in events, dialog and menus, so
@@ -60,8 +60,8 @@
 // fade, from a camera that never was.
 //
 // L1/R1 (the mouse wheel) zoom instead of turning by 90 degrees, and turning
-// is free on every map. The pitch stays TP_PITCH: the camera turns but does
-// not tilt.
+// is free on every map. The pitch stays the game's: the camera turns but
+// does not tilt.
 package qol
 
 import "core:math"
@@ -161,19 +161,12 @@ LEADER_MIDDLE :: 64
 @(private = "file")
 SEE_FROM :: 0.5
 
-// The framing: pitch (game units), distance, how far the target is
-// lowered below the feet (target units, 256 a grid cell; lowers the leader
-// on screen).
+// The framing is the game's own pitch and distance; the zoom (L1/R1) scales
+// the distance, between these shares of it.
 @(private = "file")
-TP_PITCH :: 0x940 // about 28 degrees down
+ZOOM_MIN :: 0.05
 @(private = "file")
-TP_DISTANCE :: 0x460
-@(private = "file")
-DISTANCE_MIN :: 0x100
-@(private = "file")
-DISTANCE_MAX :: 0xa00
-@(private = "file")
-TP_LIFT :: 0xc0
+ZOOM_MAX :: 1.5
 
 // The widest lens (least H) this camera uses, so the edges of the picture do
 // not stretch: about 70 degrees across the field's 320 pixels.
@@ -204,7 +197,7 @@ ARM_SAMPLES :: 8
 @(private = "file")
 ARM_MARGIN :: 0.3
 @(private = "file")
-ARM_MIN :: 0.15
+ARM_MIN :: 0.5
 @(private = "file")
 ARM_IN_S :: 0.1
 @(private = "file")
@@ -284,7 +277,7 @@ tp: struct {
 	last:          u64,
 	// GAME_FRAME the state last stepped at (third_person_view).
 	frame:         u32,
-	distance:      f64,
+	zoom:          f64,
 	h, near:       Kept,
 	radii:         Kept,
 	// The share of the arm in use, and the seconds the last real frame took.
@@ -326,21 +319,23 @@ tp: struct {
 	// a second; ARM_AHEAD_S).
 	yaw_last:      f64,
 	yaw_v:         f64,
+	// The view depth of where the leader stands, in the view last built.
+	leader_depth:  f32,
 }
 
 // This camera's own state, which in-between pictures blend with the game's
 // (inbetween.odin's Pose).
 @(private)
 Tp_Blend :: struct {
-	t, arm, distance: f64,
+	t, arm, zoom: f64,
 	// tp.yaw_frac.
-	yaw:              f64,
+	yaw:          f64,
 }
 
 // The state the view was last built with.
 @(private)
 third_person_state :: proc() -> Tp_Blend {
-	return {tp.t, tp.arm, tp.distance, yaw_exact() - f64(psx.lhu(CAMERA_YAW))}
+	return {tp.t, tp.arm, tp.zoom, yaw_exact() - f64(psx.lhu(CAMERA_YAW))}
 }
 
 // The camera's yaw, unrounded (0x1000 a turn).
@@ -364,7 +359,7 @@ yaw_turn :: proc(by: f64) -> u32 {
 
 @(private)
 third_person_init :: proc() -> bool {
-	tp.distance, tp.arm = TP_DISTANCE, 1
+	tp.zoom, tp.arm = 1, 1
 	ok: bool
 	tp.view, ok = psx.hook(VIEW_BUILD, third_person_view)
 	if !ok {
@@ -498,9 +493,9 @@ third_person_view :: proc() {
 		return
 	}
 	now := third_person_state()
-	tp.t, tp.arm, tp.distance = inbetween_tp.t, inbetween_tp.arm, inbetween_tp.distance
+	tp.t, tp.arm, tp.zoom = inbetween_tp.t, inbetween_tp.arm, inbetween_tp.zoom
 	build_view(inbetween_tp.yaw, inbetween_frac, false)
-	tp.t, tp.arm, tp.distance = now.t, now.arm, now.distance
+	tp.t, tp.arm, tp.zoom = now.t, now.arm, now.zoom
 }
 
 // Build the view; `yaw_frac` and `frac` are what the camera's yaw and fields hold
@@ -524,8 +519,8 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 	pitch, distance := psx.lhu(CAM_PITCH), psx.lw(CAM_DISTANCE)
 	height := psx.lhu(CAM_TARGET + 2)
 	yaw := f64(psx.lhu(CAMERA_YAW)) * (2 * math.PI / 4096)
-	reach := f64(i32(mix(distance, u32(tp.distance))))
-	tilt := mix(pitch, TP_PITCH)
+	reach := f64(i32(distance)) * zoom()
+	tilt := u32(pitch)
 	if !psx.events_frozen {
 		want := 1.0
 		if step {
@@ -542,7 +537,7 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 		spring(want, tilt, step)
 	}
 	psx.sh(CAM_PITCH, boom(tilt))
-	psx.sh(CAM_TARGET + 2, height + mix(0, TP_LIFT))
+	psx.sh(CAM_TARGET + 2, height)
 	kept_write(&tp.radii, CAM_TILE_RADII, max(radii & 0xffff, TP_TILE_RADIUS) | max(radii >> 16, TP_TILE_RADIUS) << 16)
 	psx.tiles_unculled = true
 	a0 := psx.cpu.r[4]
@@ -558,7 +553,7 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 // give (psx.exact_view). `yaw_frac` and `frac` are what the yaw and the camera
 // fields hold past their whole values (build_view); pitch, distance and
 // height the game's, h its lens; a0 VIEW_BUILD's offset vector. The rest of
-// what build_view rounds (mix, boom, view_at) is taken here unrounded;
+// what build_view rounds (boom, view_at) is taken here unrounded;
 // CAM_MATRIX and CAM_TR hold the view built.
 @(private = "file")
 exact_set :: proc(a0: u32, yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, h, pitch, distance, height: u32) {
@@ -575,16 +570,16 @@ exact_set :: proc(a0: u32, yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, h, pitch,
 	// frac's fields, in VIEW_FIELDS order.
 	PITCH, YAW, POS, DISTANCE, TARGET :: 0, 1, 3, 5, 6
 	game_pitch := f64(i16(pitch)) + frac[PITCH]
-	tilt := game_pitch + (TP_PITCH - game_pitch) * tp.t
+	tilt := game_pitch
 	turn := 2 * math.PI / 4096
 	game_d := f64(i32(distance)) + frac[DISTANCE]
-	reach := (game_d + (tp.distance - game_d) * tp.t) * pull(tp.arm, tilt)
+	reach := game_d * zoom() * pull(tp.arm, tilt)
 	scale := f64(i32(h)) / max(f64(i32(distance)), 1)
 	lens := max(scale * reach, f64(min(H_MIN, i32(h))), 1)
 	k := lens / f64(i32(psx.lw(CAM_H)))
 	target := [3]f64 {
 		f64(i16(psx.lhu(CAM_TARGET))) + frac[TARGET],
-		f64(i16(height)) + frac[TARGET + 1] + TP_LIFT * tp.t,
+		f64(i16(height)) + frac[TARGET + 1],
 		f64(i16(psx.lhu(CAM_TARGET + 4))) + frac[TARGET + 2],
 	}
 	for i in u32(0) ..< 3 {
@@ -949,6 +944,8 @@ view_depth :: proc(pos: u32) -> i64 {
 // blended in.
 @(private = "file")
 set_see_through :: proc() {
+	feet := view_pos(leader_obj() + OBJ_POS)
+	tp.leader_depth = f32(feet.z)
 	if tp.t < SEE_FROM {
 		psx.see_through.on = false
 		return
@@ -960,7 +957,6 @@ set_see_through :: proc() {
 		down[r] = -f32(i16(psx.lhu(CAM_MATRIX + 6 * r + 2))) / 4096
 	}
 	down = linalg.normalize0(down)
-	feet := view_pos(leader_obj() + OBJ_POS)
 	f := [3]f32{f32(feet.x), f32(feet.y), f32(feet.z)}
 	psx.see_through_set(f - down * LEADER_MIDDLE, -down, f.z, psx.lhu(MAP_ID) & TOWN_MAPS == 0)
 	grade_update()
@@ -1011,20 +1007,55 @@ blend :: proc(field: bool) {
 	if control {
 		pad := psx.lhu(leader_obj() + OBJ_PAD)
 		if pad & psx.PAD_L1 != 0 {
-			tp.distance /= math.pow(ZOOM_PER_S, dt)
+			tp.zoom /= math.pow(ZOOM_PER_S, dt)
 		}
 		if pad & psx.PAD_R1 != 0 {
-			tp.distance *= math.pow(ZOOM_PER_S, dt)
+			tp.zoom *= math.pow(ZOOM_PER_S, dt)
 		}
-		tp.distance = clamp(tp.distance, DISTANCE_MIN, DISTANCE_MAX)
+		tp.zoom = clamp(tp.zoom, ZOOM_MIN, ZOOM_MAX)
 	}
 }
 
-// From the game's value toward this camera's by the blend.
+// The share of the game's distance the camera is at: from 1 toward the
+// zoom by the blend.
 @(private = "file")
-mix :: proc(game, mine: u32) -> u32 {
-	g := f64(i32(game))
-	return u32(i32(math.round(g + (f64(i32(mine)) - g) * tp.t)))
+zoom :: proc() -> f64 {
+	return 1 + (tp.zoom - 1) * tp.t
+}
+
+// The camera fields the game reads after the view is built, which this
+// camera keeps written over while it is in (Kept).
+@(private)
+THIRD_PERSON_FIELDS :: 3
+@(private = "file")
+KEPT_FIELDS :: [THIRD_PERSON_FIELDS]u32{CAM_H, CAM_NEAR, CAM_TILE_RADII}
+
+// The view depth of where the leader stands, in the view last built.
+@(private)
+third_person_leader_depth :: proc() -> f32 {
+	return tp.leader_depth
+}
+
+// The game's own values of the kept fields, for a machine noted to go on
+// from later (interiors.odin's worlds): RAM holds this camera's while it
+// is in, and a world entered with those would hand them to the game as its
+// own.
+@(private)
+third_person_game_fields :: proc() -> (v: [THIRD_PERSON_FIELDS]u32) {
+	kept := [THIRD_PERSON_FIELDS]^Kept{&tp.h, &tp.near, &tp.radii}
+	for addr, i in KEPT_FIELDS {
+		ram := psx.lw(addr)
+		v[i] = ram != kept[i].wrote ? ram : kept[i].game
+	}
+	return
+}
+
+// Put back the game's values of the kept fields (third_person_game_fields).
+@(private)
+third_person_game_fields_put :: proc(v: [THIRD_PERSON_FIELDS]u32) {
+	for addr, i in KEPT_FIELDS {
+		psx.sw(addr, v[i])
+	}
 }
 
 // The game's current value of a kept field.

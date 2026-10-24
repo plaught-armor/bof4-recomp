@@ -13,9 +13,9 @@
 // be none.
 //
 // Such a map also gets distance fog (psx.fog): what stands far off mixes
-// toward the horizon haze, up to `fog_most` (256ths) at `fog_far`, the view
-// depth past which the game stops drawing the map, so its edge melts into
-// the backdrop instead of cutting off.
+// toward the horizon haze, up to `fog_most` (256ths) at `fog_far` past the
+// leader's view depth, about where the game stops drawing the map round
+// him, so its edge melts into the backdrop instead of cutting off.
 package qol
 
 import "core:math"
@@ -35,7 +35,8 @@ HAZE_SPAN :: 0.12
 @(private = "file")
 Sky :: struct {
 	zenith, horizon, ground: [3]f32,
-	// View depths the fog runs over, and how far it goes (256ths).
+	// View depths past the leader's the fog runs over, and how far it goes
+	// (256ths).
 	fog_near, fog_far:       f32,
 	fog_most:                i32,
 }
@@ -45,8 +46,8 @@ DESERT :: Sky {
 	zenith  = {90, 140, 210},
 	horizon = {222, 226, 228},
 	ground  = {206, 190, 136},
-	fog_near = 1500,
-	fog_far  = 3800,
+	fog_near = 380,
+	fog_far  = 2680,
 	fog_most = 256,
 }
 
@@ -56,7 +57,7 @@ CANYON :: Sky {
 	horizon = DESERT.horizon,
 	ground  = {150, 134, 95},
 	// The cliffs close in; only what nears the draw edge hazes.
-	fog_near = 2400,
+	fog_near = 1280,
 	fog_far  = DESERT.fog_far,
 	fog_most = DESERT.fog_most,
 }
@@ -118,7 +119,7 @@ backdrop :: proc(x, y, w, h: i32, shift: u32, rows: []u32) -> bool {
 	h := sky.horizon
 	psx.fog = {
 		on    = true,
-		near  = sky.fog_near,
+		near  = third_person_leader_depth() + sky.fog_near,
 		inv   = 1 / (sky.fog_far - sky.fog_near),
 		most  = sky.fog_most,
 		color = u32(h.r) << 16 | u32(h.g) << 8 | u32(h.b),

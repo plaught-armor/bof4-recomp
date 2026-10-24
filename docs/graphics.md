@@ -491,7 +491,7 @@ triangles of each layer in the arm's box, placed as the passes place them;
 `segment_hit` finds the nearest crossing), on five lines from the leader's
 middle (`LEADER_MIDDLE` above the feet; map y is up): to the lens, and
 `ARM_FAN` cells either side, above and below it. Each hit cuts the arm to
-`ARM_MARGIN` (0.3 cells) short of it, never under `ARM_MIN` (0.15). While
+`ARM_MARGIN` (0.3 cells) short of it, never under `ARM_MIN` (0.5). While
 the camera turns, the probe also looks `ARM_AHEAD_S` (0.25 s) of the turn
 ahead (`ARM_AHEAD_SAMPLES` yaws) and keeps the shortest, so the arm starts
 in before a wall swings behind the leader. A short arm first swings up
@@ -537,17 +537,19 @@ rotation (CAM_MATRIX 0x801381bc, s16 4.12):
 World y points up in this sense (checked against frames: Sarai's camera
 pitched about 33 degrees down, so its top row was ~5 degrees under the
 horizon and showed only haze; the canyon's camera, then ~17 degrees down,
-showed sky at the top; the third-person pitch is now ~28 degrees,
-TP_PITCH). The rotation in RAM at the fill is the frame's own, the real
+showed sky at the top; the third-person camera keeps the game's
+pitch). The rotation in RAM at the fill is the frame's own, the real
 frame's or an in-between pass's. Roll is ignored.
 
 ### Distance fog
 
 A sky map also hazes what stands far off, so the edge where the game stops
-drawing (view depth ~3840) melts into the backdrop instead of popping.
+drawing round the leader melts into the backdrop instead of popping.
 `backdrop` sets `psx.fog` each frame it fills a sky: `near`, `inv =
 1 / (far - near)`, `most` (256ths) from the map's `Sky`, and the horizon
-colour. Each opaque textured or shaded pixel with a depth tag z > 0 mixes
+colour. The map's depths count from the leader's view depth in the view
+last built (`third_person_leader_depth`), so zooming out moves the fog
+with him instead of burying him in it. Each opaque textured or shaded pixel with a depth tag z > 0 mixes
 toward it by
 
     w = trunc(clamp((z - near) * inv, 0, 1) * most)
@@ -555,8 +557,8 @@ toward it by
 
 in `plot` (software, `fog_mix`) and in the hi-res fragment shader (flag
 F_FOG, uniforms `fog0`/`fog_c`) alike. Semi-transparent pixels are left
-alone. Sarai fogs from 1500 to 3800; the canyon, whose cliffs close in, from
-2400. A room seen through a door (`interior_pass`) is not fogged. The fog
+alone. Sarai fogs from 380 to 2680 past the leader; the canyon, whose
+cliffs close in, from 1280. A room seen through a door (`interior_pass`) is not fogged. The fog
 lapses on its own 8 vblanks after the last sky fill (`FOG_VBLANKS`), so
 leaving a sky map, or the game's own camera, clears it. GL and software
 match bar a stray 1-step rounding pixel or two.

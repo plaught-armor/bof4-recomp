@@ -601,7 +601,7 @@ cut_from :: proc(last, before, cur: ^Pose) -> bool {
 	p.tp = {
 		t        = cur.tp.t - (last.tp.t - before.tp.t),
 		arm      = cur.tp.arm - (last.tp.arm - before.tp.arm),
-		distance = cur.tp.distance - (last.tp.distance - before.tp.distance),
+		zoom     = cur.tp.zoom - (last.tp.zoom - before.tp.zoom),
 		yaw      = cur.tp.yaw - (last.tp.yaw - before.tp.yaw),
 	}
 	p.count = 0
@@ -687,7 +687,7 @@ pose_blend :: proc(prev, cur: ^Pose, f: f64) -> (camera_moved: bool) {
 	inbetween_tp = {
 		t        = b.t - (b.t - a.t) * back,
 		arm      = b.arm - (b.arm - a.arm) * back,
-		distance = b.distance - (b.distance - a.distance) * back,
+		zoom     = b.zoom - (b.zoom - a.zoom) * back,
 		yaw      = b.yaw - (b.yaw - a.yaw) * back,
 	}
 	moved := 0
