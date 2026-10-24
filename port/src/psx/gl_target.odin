@@ -159,7 +159,7 @@ gpu_gl: struct {
 	draw_prog:   u32,
 	pass_prog:   u32,
 	// Uniform locations.
-	u_k, u_size, u_see0, u_see1:            i32,
+	u_k, u_size, u_see0, u_see1, u_see2:    i32,
 	u_fog0, u_fog_c, u_zpass:               i32,
 	// The fog of the last fogged primitive queued (Plot_Env.fog): one a
 	// flush, it changing only between maps.
@@ -380,6 +380,7 @@ struct Port { vec4 corner[4]; vec4 info; };
 layout(std430, binding = 1) readonly buffer Ports { Port ports[]; };
 uniform vec4 see0; // h, of.x, of.y, reach2
 uniform vec4 see1; // target, stop
+uniform vec4 see2; // across, drop
 uniform vec4 fog0; // near, inv, most
 uniform uint fog_c;
 // 1 while a level lays down its depths (gl_submit).
@@ -503,8 +504,9 @@ float see_cover_alpha(float x, float y, float z, float weight, bool sprite) {
 	precise vec3 q = p - see1.xyz * t;
 	precise float d = sqrt(q.x * q.x + q.y * q.y + q.z * q.z);
 	precise float r = max(t, 0.05);
-	precise float inside = weight * (1.0 - smooth_step(96.0 * r, 160.0 * r, d));
-	vec2 g = sprite ? vec2(0.25, 0.4) : vec2(0.35, 0.75);
+	precise float below = -(q.x * see2.x + q.y * see2.y + q.z * see2.z) - see2.w * r;
+	precise float inside = weight * (1.0 - smooth_step(96.0 * r, 160.0 * r, d)) * (1.0 - smooth_step(8.0 * r, 40.0 * r, below));
+	vec2 g = sprite ? vec2(0.25, 0.4) : vec2(0.3, 0.45);
 	precise float ghost = g.x + (g.y - g.x) * t / see1.w;
 	precise float a = min(near, 1.0 - inside * (1.0 - ghost));
 	return a;
@@ -1222,6 +1224,7 @@ gl_init :: proc() {
 	g.u_size = gl.GetUniformLocation(g.draw_prog, "size")
 	g.u_see0 = gl.GetUniformLocation(g.draw_prog, "see0")
 	g.u_see1 = gl.GetUniformLocation(g.draw_prog, "see1")
+	g.u_see2 = gl.GetUniformLocation(g.draw_prog, "see2")
 	g.u_fog0 = gl.GetUniformLocation(g.draw_prog, "fog0")
 	g.u_fog_c = gl.GetUniformLocation(g.draw_prog, "fog_c")
 	g.u_zpass = gl.GetUniformLocation(g.draw_prog, "zpass")
@@ -2364,6 +2367,7 @@ gl_submit :: proc() {
 	gl.ProgramUniform2f(g.draw_prog, g.u_size, f32(t.w), f32(t.h))
 	gl.ProgramUniform4f(g.draw_prog, g.u_see0, s.h, s.of.x, s.of.y, see.reach2)
 	gl.ProgramUniform4f(g.draw_prog, g.u_see1, s.target.x, s.target.y, s.target.z, see.stop)
+	gl.ProgramUniform4f(g.draw_prog, g.u_see2, see.across.x, see.across.y, see.across.z, see.drop)
 	gl.ProgramUniform4f(g.draw_prog, g.u_fog0, g.fog.near, g.fog.inv, f32(g.fog.most), 0)
 	gl.ProgramUniform1ui(g.draw_prog, g.u_fog_c, g.fog.color)
 	for lv in 1 ..= top {

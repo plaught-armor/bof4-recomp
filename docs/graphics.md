@@ -473,6 +473,27 @@ flipped. `unproject` (psx/see_through.odin) takes the quotient as capped
 for see-through, door cuts and doorway openings, and the hardware
 renderer's shader does the same.
 
+Ghosts were tuned for a low arm, where what hides the leader stands near
+the lens. At the game's height and angle the face hiding him is mostly the
+block he stands behind, right at his end of the cone, where `SEE_GHOST`
+reached 0.75 opacity: in Sarai's block maze he showed at about a quarter
+strength, and the vent steam passing before him, ghosted at the same
+strength, washed his sprite out. The leader's end is now 0.45 (the lens's
+0.3), in `see_through.odin` and the shader's copy alike.
+
+The ghosted cone is round about the leader's middle, `SEE_RADIUS` (160)
+across at him, so it reached about a cell past his feet. Standing behind a
+Sarai stall awning, its top crossing his boots, the awning was ghosted in a
+disc well below him: the merchant under it showed through as a blob, and
+his boots and shadow sat in a translucent patch, as if torn off his body.
+The cone is now cut off below the line from the lens to his feet, softly
+over `SEE_FLOOR` (8..40 view units past it, shrinking toward the lens as
+the cone does): the awning is ghosted where it crosses him, solid past
+him. "Below" is along world up's part across that line (`see.across`),
+whose length is the sine of the camera's tilt from straight down, so the
+cut fades out for a camera looking straight down on him, where his feet
+lie behind his middle and "below" means nothing.
+
 How far the arm reaches (`arm_reach`, at the step build): the leader's
 layer of the collision grid is walked from the leader toward the lens,
 `ARM_SAMPLES` (8) samples a cell, on a fan of three lines (the arm, and
@@ -494,9 +515,20 @@ middle (`LEADER_MIDDLE` above the feet; map y is up): to the lens, and
 `ARM_MARGIN` (0.3 cells) short of it, never under `ARM_MIN` (0.5). While
 the camera turns, the probe also looks `ARM_AHEAD_S` (0.25 s) of the turn
 ahead (`ARM_AHEAD_SAMPLES` yaws) and keeps the shortest, so the arm starts
-in before a wall swings behind the leader. A short arm first swings up
+in before a wall swings behind the leader. Each probe gathers the polygons
+once for both walks and bins their corner heights into a grid of cells
+(`cell_tops`) in one pass: at the game's camera distance the arm crosses
+some 30 cells, a town's models give some 4000 triangles in its box, and
+scanning them all for every wall cell the grid walk met ran a town with
+many models in view at under a third of its speed. A short arm first swings up
 (`lift`); once the pitch reaches `BOOM_MAX` it can go no higher and the
-lens comes in along the arm the rest of the way (`pull`).
+arm stops there (`boom_top`); see-through fades what is still in the way.
+The lens used to come in along the arm the rest of the way (`pull`), but
+`view_at` keeps the leader's size on screen as the lens nears him, so a
+lens coming in only widened the view: a dolly zoom, the town swelling and
+shrinking round a leader who stayed the same size. Next to a wall the arm
+flips between the full arm and the shortest as he walks, and each flip
+read as Ryu bouncing in size.
 
 The in-between pass's matrix filter (`qol/inbetween_matrix.odin`) used to
 pop the whole picture by a PS1 pixel, down then back, now and then while
@@ -724,7 +756,7 @@ builds, culls and orders every packet; only where the corners land changes.
 - **Known.** A camera pressed against an interior wall (0204 tavern
   doorway) now shows the void past the room's edge, which the classic
   path covered with the smeared behind-lens corner. The spring arm is
-  already at its shortest (`ARM_MIN`, the boom at `BOOM_MAX`) there, so
+  already at its shortest (the boom at `BOOM_MAX`) there, so
   stopping it over cells with no floor changes nothing; it is the room
   seen from where the camera may stand, interiors having no backdrop
   (outdoors the sky fills the void). Clipped UVs round to whole texels;

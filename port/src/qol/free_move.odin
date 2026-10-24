@@ -519,19 +519,37 @@ arrive :: proc(obj: u32, from, to: Cell, x, z: i32) {
 }
 
 // The ground's height under pos. On a door's exit cells (door_exit_at),
-// the cell's own may lie past the floor (a room's reads a wall's top): the
-// height is the one a cell back from the way through.
+// the cell's own may lie past the floor (a room's reads a wall's top): then
+// the height is the one a cell back from the way through. A cell's own
+// within a step (STEP_RISE) of that one is kept: 0204.1's stairs climb a
+// whole step on the exit cell, and the cell back is the floor at their
+// foot, which stood the leader at the top of the stairs sunk into them.
 @(private = "file")
 set_height :: proc(pos: u32) {
-	c := &psx.cpu
 	x, z := i32(psx.lw(pos + POS_X)), i32(psx.lw(pos + POS_Z))
+	y := ground_height(pos)
 	if _, way, through := door_exit_at(cell_of(x), cell_of(z)); through {
 		set_xz(pos, x - i32(way.x) * CELL, z - i32(way.y) * CELL)
+		back := ground_height(pos)
+		set_xz(pos, x, z)
+		if abs(y - back) > STEP_RISE {
+			y = back
+		}
 	}
+	psx.sw(pos + POS_Y, u32(y))
+}
+
+// The most two neighbouring cells' ground may differ by for a step between
+// them (PASSABLE), 16.16.
+@(private = "file")
+STEP_RISE :: 0x10000
+
+@(private = "file")
+ground_height :: proc(pos: u32) -> i32 {
+	c := &psx.cpu
 	c.r[4], c.r[5] = pos, psx.lbu(pos + POS_LAYER)
 	game_call(GROUND_HEIGHT, GROUND_HEIGHT_RET)
-	set_xz(pos, x, z)
-	psx.sw(pos + POS_Y, c.r[2])
+	return i32(c.r[2])
 }
 
 // World direction 0..7 of a neighbour offset, from DIRECTION_DELTA.

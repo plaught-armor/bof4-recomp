@@ -35,8 +35,8 @@
 // (sections.odin) ends the walk clear: past it are the neighbour's rooms,
 // and the camera keeps its yaw across into them. The arm keeps its length and swings up instead (up to
 // BOOM_MAX), so the camera rises over what is behind the leader and he keeps
-// his size on screen; past BOOM_MAX the lens comes in along the arm (pull),
-// or it would stay inside the building behind him. What is
+// his size on screen; past BOOM_MAX it rises no further and stays where it
+// is, inside the building behind him if need be. What is
 // still in the way, the GPU fades per
 // pixel, by real depth (psx.see_through, see psx/see_through.odin):
 // set_see_through hands it the leader's middle for each view built. What the
@@ -66,6 +66,7 @@ package qol
 
 import "core:math"
 import "core:math/linalg"
+import "core:slice"
 
 import "../psx"
 
@@ -206,13 +207,10 @@ ARM_OUT_S :: 0.4
 // damped, so it sets off from rest and is all but in after 1.2 s.
 @(private = "file")
 DOOR_ARM_W :: 4.0
-// The steepest the arm swings up to clear a wall behind the leader; the
-// ease's units (pitch) for the lens coming in the whole reach past it; how
+// The steepest the arm swings up to clear a wall behind the leader; how
 // far either side of the lens (cells) the walk over the grid looks.
 @(private = "file")
 BOOM_MAX :: 0xa00
-@(private = "file")
-PULL_UNITS :: 0x400
 @(private = "file")
 ARM_FAN :: 0.75
 // While the camera turns, the walk also runs where the yaw will be over the
@@ -531,6 +529,10 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 			tp.yaw_last = now
 			ahead := tp.yaw_v * ARM_AHEAD_S
 			for k in 0 ..= ARM_AHEAD_SAMPLES {
+				// Not turning, every sample is the first.
+				if k > 0 && ahead == 0 {
+					break
+				}
 				want = min(want, arm_reach(reach, yaw + ahead * f64(k) / ARM_AHEAD_SAMPLES, f64(tilt)))
 			}
 		}
@@ -541,7 +543,7 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 	kept_write(&tp.radii, CAM_TILE_RADII, max(radii & 0xffff, TP_TILE_RADIUS) | max(radii >> 16, TP_TILE_RADIUS) << 16)
 	psx.tiles_unculled = true
 	a0 := psx.cpu.r[4]
-	view_at(u32(i32(math.round(reach * pull(tp.arm, f64(tilt))))), distance, h, near)
+	view_at(u32(i32(math.round(reach))), distance, h, near)
 	exact_set(a0, yaw_frac, frac, h, pitch, distance, height)
 	psx.sh(CAM_PITCH, pitch)
 	psx.sw(CAM_DISTANCE, distance)
@@ -573,7 +575,7 @@ exact_set :: proc(a0: u32, yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, h, pitch,
 	tilt := game_pitch
 	turn := 2 * math.PI / 4096
 	game_d := f64(i32(distance)) + frac[DISTANCE]
-	reach := game_d * zoom() * pull(tp.arm, tilt)
+	reach := game_d * zoom()
 	scale := f64(i32(h)) / max(f64(i32(distance)), 1)
 	lens := max(scale * reach, f64(min(H_MIN, i32(h))), 1)
 	k := lens / f64(i32(psx.lw(CAM_H)))
@@ -640,6 +642,20 @@ arm_reach :: proc(reach, yaw, pitch: f64) -> f64 {
 	from := [3]f32{f32(x * VIEW_PER_CELL), f32(f64(i32(psx.lw(pos + 4))) / 0x10000 * VIEW_PER_CELL + LEADER_MIDDLE), f32(z * VIEW_PER_CELL)}
 	rise := f32(reach * math.sin(elevation))
 	section := u32(psx.lbu(MAP_SECTION))
+	// The layer's polygons round the arm, gathered once for both walks: out
+	// to ARM_FAN cells past it and a cell more, for the cells the fan's
+	// samples land in.
+	lens := from + {f32(ex * VIEW_PER_CELL), rise, f32(ez * VIEW_PER_CELL)}
+	fan_v := f32(ARM_FAN * VIEW_PER_CELL)
+	side_v := [3]f32{f32(sx * VIEW_PER_CELL), 0, f32(sz * VIEW_PER_CELL)}
+	lo := [2]f32{min(from.x, lens.x), min(from.z, lens.z)} - fan_v - VIEW_PER_CELL
+	hi := [2]f32{max(from.x, lens.x), max(from.z, lens.z)} + fan_v + VIEW_PER_CELL
+	n := 0
+	for l in section ..< section + section_layers(section) {
+		n += layer_tris(l, origin(l) - origin(section), lo, hi, arm_tris[n:])
+	}
+	tris := arm_tris[:n]
+	tops := cell_tops(tris, lo, hi)
 	share := 1.0
 	fan: for side in ([3]f64{0, -1, 1}) {
 		for i in 1 ..= steps {
@@ -653,7 +669,7 @@ arm_reach :: proc(reach, yaw, pitch: f64) -> f64 {
 				}
 				continue fan
 			}
-			if attr_at(g, cx, cz) >> 4 == ATTR_WALL && cell_top(section, cx, cz) > from.y + rise * f32(f) {
+			if attr_at(g, cx, cz) >> 4 == ATTR_WALL && tops_at(tops, tris, cx, cz) > from.y + rise * f32(f) {
 				clear := f64(i - 1) / f64(steps) * length - ARM_MARGIN
 				share = min(share, max(clear / max(length, 1e-6), ARM_MIN))
 				continue fan
@@ -664,17 +680,8 @@ arm_reach :: proc(reach, yaw, pitch: f64) -> f64 {
 	// it calls floor stands in the way too. The same walk over the layer's
 	// polygons, on lines out to ARM_FAN cells round the lens: either side, and
 	// above and below it.
-	lens := from + {f32(ex * VIEW_PER_CELL), rise, f32(ez * VIEW_PER_CELL)}
-	fan_v := f32(ARM_FAN * VIEW_PER_CELL)
-	side_v := [3]f32{f32(sx * VIEW_PER_CELL), 0, f32(sz * VIEW_PER_CELL)}
-	lo := [2]f32{min(from.x, lens.x), min(from.z, lens.z)} - fan_v
-	hi := [2]f32{max(from.x, lens.x), max(from.z, lens.z)} + fan_v
-	n := 0
-	for l in section ..< section + section_layers(section) {
-		n += layer_tris(l, origin(l) - origin(section), lo, hi, arm_tris[n:])
-	}
 	for off in ([5][3]f32{{}, side_v, -side_v, {0, fan_v, 0}, {0, -fan_v, 0}}) {
-		f := f64(segment_hit(from, lens + off, arm_tris[:n]))
+		f := f64(segment_hit(from, lens + off, tris))
 		if f < 1 {
 			share = min(share, max((f * length - ARM_MARGIN) / max(length, 1e-6), ARM_MIN))
 		}
@@ -684,20 +691,80 @@ arm_reach :: proc(reach, yaw, pitch: f64) -> f64 {
 
 // Room for the polygons arm_reach walks over.
 @(private = "file")
-arm_tris: [4096]Map_Tri
+arm_tris: [8192]Map_Tri
 
-// The height (view units, map y up) of the highest corner among the section's
-// polygons over cell cx, cz; the lowest f32 over a cell with none.
+// Cells a side of the grid of heights arm_reach looks wall tops up in: the
+// longest arm (CAM_DISTANCE at ZOOM_MAX, some 60 cells) and its fan fit.
 @(private = "file")
-cell_top :: proc(section: u32, cx, cz: i32) -> f32 {
+TOPS_SIDE :: 128
+
+// The highest corner among a set of polygons over each cell of a square of
+// cells from `cell` (cell_tops).
+@(private = "file")
+Cell_Tops :: struct {
+	cell: [2]i32,
+	side: [2]i32,
+	top:  [TOPS_SIDE * TOPS_SIDE]f32,
+}
+
+@(private = "file")
+arm_tops: Cell_Tops
+
+// The heights of the highest corners among `tris` over the cells round the
+// view-unit box lo..hi, binned in one pass over the polygons rather than one
+// per wall cell asked about: a town's models give thousands. A corner on the
+// edge between cells counts for both, as cell_top counts it.
+@(private = "file")
+cell_tops :: proc(tris: []Map_Tri, lo, hi: [2]f32) -> ^Cell_Tops {
+	t := &arm_tops
+	t.cell = {i32(math.floor(lo.x / VIEW_PER_CELL)), i32(math.floor(lo.y / VIEW_PER_CELL))}
+	far := [2]i32{i32(math.ceil(hi.x / VIEW_PER_CELL)), i32(math.ceil(hi.y / VIEW_PER_CELL))}
+	t.side = {min(far.x - t.cell.x + 1, TOPS_SIDE), min(far.y - t.cell.y + 1, TOPS_SIDE)}
+	slice.fill(t.top[:t.side.x * t.side.y], min(f32))
+	for tri in tris {
+		for v in tri {
+			// The cell v rounds into and its neighbours: a corner on an
+			// edge between cells belongs to both.
+			cx := i32(math.floor(v.x / VIEW_PER_CELL + 0.5))
+			cz := i32(math.floor(v.z / VIEW_PER_CELL + 0.5))
+			for gz in cz - 1 ..= cz + 1 {
+				for gx in cx - 1 ..= cx + 1 {
+					i := [2]i32{gx, gz} - t.cell
+					if i.x < 0 || i.y < 0 || i.x >= t.side.x || i.y >= t.side.y {
+						continue
+					}
+					c_lo := [2]f32{f32(gx) - 0.5, f32(gz) - 0.5} * VIEW_PER_CELL
+					c_hi := c_lo + VIEW_PER_CELL
+					if v.x >= c_lo.x && v.x <= c_hi.x && v.z >= c_lo.y && v.z <= c_hi.y {
+						k := i.y * t.side.x + i.x
+						t.top[k] = max(t.top[k], v.y)
+					}
+				}
+			}
+		}
+	}
+	return t
+}
+
+// The height cell_top gives cell cx, cz, from `tops` where it covers the
+// cell, else from `tris`.
+@(private = "file")
+tops_at :: proc(tops: ^Cell_Tops, tris: []Map_Tri, cx, cz: i32) -> f32 {
+	i := [2]i32{cx, cz} - tops.cell
+	if i.x < 0 || i.y < 0 || i.x >= tops.side.x || i.y >= tops.side.y {
+		return cell_top(tris, cx, cz)
+	}
+	return tops.top[i.y * tops.side.x + i.x]
+}
+
+// The height (view units, map y up) of the highest corner among `tris` over
+// cell cx, cz; the lowest f32 over a cell with none.
+@(private = "file")
+cell_top :: proc(tris: []Map_Tri, cx, cz: i32) -> f32 {
 	lo := [2]f32{f32(cx) - 0.5, f32(cz) - 0.5} * VIEW_PER_CELL
 	hi := lo + VIEW_PER_CELL
-	n := 0
-	for l in section ..< section + section_layers(section) {
-		n += layer_tris(l, origin(l) - origin(section), lo, hi, arm_tris[n:])
-	}
 	top := min(f32)
-	for t in arm_tris[:n] {
+	for t in tris {
 		for v in t {
 			if v.x >= lo.x && v.x <= hi.x && v.z >= lo.y && v.z <= hi.y {
 				top = max(top, v.y)
@@ -726,42 +793,20 @@ lift :: proc(arm, tilt: f64) -> f64 {
 	return clamp(up, tilt, max(tilt, BOOM_MAX))
 }
 
-// The share of the arm's reach the lens keeps at `arm` (tilted `tilt`): all
-// of it while the arm swings up (lift), and past BOOM_MAX, where it can swing
-// no higher, the lens comes in along it the rest of the way.
-@(private = "file")
-pull :: proc(arm, tilt: f64) -> f64 {
-	top := boom_top(tilt)
-	return arm >= top ? 1 : arm / top
-}
-
-// The least arm that lift alone brings the lens in to: the arm at BOOM_MAX
-// (1 when `tilt` is steeper already).
+// The least arm that lift brings the lens in to: the arm at BOOM_MAX (1 when
+// `tilt` is steeper already). The arm stops there (spring): the lens never
+// comes in along it, since view_at keeps the leader's size on screen and a
+// lens that came in would only widen the view round him, the world swelling
+// and shrinking about a leader who stays the same size.
 @(private = "file")
 boom_top :: proc(tilt: f64) -> f64 {
 	turn := 2 * math.PI / 4096
 	return math.cos((max(tilt, BOOM_MAX) - 0x800) * turn) / math.cos((tilt - 0x800) * turn)
 }
 
-// What the arm's ease (spring) runs on, in pitch units: the pitch while the
-// arm swings up (lift), then on past BOOM_MAX by PULL_UNITS for the whole
-// reach the lens comes in (pull). Larger is further in.
-@(private = "file")
-arm_ease :: proc(arm, tilt: f64) -> f64 {
-	top := boom_top(tilt)
-	if arm >= top {
-		return lift(arm, tilt)
-	}
-	return max(tilt, BOOM_MAX) + (1 - arm / top) * PULL_UNITS
-}
-
-// The arm arm_ease gives `e` for.
+// The arm lift gives the pitch `e` for.
 @(private = "file")
 arm_of :: proc(e, tilt: f64) -> f64 {
-	top := max(tilt, BOOM_MAX)
-	if e > top {
-		return boom_top(tilt) * (1 - (e - top) / PULL_UNITS)
-	}
 	turn := 2 * math.PI / 4096
 	return math.cos((e - 0x800) * turn) / math.cos((tilt - 0x800) * turn)
 }
@@ -772,20 +817,22 @@ arm_of :: proc(e, tilt: f64) -> f64 {
 // stood still at the door, and an ease at its fastest from the first frame
 // jolts the picture. The ease runs on the pitch the arm gives (lift), not
 // on the arm: a little less arm tips the pitch a lot when the arm is near
-// full; past BOOM_MAX, on how far the lens has come in (arm_ease). It moves only at a game frame's first build (`step`), in as well as
-// out: a later build of the frame (after the leader moved) that pulled it
-// in would draw the real frame with an arm its in-between pictures never
+// full. The arm stops at BOOM_MAX's (boom_top). It moves only at a game
+// frame's first build (`step`), in as well as out: a later build of the
+// frame (after the leader moved) that pulled it in would draw the real frame with an arm its in-between pictures never
 // blend toward (the pose notes the arm before the drawing), a pitch jump
 // every game frame against a wall.
 @(private = "file")
 spring :: proc(want: f64, tilt: u32, step: bool) {
+	top := boom_top(f64(tilt))
+	want := max(want, top)
 	if door_cover() > 0 && !tp.door_in {
 		tp.door_in, tp.lift_v = true, 0
 	}
 	if !step {
 		return
 	}
-	from, to := arm_ease(tp.arm, f64(tilt)), arm_ease(want, f64(tilt))
+	from, to := lift(max(tp.arm, top), f64(tilt)), lift(want, f64(tilt))
 	if math.abs(to - from) < 0.5 {
 		tp.arm = want
 		tp.door_in, tp.lift_v = false, 0
@@ -958,7 +1005,7 @@ set_see_through :: proc() {
 	}
 	down = linalg.normalize0(down)
 	f := [3]f32{f32(feet.x), f32(feet.y), f32(feet.z)}
-	psx.see_through_set(f - down * LEADER_MIDDLE, -down, f.z, psx.lhu(MAP_ID) & TOWN_MAPS == 0)
+	psx.see_through_set(f - down * LEADER_MIDDLE, -down, f.z, LEADER_MIDDLE, psx.lhu(MAP_ID) & TOWN_MAPS == 0)
 	grade_update()
 }
 

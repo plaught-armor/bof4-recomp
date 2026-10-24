@@ -650,7 +650,11 @@ What a load does that the switch redoes by hand:
   as a step toward an exit cell starts, from `CHOOSE_STEP` and from the
   arrival of each step; free walk (`qol/free_move.odin`) hooks it to report
   nothing on a door's exit cells (`door_exit_at`), so the leader walks onto
-  them, with the ground taken a cell back from the way through. Past their
+  them, with the ground taken a cell back from the way through when the
+  cell's own is more than a step (`STEP_RISE`, one unit) from it (a room's
+  exit cell can read a wall's top). Always taking the cell back sank the
+  leader into 0204.1's stairs on the way in: they climb the whole unit on
+  the exit cell, and the cell back is the floor at their foot. Past their
   middle on the way through, `door_through` asks for the map as the exit
   check's caller (0x801d5be8) does: `KEPT_YAW` from the camera yaw, then
   0x801cfe5c (a0 map, a1 section; called `AREA_SET`), then `MAP_REQUEST`

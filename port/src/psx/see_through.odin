@@ -143,7 +143,7 @@ depth_keep :: #force_inline proc(s: u32) #no_bounds_check {
 
 // Opacity at the camera's and at the leader's end of the tube.
 @(private)
-SEE_GHOST :: [2]f32{0.35, 0.75}
+SEE_GHOST :: [2]f32{0.3, 0.45}
 // The same for a sprite: a person is small, and one right before the leader
 // must not hide him.
 @(private)
@@ -170,6 +170,12 @@ SEE_BEHIND :: 8
 SEE_FADE :: 48
 @(private)
 SEE_NEAR :: [2]f32{64, 160}
+// View units below the leader's feet (shrinking toward the lens as the cone
+// does) where the cone is cut off, softly between the two: what lies past
+// his feet on screen does not hide him (the top of an awning he stands
+// behind is ghosted where it crosses his boots, not in a disc beyond them).
+@(private)
+SEE_FLOOR :: [2]f32{8, 40}
 // Vblanks a see_through setting stays good for after its stamp.
 @(private)
 SEE_VBLANKS :: 2
@@ -217,6 +223,8 @@ see_through: struct {
 	// The view depth of where the leader stands, against which a sprite's
 	// (where it stands) is judged.
 	feet:   f32,
+	// How far the leader's middle stands above his feet.
+	rise:   f32,
 	// Whether the map is a room (not a town), where black fill between the
 	// leader and the lens is left out.
 	room:   bool,
@@ -242,14 +250,21 @@ see: struct {
 	// From see_through: |target|^2 and the share of the way to the leader
 	// past which nothing is faded.
 	reach2, stop:   f32,
+	// World up's part across the line to the leader (its length the sine
+	// of the camera's tilt from looking straight down, so the floor cut
+	// fades out as the camera looks down on him) and his feet's distance
+	// along it under his middle, at the leader: see_cover_alpha's floor.
+	across:         [3]f32,
+	drop:           f32,
 	// The walk's depth buffer key (z_walk_begin), with a hi-res target.
 	z_key:          u32,
 }
 
 // Turn see-through on for the view just built: the GTE's projection, the
-// leader's middle `target` and world `up` in view space, and the view
-// depth `feet` of where he stands; `room` when the map is not a town.
-see_through_set :: proc(target, up: [3]f32, feet: f32, room: bool) {
+// leader's middle `target` and world `up` in view space, the view depth
+// `feet` of where he stands and how far his middle `rise`s above that;
+// `room` when the map is not a town.
+see_through_set :: proc(target, up: [3]f32, feet, rise: f32, room: bool) {
 	see_through = {
 		on     = true,
 		stamp  = vblanks(),
@@ -258,6 +273,7 @@ see_through_set :: proc(target, up: [3]f32, feet: f32, room: bool) {
 		target = target,
 		up     = up,
 		feet   = feet,
+		rise   = rise,
 		room   = room,
 	}
 }
@@ -494,11 +510,14 @@ see_begin :: proc() {
 	if reach2 < 1 {
 		return
 	}
+	across := s.up - s.target * (linalg.dot(s.up, s.target) / reach2)
 	see = {
 		active = true,
 		room   = s.room,
 		reach2 = reach2,
 		stop   = 1 - SEE_GAP / linalg.sqrt(reach2),
+		across = across,
+		drop   = s.rise * linalg.dot(across, across),
 	}
 	if target_count == 2 {
 		see.z_key = z_walk_begin()
@@ -619,7 +638,12 @@ see_cover_alpha :: proc(x, y, z: f32, cover: See_Cover) -> f32 #no_bounds_check 
 	t = max(t, 0)
 	d := linalg.length(p - s.target * t)
 	r := max(t, SEE_CONE_MIN)
-	inside := cover.weight * (1 - smooth((SEE_RADIUS - SEE_SOFT) * r, SEE_RADIUS * r, d))
+	// How far below the line from the lens to his feet.
+	below := -linalg.dot(p - s.target * t, see.across) - see.drop * r
+	inside :=
+		cover.weight *
+		(1 - smooth((SEE_RADIUS - SEE_SOFT) * r, SEE_RADIUS * r, d)) *
+		(1 - smooth(SEE_FLOOR[0] * r, SEE_FLOOR[1] * r, below))
 	g := cover.sprite ? SEE_SPRITE_GHOST : SEE_GHOST
 	ghost := g[0] + (g[1] - g[0]) * t / see.stop
 	return min(near, 1 - inside * (1 - ghost))
