@@ -55,8 +55,8 @@ Scripted input without a recording (all lists are comma-separated):
 
 | Variable | Meaning |
 |---|---|
-| `BOF4_DUMP=<dir>` | write frames (every `BOF4_DUMP_EVERY` presents, default 30) and RAM (every `BOF4_DUMP_RAM`, default 1500) there, from present `BOF4_DUMP_FROM` |
-| `BOF4_DUMP_WINDOW=1` | dump the window picture rather than the PS1 frame |
+| `BOF4_DUMP=<dir>` | write frames (every `BOF4_DUMP_EVERY` presents, default 1) and RAM (every `BOF4_DUMP_RAM`, default 1500) there, from present `BOF4_DUMP_FROM` |
+| `BOF4_DUMP_WINDOW=1` | also dump the window picture, as drawn with every option, beside the PS1 frame |
 | `BOF4_DUMP_HASH=1` | write no dump files: each dump becomes a `kind  present  XXH3` line in `<dir>/hashes.tsv` (the regression runs in `tests/` use it) |
 | `BOF4_FLOORDUMP=<dir>` | write each map's floors (attribute cells, ground heights) as `<map>.json` there, see field.md Floors |
 | `BOF4_MAPS=<dir>` | load `<map>.blk` from there in place of a map's data block and apply `<map>.edit` patches; the F4 map editor saves there (default `maps`), see field.md Edited maps |

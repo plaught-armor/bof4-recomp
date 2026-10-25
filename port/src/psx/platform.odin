@@ -92,18 +92,10 @@ host: struct {
 	// Display area (x, y, w, h) at the previous present, to tell a repeated
 	// game frame from a new one.
 	last_area:   [4]i32,
-	dump_dir:    string,
-	// BOF4_DUMP_RAM: presents between main RAM dumps into dump_dir.
+	// BOF4_DUMP_RAM: presents between main RAM dumps into BOF4_DUMP.
 	ram_every:   u64,
-	// BOF4_DUMP_EVERY: presents between frame dumps into dump_dir.
-	frame_every: u64,
-	// BOF4_DUMP_FROM: first present whose frame is dumped.
-	dump_from:   u64,
 	// BOF4_DUMP_WINDOW=1: frame dumps also save the finished window picture.
 	dump_window: bool,
-	// BOF4_DUMP_HASH=1: <dump_dir>/hashes.tsv, which takes a hash line per
-	// dump in place of its file (regression runs, see tests/).
-	dump_hashes: ^os.File,
 	script:      [dynamic]Scripted_Press,
 	stick_script: [dynamic]Scripted_Stick,
 	poke_script: [dynamic]Scripted_Poke,
@@ -262,23 +254,12 @@ platform_init :: proc(title: cstring) -> bool {
 	host.start = time.tick_now()
 	host.speed = 1
 	host.perf_mark = host.start
-	host.dump_dir = os.get_env("BOF4_DUMP", context.allocator)
 	host.unpaced = os.get_env("BOF4_FAST", context.temp_allocator) == "1"
 	host.ram_every = env_period("BOF4_DUMP_RAM", 1500) or_return
-	host.frame_every = env_period("BOF4_DUMP_EVERY", 30) or_return
-	host.dump_from = env_period("BOF4_DUMP_FROM", 1) or_return
+	core.dump_init() or_return
 	core.capture_init()
 	sprite_dump_init()
-	host.dump_window = host.dump_dir != "" && os.get_env("BOF4_DUMP_WINDOW", context.temp_allocator) == "1"
-	if host.dump_dir != "" && os.get_env("BOF4_DUMP_HASH", context.temp_allocator) == "1" {
-		path := fmt.tprintf("%s/hashes.tsv", host.dump_dir)
-		f, err := os.create(path)
-		if err != nil {
-			fmt.eprintln("BOF4_DUMP_HASH: cannot create", path, err)
-			return false
-		}
-		host.dump_hashes = f
-	}
+	host.dump_window = core.dump_dir() != "" && os.get_env("BOF4_DUMP_WINDOW", context.temp_allocator) == "1"
 	// Debug aid: BOF4_OSD_PANEL=<n> starts with the panel shown on page n
 	// (from 1).
 	if page, ok := strconv.parse_int(os.get_env("BOF4_OSD_PANEL", context.temp_allocator)); ok && page > 0 {
@@ -466,27 +447,21 @@ env_period :: proc(name: string, def: u64) -> (u64, bool) {
 	return n, true
 }
 
-// Debug aid: with BOF4_DUMP=<dir>, write the displayed area every frame_every
-// presents and main RAM every ram_every presents, from present dump_from on.
+// Debug aid: with BOF4_DUMP=<dir>, write the displayed area on the presents
+// core.dump_due picks and main RAM every ram_every presents.
 @(private)
 dump_frame :: proc() {
-	if host.dump_dir == "" {
+	if core.dump_due(host.presents, host.ram_every) {
+		core.dump_put("ram", "bin", host.presents, ram[:])
+	}
+	if !core.dump_due(host.presents) || display.w <= 0 || display.h <= 0 {
 		return
 	}
-	if host.presents >= host.dump_from && host.presents % host.ram_every == 0 {
-		dump_put("ram", "bin", ram[:])
-	}
-	if !frame_dump_due() || display.w <= 0 || display.h <= 0 {
-		return
-	}
-	buf := make([dynamic]u8, context.temp_allocator)
 	fw, fh := frame_size()
-	header := fmt.tprintf("P6\n%d %d\n255\n", fw, fh)
-	append(&buf, ..transmute([]u8)header)
-	append(&buf, ..frame_rgb(frame_pixels()[:fw * fh]))
-	dump_put("frame", "ppm", buf[:])
+	core.dump_ppm("frame", host.presents, int(fw), int(fh), frame_rgb(frame_pixels()[:fw * fh]))
+	// Whole VRAM as 15-bit color, for checking off-screen uploads.
 	if host.presents % 150 == 0 {
-		dump_vram()
+		core.dump_ppm("vram", host.presents, VRAM_W, VRAM_H, vram_rgb())
 	}
 }
 
@@ -499,40 +474,6 @@ frame_rgb :: proc(px: []u32) -> []u8 {
 		out[i * 3 + 2] = u8(c)
 	}
 	return out
-}
-
-// Whether this present's frame is dumped (BOF4_DUMP_FROM, BOF4_DUMP_EVERY).
-@(private)
-frame_dump_due :: proc() -> bool {
-	return host.presents >= host.dump_from && host.presents % host.frame_every == 0
-}
-
-// Whole VRAM as 15-bit color, for checking off-screen uploads.
-@(private)
-dump_vram :: proc() {
-	buf := make([dynamic]u8, context.temp_allocator)
-	header := fmt.tprintf("P6\n%d %d\n255\n", VRAM_W, VRAM_H)
-	append(&buf, ..transmute([]u8)header)
-	append(&buf, ..vram_rgb())
-	dump_put("vram", "ppm", buf[:])
-}
-
-// Write one dump as <dump_dir>/<kind>_<presents>.<ext>, or with
-// BOF4_DUMP_HASH as a "<kind> <presents> <XXH3 of data>" line (tab
-// separated) in hashes.tsv.
-@(private)
-dump_put :: proc(kind, ext: string, data: []u8) {
-	if host.dump_hashes != nil {
-		line := fmt.tprintf("%s\t%d\t%016x\n", kind, host.presents, xxhash.XXH3_64(data))
-		if _, err := os.write_string(host.dump_hashes, line); err != nil {
-			fmt.eprintln("BOF4_DUMP_HASH: write failed:", err)
-		}
-		return
-	}
-	name := fmt.tprintf("%s/%s_%05d.%s", host.dump_dir, kind, host.presents, ext)
-	if err := os.write_entire_file(name, data); err != nil {
-		fmt.eprintln("BOF4_DUMP: write failed:", name, err)
-	}
 }
 
 // VRAM as RGB888 read as 15-bit color, in temp memory.

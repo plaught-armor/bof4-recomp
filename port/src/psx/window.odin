@@ -205,7 +205,7 @@ pause_wait :: proc() {
 draw :: proc() {
 	compose()
 	osd_draw()
-	if host.dump_window && !window.paused && frame_dump_due() {
+	if host.dump_window && !window.paused && core.dump_due(host.presents) {
 		dump_window_picture("window")
 	}
 	snapshot_take()
@@ -259,11 +259,7 @@ dump_window_picture :: proc(kind: string) {
 	if !ok {
 		return
 	}
-	header := fmt.tprintf("P6\n%d %d\n255\n", w, h)
-	buf := make([dynamic]u8, context.temp_allocator)
-	append(&buf, ..transmute([]u8)header)
-	append(&buf, ..pix)
-	dump_put(kind, "ppm", buf[:])
+	core.dump_ppm(kind, host.presents, int(w), int(h), pix)
 }
 
 // The window's back buffer as tightly packed RGB888, in temp memory.

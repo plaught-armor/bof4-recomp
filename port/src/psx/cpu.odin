@@ -196,8 +196,8 @@ report_once :: proc(addr: u32, what: string) {
 		dispatch.reported[addr] = true
 		fmt.eprintfln("%s %#08x (ra %#08x) at present %d", what, addr, cpu.r[31], host.presents)
 		// With BOF4_DUMP, keep RAM as it was so the code can be identified.
-		if host.dump_dir != "" {
-			name := fmt.tprintf("%s/ram_interp_%08x.bin", host.dump_dir, addr)
+		if dir := core.dump_dir(); dir != "" {
+			name := fmt.tprintf("%s/ram_interp_%08x.bin", dir, addr)
 			if err := os.write_entire_file(name, ram[:]); err != nil {
 				fmt.eprintln("BOF4_DUMP: ram write failed:", name, err)
 			}
