@@ -1,6 +1,6 @@
-// Keyboard and mouse rebinding from the game's menus: the sources bound to a
-// console button, catching the next key or mouse press, moving a source to a
-// button, and the default layout.
+// Keyboard and mouse rebinding from the game's menus, on ps:core's keyboard
+// rebinding (core/rebind.odin): the mouse sources, the PAD_ bit layout and
+// the default layout.
 //
 // Sources are named as in config files: SDL scancode names ("E", "Left
 // Shift") and MOUSE_NAMES ("Mouse Left", "Wheel Up").
@@ -13,7 +13,6 @@ package psx
 
 import "core:hash/xxhash"
 import "core:mem"
-import "core:strings"
 import "ps:core"
 import sdl "vendor:sdl2"
 
@@ -23,76 +22,37 @@ Key_Binds :: struct {
 	mouse: [Mouse_Source]u16,
 }
 
-@(private)
-catch: struct {
-	armed: bool,
-	// The caught source's name; "" until one is caught.
-	name:  string,
-}
-
 // Arm the catch: the next key or mouse press is taken by key_catch_take.
 key_catch_start :: proc() {
-	catch = {armed = true}
+	core.bind_catch_start()
 }
 
 // The caught source's name, once one has been caught; the catch is then
 // over.
 key_catch_take :: proc() -> (name: string, ok: bool) {
-	if !catch.armed || catch.name == "" {
-		return "", false
-	}
-	name = catch.name
-	catch = {}
+	name = core.bind_catch_take() or_return
 	input.blocked = 0xffff
 	return name, true
-}
-
-// Take a key press for an armed catch; false when none is armed.
-@(private)
-catch_key :: proc(k: sdl.KeyboardEvent) -> bool {
-	if !catch.armed {
-		return false
-	}
-	if k.repeat == 0 && catch.name == "" {
-		catch.name = string(sdl.GetScancodeName(k.keysym.scancode))
-	}
-	return true
 }
 
 // Take a mouse press (button or wheel) for an armed catch; false when none
 // is armed or the window does not have focus.
 @(private)
 catch_mouse :: proc(s: Mouse_Source) -> bool {
-	if !catch.armed || !mouse.focused {
-		return false
-	}
-	if catch.name == "" {
-		catch.name = MOUSE_NAMES[s]
-	}
-	return true
+	return mouse.focused && core.bind_catch_offer(MOUSE_NAMES[s])
 }
 
 // A hash of every binding (keys, mouse, pad buttons and triggers) and the
 // device in use: button prompts drawn from them are still current while it
 // stays the same, so they need not be worked out again every vblank.
 binds_hash :: proc() -> u64 {
-	h := xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&core.input.keys), u64(core.input.device))
-	h = xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&core.input.buttons), h)
-	h = xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&core.input.triggers), h)
-	return xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&mouse.binds), h)
+	return xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&mouse.binds), core.binds_hash())
 }
 
 // The names of the keys and mouse sources that hold `bit`, keys first, as
 // many as fit in `out`; returns how many there are in all.
 key_sources :: proc(bit: u16, out: []string) -> (n: int) {
-	for b, code in core.input.keys {
-		if b & pad_set(bit) != {} {
-			if n < len(out) {
-				out[n] = string(sdl.GetScancodeName(sdl.Scancode(code)))
-			}
-			n += 1
-		}
-	}
+	n = core.key_sources(pad_set(bit), out)
 	for b, s in mouse.binds {
 		if b & bit != 0 {
 			if n < len(out) {
@@ -110,19 +70,12 @@ key_bind_move :: proc(name: string, bit: u16) -> bool {
 		mouse.binds[s] = bit
 		return true
 	}
-	code := sdl.GetScancodeFromName(strings.clone_to_cstring(name, context.temp_allocator))
-	if code == .UNKNOWN {
-		return false
-	}
-	core.input.keys[code] = pad_set(bit)
-	return true
+	return core.key_bind_move(name, pad_set(bit))
 }
 
 // Unbind every key and mouse source from `bit`.
 key_bind_clear :: proc(bit: u16) {
-	for &k in core.input.keys {
-		k -= pad_set(bit)
-	}
+	core.key_bind_clear(pad_set(bit))
 	mouse_unbind(bit)
 }
 

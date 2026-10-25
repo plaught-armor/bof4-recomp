@@ -518,7 +518,7 @@ poll_events :: proc() {
 		case .QUIT:
 			host.quit = true
 		case .KEYDOWN:
-			if !catch_key(ev.key) && (key_hook == nil || !key_hook(ev.key)) {
+			if !core.bind_catch_key(ev.key) && (key_hook == nil || !key_hook(ev.key)) {
 				window_key(ev.key)
 			}
 		case .MOUSEBUTTONDOWN, .MOUSEBUTTONUP:
