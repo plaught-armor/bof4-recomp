@@ -21,7 +21,12 @@
 //   its depth and the one there.
 // - A pixel passes when no more than a bias behind (Z_BIAS: a few units and
 //   a share of the depth, more for sprites, whose feet run onto the ground
-//   before them); among those the later one wins, as the table had it.
+//   before them); among those the later one wins, as the table had it. A
+//   world quad (world.odin) has its exact depth and takes no share: two
+//   surfaces a few units apart (a sign before a wall) would otherwise
+//   both pass and swap with the table's order from frame to frame. A decal
+//   lying on another quad (world_decals_mark) is taken Z_LIFT nearer, so
+//   it stays over the surface under it whatever the table's order.
 //
 // A pixel's word is the walk's key (0xffff less its count) << 16 and its
 // depth in quarter view units, so a word left by an earlier walk is larger
@@ -58,6 +63,11 @@ Z_BIAS :: 2 * Z_SCALE
 Z_BIAS_SPRITE :: 48 * Z_SCALE
 @(private)
 Z_BIAS_SHIFT :: 7
+// View units a decal's depth is taken nearer (world_decals_mark): past
+// Z_BIAS, so the surface it lies on never draws over it. GL_DRAW_FS has it
+// too.
+@(private)
+Z_LIFT :: f32(4)
 
 // Start a walk drawing with depth: its key for Plot_Env.z_key.
 @(private)
@@ -106,15 +116,16 @@ z_sprite_plane :: proc(at: [3]f32) -> [3]f32 {
 }
 
 // Whether a pixel at depth z passes the depth at target index i: walk key
-// `key`, a sprite's bias when sprite.
+// `key`, a sprite's bias when sprite, no depth share when exact (a world
+// quad's, world.odin).
 @(private)
-z_test :: #force_inline proc(t: ^Target, i: i32, key: u32, z: f32, sprite: bool) -> bool #no_bounds_check {
+z_test :: #force_inline proc(t: ^Target, i: i32, key: u32, z: f32, sprite, exact: bool) -> bool #no_bounds_check {
 	s := t.zbuf[i]
 	if s >> 16 != key >> 16 {
 		return true
 	}
 	q, d := z_step(z), s & 0xffff
-	return q <= d + (sprite ? Z_BIAS_SPRITE : Z_BIAS) + (d >> Z_BIAS_SHIFT)
+	return q <= d + (sprite ? Z_BIAS_SPRITE : Z_BIAS) + (exact ? 0 : d >> Z_BIAS_SHIFT)
 }
 
 // Keep depth z at target index i when nearer than the one there.

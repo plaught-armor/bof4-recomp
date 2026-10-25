@@ -459,8 +459,10 @@ Prim_Mode :: struct {
 	// polygon's own).
 	z_mode:     Z_Mode,
 	z_plane:    [3]f32,
-	// A world quad drawn in 3D (world.odin): no size limit.
+	// A world quad drawn in 3D (world.odin): no size limit; a decal lying
+	// on another (world_decals_mark).
 	world:      bool,
+	decal:      bool,
 	clut_x:     i32,
 	clut_y:     i32,
 }
@@ -845,7 +847,10 @@ plot :: #force_inline proc($P: typeid, ra: ^Raster, m: ^Prim_Mode, x, y: i32, r,
 	when P == u32 {
 		if m.z_mode != .Off && e.z_key != 0 && t.zbuf != nil {
 			zd = m.z_plane == {} ? z : z_on_plane(m.z_plane, py)
-			if zd > 0 && !z_test(t, i, e.z_key, zd, m.z_plane != {}) {
+			if m.decal {
+				zd = max(zd - Z_LIFT, 0.5 * zd)
+			}
+			if zd > 0 && !z_test(t, i, e.z_key, zd, m.z_plane != {}, m.world) {
 				return
 			}
 		}
@@ -1737,13 +1742,22 @@ exec_polygon :: proc(words: []u32) {
 		w, in_world = world_quad(packet_now)
 	}
 	screen := screens.n > 0 && on_screen(packet_now)
+	// A sprite's corners take where it stands (see_flat_add), never the
+	// depth cache's: a corner of the ground projected onto one of its
+	// corners gave the sprite that depth, and see-through then ghosted it as
+	// part of the scene.
+	f: Flat
+	filed := false
+	if !in_world && !screen && flats.n > 0 {
+		f, filed = see_flat(packet_now)
+	}
 	if in_world {
 		worlds, vs, verts = world_cut(w, vs, &world)
 		if worlds == 0 {
 			return
 		}
-		m.world = true
-	} else if !screen {
+		m.world, m.decal = true, w.decal
+	} else if !screen && !filed {
 		depth_fill(vs[:verts])
 	}
 	sprite_dump(vs[:verts], &m)
@@ -1775,23 +1789,21 @@ exec_polygon :: proc(words: []u32) {
 	// stands (see_flat_add).
 	flat, front := false, false
 	clear: f32
-	if known == 0 && flats.n > 0 && !screen {
-		if f, ok := see_flat(packet_now); ok {
+	if filed {
+		for &v in vs[:verts] {
+			v.sx += i32(f.sub[0])
+			v.sy += i32(f.sub[1])
+		}
+		if see.z_key != 0 && f.at.z > 0 {
+			m.z_plane = z_sprite_plane(f.at)
+			m.z_mode = m.z_plane == {} ? .Off : .Write
+		}
+		if see.active && f.z > 0 {
 			for &v in vs[:verts] {
-				v.sx += i32(f.sub[0])
-				v.sy += i32(f.sub[1])
+				v.z = f.z
 			}
-			if see.z_key != 0 && f.at.z > 0 {
-				m.z_plane = z_sprite_plane(f.at)
-				m.z_mode = m.z_plane == {} ? .Off : .Write
-			}
-			if see.active && f.z > 0 {
-				for &v in vs[:verts] {
-					v.z = f.z
-				}
-				known, sum, flat = f32(verts), f.z * f32(verts), true
-				front, clear = f.front, f.clear
-			}
+			known, sum, flat = f32(verts), f.z * f32(verts), true
+			front, clear = f.front, f.clear
 		}
 	}
 	if m.sharp > 0 && known > 0 {

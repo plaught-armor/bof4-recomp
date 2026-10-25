@@ -122,6 +122,7 @@ LAYOUT := [?]Layout_Row {
 	{section = "camera", key = "stick_all_maps"},
 	{section = "camera", key = "mouse"},
 	{section = "camera", key = "mouse_speed"},
+	{section = "mouse", key = "menus"},
 	{section = "camera", key = "screen_shake"},
 	{game = .D_Pad},
 	{game = .Text},

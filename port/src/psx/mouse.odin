@@ -19,6 +19,10 @@
 // the window or hits the screen edge. The right button then holds nothing
 // while down; released having moved less than CLICK_SLOP, it was a click and
 // taps its bits (Circle by default, to cancel in menus).
+//
+// Pointer motion (without a drag) moves the pointer, kept in display pixels
+// (the game's screen coordinates); menus take it with pointer_take, which
+// notes each move in the debug record so a replay points the same way.
 package psx
 
 import "core:fmt"
@@ -74,6 +78,10 @@ mouse: struct {
 	drag_moved:  f32,
 	// Relative mode was refused once (reported then).
 	no_relative: bool,
+	// Where the pointer is, in display pixels, and whether it moved since
+	// pointer_take last looked.
+	pointer:     [2]f32,
+	pointed:     bool,
 }
 
 // Right-button drag turns the camera (set from the config).
@@ -189,7 +197,31 @@ mouse_motion :: proc(ev: sdl.MouseMotionEvent) {
 	if mouse.dragging {
 		mouse.drag += {f32(ev.xrel), f32(ev.yrel)}
 		mouse.drag_moved += abs(f32(ev.xrel)) + abs(f32(ev.yrel))
+		return
 	}
+	// Live motion counts only outside a replay, which points by itself.
+	if !mouse.focused || display.w <= 0 || display.h <= 0 || host.presents <= replay_end {
+		return
+	}
+	// Events come in the 640x480 logical canvas, which holds the display area.
+	mouse.pointer = {f32(ev.x) * f32(display.w) / WINDOW_W, f32(ev.y) * f32(display.h) / WINDOW_H}
+	mouse.pointed = true
+}
+
+// Move the pointer to display pixel `pos` (the test autopilot).
+pointer_move :: proc(pos: [2]f32) {
+	mouse.pointer = pos
+	mouse.pointed = true
+}
+
+// The pointer in display pixels, and whether it moved since the last call.
+pointer_take :: proc() -> (pos: [2]f32, moved: bool) {
+	moved = mouse.pointed
+	mouse.pointed = false
+	if moved {
+		record_point(mouse.pointer)
+	}
+	return mouse.pointer, moved
 }
 
 // Drag distance in window pixels since the last call (right and down
@@ -249,6 +281,37 @@ run_drag_script :: proc() {
 	for e in host.drag_script {
 		if host.presents >= e.at && host.presents < e.at + e.hold {
 			mouse.drag += e.pixels
+		}
+	}
+}
+
+// Debug aid: BOF4_POINT="<present>:<x>/<y>,..." moves the pointer to display
+// pixel (x, y) at that present, as replays of C entries do.
+@(private)
+Scripted_Point :: struct {
+	at:  u64,
+	pos: [2]f32,
+}
+
+@(private)
+parse_point_script :: proc(spec: string) {
+	for item in strings.split(spec, ",", context.temp_allocator) {
+		at_text, _, pos_text := strings.partition(item, ":")
+		at, at_ok := strconv.parse_u64(at_text)
+		pos, pos_ok := parse_drag_pixels(pos_text)
+		if !at_ok || !pos_ok || !strings.contains(pos_text, "/") {
+			fmt.eprintln("BOF4_POINT: bad entry", item)
+			continue
+		}
+		append(&host.point_script, Scripted_Point{at = at, pos = pos})
+	}
+}
+
+@(private)
+run_point_script :: proc() {
+	for e in host.point_script {
+		if e.at == host.presents {
+			pointer_move(e.pos)
 		}
 	}
 }

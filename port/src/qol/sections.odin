@@ -127,10 +127,6 @@ ATTR_WALL_KIND :: 0x1 // high nibble of a wall cell's attribute
 ATTR_EXIT_KIND :: 0xa // high nibble of an exit cell's attribute
 GROUND :: 0x8014a8a0 // a0 = position (s32 16.16 x, y, z), a1 = layer - section: v0 ground y, 16.16
 @(private = "file")
-GROUND_SCRATCH :: 0x1f800000 // GROUND's working words, through 0x1f8000ab, some the drawing's
-@(private = "file")
-GROUND_SCRATCH_WORDS :: 44
-@(private = "file")
 LEADER_Y :: 0x80116fc0 // s32 16.16, the leader's height
 @(private = "file")
 POS_AT :: 0x40 // a position below the caller's stack pointer
@@ -1391,10 +1387,10 @@ door_edge :: proc(of: u32, middle, way: [2]f32, section, layer: u32) -> f32 {
 // one loaded; 256 a cell.
 @(private)
 ground :: proc(of: u32, cell: [2]f32, section: u32, layer: u32 = 0) -> f32 {
-	saved: [GROUND_SCRATCH_WORDS]u32
-	for &w, i in saved {
-		w = psx.lw(GROUND_SCRATCH + 4 * u32(i))
-	}
+	// GROUND works in the scratchpad through 0x1f8000d3, past the drawing's
+	// fog (0x1f8000ac..0x1f8000b6): called from a layer's draw, it left the
+	// room's first frame fogged through and its tiles culled.
+	saved := psx.scratch
 	pos := (psx.cpu.r[29] - POS_AT) &~ 7
 	psx.sw(pos, u32(i32((cell.x + 0.5) * CELL)))
 	psx.sw(pos + 4, psx.lw(LEADER_Y))
@@ -1404,9 +1400,7 @@ ground :: proc(of: u32, cell: [2]f32, section: u32, layer: u32 = 0) -> f32 {
 	psx.sh(MAP_SECTION, of)
 	y := f32(i32(game_routine(GROUND, {pos, layer, 0, 0, 0}))) * TARGET_PER_CELL / CELL
 	psx.sh(MAP_SECTION, section)
-	for w, i in saved {
-		psx.sw(GROUND_SCRATCH + 4 * u32(i), w)
-	}
+	psx.scratch = saved
 	return y
 }
 

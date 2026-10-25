@@ -152,6 +152,10 @@
 //                          ; field: free turning on every map, L1/R1 (the
 //                          ; mouse wheel) zoom
 //
+//   [mouse]
+//   menus = true           ; moving the pointer over a menu row moves the
+//                          ; cursor there (qol/mouse_menus.odin)
+//
 //   [move]
 //   stick = true           ; left stick walks toward its exact angle
 //   run_tilt = 0.7         ; stick tilt (0..1) that runs; lighter walks
@@ -254,6 +258,7 @@ Config :: struct {
 	camera_stick_all_maps: bool,
 	camera_mouse:          bool,
 	camera_mouse_speed:    f64,
+	mouse_menus:           bool,
 	camera_screen_shake:   bool,
 	camera_third_person:   bool,
 	move_stick:            bool,
@@ -302,6 +307,7 @@ config := Config {
 	camera_stick_speed     = 120,
 	camera_mouse           = true,
 	camera_mouse_speed     = 0.3,
+	mouse_menus            = true,
 	camera_screen_shake    = true,
 	camera_third_person    = true,
 	move_stick             = true,
@@ -368,7 +374,7 @@ init :: proc() -> bool {
 	psx.audio_apply(config.audio_latency_ms)
 	psx.pad_set_rumble(1)
 	psx.mouse_drag = config.camera_mouse
-	return psx.window_apply(config.window) && encounter_init() && text_init() && camera_init() && movement_init() && save_init() && tracker_init() && popup_init() && learning_init() && combo_menu_init() && guard_init() && rewards_init() && damage_init() && ai_init() && ko_loss_init() && status_init() && victory_init() && quick_battle_init() && shake_init() && warp_init() && menu_draw_init() && button_text_init() && identify_init() && balance_init() && camp_menu_init() && setting_menu_init() && map_geometry_init() && collision_init() && sections_init() && fade_init() && inbetween_init() && interiors_init() && map_mods_init() && map_editor_init() && dengeki_init() && restored_init() && teacher_init() && descriptions_init() && npc_swap_init() && cinematics_init() && autoplay_init()
+	return psx.window_apply(config.window) && encounter_init() && text_init() && camera_init() && movement_init() && save_init() && tracker_init() && popup_init() && learning_init() && combo_menu_init() && guard_init() && rewards_init() && damage_init() && ai_init() && ko_loss_init() && status_init() && victory_init() && quick_battle_init() && shake_init() && warp_init() && menu_draw_init() && button_text_init() && identify_init() && balance_init() && camp_menu_init() && setting_menu_init() && map_geometry_init() && collision_init() && sections_init() && fade_init() && inbetween_init() && interiors_init() && map_mods_init() && map_editor_init() && mouse_menus_init() && dengeki_init() && restored_init() && teacher_init() && descriptions_init() && npc_swap_init() && cinematics_init() && autoplay_init()
 }
 
 // Follow the game's state once per emulated vblank.
@@ -548,6 +554,8 @@ apply_setting :: proc(section, key, value: string) -> bool {
 		return parse_bool(value, &config.camera_stick)
 	case section == "camera" && key == "stick_speed":
 		return parse_range(value, 1, MAX_STICK_SPEED, &config.camera_stick_speed)
+	case section == "mouse" && key == "menus":
+		return parse_bool(value, &config.mouse_menus)
 	case section == "camera" && key == "mouse":
 		return parse_bool(value, &config.camera_mouse)
 	case section == "camera" && key == "mouse_speed":

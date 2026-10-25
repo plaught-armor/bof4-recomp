@@ -76,9 +76,15 @@ wraps that test for one step of an object:
 | attribute write | exe 0x801538c4 | |
 | `GROUND` ground height | exe 0x8014a8a0 | (a0 position s32 16.16 x/y/z, a1 layer) |
 
-Gotcha: `GROUND`'s callees overwrite scratchpad 0x1f800000..0x1f8000ab,
-including the GPU packet pointer at 0x1f80006c. Calling it from a hook in the
-middle of drawing needs that range saved and restored.
+Gotcha: `GROUND`'s callees overwrite scratchpad 0x1f800000..0x1f8000d3,
+including the GPU packet pointer at 0x1f80006c and the tile drawing's fog
+(base 0x1f8000ac, shift 0x1f8000b0, on 0x1f8000b6). Calling it from a hook in
+the middle of drawing needs the scratchpad saved and restored (`ground` keeps
+all of it). Restoring only 0x00..0xab left the fog flag set (0xe) and its
+base and shift zeroed when the door scan (`doors_find`, from the first
+layer's draw) ran on a room's first frame after an instant door: every
+corner read as deep in the fog, the room's floor tiles were culled, and the
+frame showed black but for the models.
 
 The port runs the ground and step code natively (`qol/collision.odin`):
 `GROUND_CORE` 0x8014a9cc (placed models first, then the tile's polygons, then
@@ -816,6 +822,13 @@ What a load does that the switch redoes by hand:
 - The ground under a door is read a cell inside its own map (`exit_way`) and
   at the arrival cell on the other map (`Door.there`): a room's exit cells may
   lie past its floor (0201's read 768 and lifted the town by 384 view units).
+- The shift's height (`Door.dy`) was found only by a door picture's pass,
+  which never runs with `DOOR_PICTURES` off: the walked-through party came
+  in at the town's height (0201.2's floor is 3 cells up from 1000's street)
+  until free move set it on the floor a frame later, and the third-person
+  camera, following the leader, showed the room's first two frames from
+  below. `world_enter` now reads the room's ground at `Door.there` once the
+  room's RAM is in, before `arrive` places the party.
 
 ### Stitch table (removed)
 

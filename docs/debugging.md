@@ -21,7 +21,7 @@ instance at a time: two share the memory card files.
 
 ## Recording and replaying
 
-`BOF4_DEBUG_DIR=<dir>` writes every pad state and camera drag to
+`BOF4_DEBUG_DIR=<dir>` writes every pad state, camera drag and pointer move to
 `<dir>/input.rec`; F12 saves a snapshot there (window picture, game frame,
 main RAM, VRAM as a picture and raw as `_vram.bin`: 1024x512 u16, which keeps
 bit 15 and the texel indices of 4bpp and 8bpp pages). Emulation is driven by emulated vblanks ("presents"), so
@@ -45,6 +45,7 @@ Scripted input without a recording (all lists are comma-separated):
 | `BOF4_STICK` | `<present>:<lx>/<ly>/<rx>/<ry>[:<presents>]` stick positions -1..1 |
 | `BOF4_POKE` | `<present>:<hex addr>:<hex byte>` store a byte into RAM |
 | `BOF4_DRAG` | `<present>:<x>[/<y>][:<presents>]` camera drag |
+| `BOF4_POINT` | `<present>:<x>/<y>` move the mouse pointer to display pixel (x, y) (mouse menus) |
 
 ## Dumps
 
@@ -117,6 +118,7 @@ For playing long stretches unattended (`qol/autoplay.odin`):
 | `poke A V` | write byte V to RAM address A (hex), to set up a test |
 | `grid` | print the collision grid (`#` wall, `E` exit, `/` stairs, `@` leader), then the raw attribute bytes (hex) of the 7x7 cells round the leader |
 | `snap` | take a snapshot (with `BOF4_DEBUG_DIR`) |
+| `point X Y` | move the mouse pointer to display pixel X, Y (mouse menus) |
 | `edit` | start or leave the map editor, as F4 |
 | `tour [N]` | visit every reachable exit and back, logging where each leads, N levels deep |
 | `doors [near]` | walk up to every door to a room on this section in turn and face it until the room's slide settles, logging `autoplay: door TTTT.S to RRRR.S slide x y z` (or `not settled`, or `gave up on door RRRR.S: why`); the survey behind the removed stitch table (field.md "Stitch table (removed)"); a slide settles only with door pictures on. With `near`, only the door nearest the leader. A door the walk cannot reach (`no way`, `goal not open`) is given up at once |

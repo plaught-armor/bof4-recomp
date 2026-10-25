@@ -434,6 +434,11 @@ interiors: struct {
 	enter_quad:  [4][3]f32,
 	enter_front: [3]f32,
 	enter_ok:    bool,
+	// The door's town ground and the room cell the party arrives on
+	// (Door.ground, .there): the shift's height is found from them once the
+	// room is in (world_enter).
+	enter_ground: f32,
+	enter_there:  [2]f32,
 	// Whether the request came from the party walking through the door's
 	// exit cells (door_through): the party goes on where it stands, moved
 	// by the shift, rather than onto the request's arrival cell.
@@ -1703,6 +1708,7 @@ door_enter :: proc(m, section: u32, dark: bool) -> bool {
 		if d.world == {m, section} {
 			interiors.enter_shift = door_shift(&d) * TARGET_PER_CELL / VIEW_PER_CELL
 			interiors.enter_quad, interiors.enter_front = door_inset(&d)
+			interiors.enter_ground, interiors.enter_there = d.ground, d.there
 			interiors.enter_ok = true
 		}
 	}
@@ -2020,6 +2026,14 @@ world_enter :: proc(w: ^World) {
 		copy(psx.mem_slice(fade_sp, FADE_FRAME), fading[:])
 	}
 	take(w, MAP_DATA, w.map_end)
+	// The room's ground below the town's: a door pass finds it (Door.dy),
+	// but none may have run, and with none the party walked in at the
+	// town's height until the game set it down a frame later, its camera
+	// jumping after it.
+	if interiors.enter_ok {
+		section := w.key[1]
+		interiors.enter_shift.y = interiors.enter_ground - ground(section, interiors.enter_there, section)
+	}
 	third_person_game_fields_put(w.camera)
 	copy(psx.mem_slice(SOUND_VOICES[0], u32(len(voices))), voices[:])
 	copy(psx.mem_slice(SOUND_SLOT, u32(len(slots))), slots[:])

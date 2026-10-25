@@ -677,8 +677,21 @@ of the table draws with a depth buffer (`psx/depth_buffer.odin`):
   pixel drawn in full writes (not see-through texels, ghosts or faded
   pixels), keeping the nearer depth. A pixel passes when no more than a
   bias behind the one there: `Z_BIAS` 2 steps for polygons, 48 for sprites
-  (their feet run onto the ground in front), plus depth >> 7. Among those
-  passing the later one wins, as in the table.
+  (their feet run onto the ground in front), plus depth >> 7 for all but
+  world quads, whose depths are exact (`Z_Exact`). Among those passing the
+  later one wins, as in the table.
+- **Decals.** Map art paints detail as quads lying in another's plane: an
+  awning's scalloped valance over a stall's wall top in Sarai shares the
+  top's plane and corners. The table orders the two by their farthest
+  corners, which trade places as the camera moves, so the valance showed
+  in some frames and was covered in others (with smooth motion off and on
+  the CPU renderer too). `world_decals_mark` (world.odin) runs once per
+  walk, at its first world-quad lookup: it sorts the walk's quads by view
+  x and marks each one inside another's bounds, within 0.5 units of its
+  plane and under 0.9 of its area. A decal's depth is taken `Z_LIFT` (4
+  units, past `Z_BIAS`) nearer (`Prim_Mode.decal`, GL `Z_Decal`), so the
+  surface under it never draws over it. Sarai: about 500 quads a walk, 10%
+  of them decals, 0.25 ms a walk.
 - **No clears.** A buffer word is the walk's key `(0xffff - walk) << 16`
   plus the depth in quarter view units, so an earlier walk's word is larger
   than any of this one's and counts as empty; keeping the nearer is one
@@ -700,7 +713,22 @@ of the table draws with a depth buffer (`psx/depth_buffer.odin`):
   third-person this way (Wyndia's dog, every talk). `psx.screen_add(lo, hi)`
   files a packet range as screen drawing: `exec_polygon` gives prims in it
   no depth and skips the Flats. The third-person hook on `FACE_DRAW`
-  (0x801516ec) files the portrait's packets.
+  (0x801516ec) files the portrait's packets. The list holds `MAX_SCREENS`
+  runs and a full one drops its oldest: a portrait is filed every frame,
+  each run good for `PORTAL_VBLANKS`, and its packets move on as its text
+  grows, so the runs still good stop overlapping the new one. Refusing the
+  new run when full left the portrait missing for a frame every few text
+  characters.
+- **Sprites taking the ground's depth.** `depth_fill` matches a corner to
+  the vertices projected at its pixel, and a sprite's corner can land on a
+  ground corner's pixel. One such corner gave the sprite a depth, so
+  `exec_polygon` skipped its Flat (only prims with no depth looked one up)
+  and drew it as scenery: the leader came out ghosted by see-through with
+  his shadow gone, and an NPC's shadow behind a raised roof drew over the
+  roof as a dark wedge (Sarai market, walking north beside the block). In
+  that replay about 7% of sprite quads hit a projected corner; no packet
+  inside a Flat ever had all its corners projected. A packet filed by
+  `see_flat_add` now skips `depth_fill` and always takes its Flat.
 
 Software and GL agree in Sarai except where the raster already differed (a
 1-step colour difference on one 2x2 block at present 3200).
@@ -731,6 +759,11 @@ builds, culls and orders every packet; only where the corners land changes.
   (`world_quad_add`), for the textured quad and its fog G4. A table
   (open addressing, generation per ordering-table walk, undone after
   frozen-time passes like the depth cache) holds them until `see_end`.
+  A frozen-time pass (an in-between picture) files under a generation of
+  its own (`world_undo_begin`): under the real frame's, which was filed
+  since and walks later, a pass packet at one of its quads' addresses that
+  is no world quad (a model's polygon) took that quad's corners, a brown
+  slab over the party for the first frames in the bar of 1000.
   Backface and cull tests use the view-space corners
   (`world_may_show`: all four corners behind the near plane or past the
   same side of the screen).

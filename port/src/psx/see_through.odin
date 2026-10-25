@@ -341,8 +341,13 @@ screen_add :: proc(lo, hi: u32) {
 		}
 	}
 	screens.n = kept
+	// Full: the oldest gives way. A portrait is filed every frame and good
+	// for PORTAL_VBLANKS, and its packets move on as its text grows, so the
+	// runs still good need not overlap the new one; refusing it left the
+	// quad drawn next to a stale sprite run, hidden for a frame.
 	if screens.n == MAX_SCREENS {
-		return
+		copy(screens.list[:], screens.list[1:])
+		screens.n -= 1
 	}
 	screens.list[screens.n] = {lo, hi, now}
 	screens.n += 1

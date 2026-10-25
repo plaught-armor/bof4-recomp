@@ -9,6 +9,8 @@
 package psx
 
 import "core:math"
+import "core:math/linalg"
+import "core:slice"
 
 // The view depth (view units; a cell is 128) a world polygon is cut at.
 WORLD_NEAR :: f32(2)
@@ -27,32 +29,37 @@ WORLD_CORNERS :: 8
 
 // One world quad's packet: its address, the walk it is for (gen against
 // world_quads.now), its corners in view space in packet order (0 1 / 2 3),
-// and the GTE's H and screen offset it was projected with.
+// the GTE's H and screen offset it was projected with, and whether it is a
+// decal (world_decals_mark).
 @(private)
 World_Quad :: struct {
 	key, gen: u32,
 	p:        [4][3]f32,
 	h:        f32,
 	of:       [2]f32,
+	decal:    bool,
 }
 
 // Quads filed since the last ordering-table walk: open addressing, a slot
-// counting only when its gen is `now`.
+// counting only when its gen is `now`; whether the walk's decals are
+// marked.
 @(private)
 world_quads: struct {
-	slots: [WORLD_SLOTS]World_Quad,
-	now:   u32,
+	slots:  [WORLD_SLOTS]World_Quad,
+	now:    u32,
+	marked: bool,
 }
 
 // What a frozen-time pass changed in world_quads, to undo at restore (as
 // Depth_Undo).
 @(private)
 World_Undo :: struct {
-	kept: [WORLD_SLOTS / 64]u64,
-	slot: [WORLD_SLOTS]u32,
-	old:  [WORLD_SLOTS]World_Quad,
-	n:    u32,
-	now:  u32,
+	kept:   [WORLD_SLOTS / 64]u64,
+	slot:   [WORLD_SLOTS]u32,
+	old:    [WORLD_SLOTS]World_Quad,
+	n:      u32,
+	now:    u32,
+	marked: bool,
 }
 
 // Whether the world is drawn in 3D now: the third-person field.
@@ -101,7 +108,7 @@ world_quad_add :: proc(addr: u32, p: [4][3]f32) #no_bounds_check {
 		e := &w.slots[s]
 		if e.gen != w.now || e.key == 0 || e.key == key {
 			world_keep(s)
-			e^ = {key, w.now, p, h, of}
+			e^ = {key, w.now, p, h, of, false}
 			return
 		}
 		s = (s + 1) & (WORLD_SLOTS - 1)
@@ -112,6 +119,9 @@ world_quad_add :: proc(addr: u32, p: [4][3]f32) #no_bounds_check {
 @(private)
 world_quad :: proc(addr: u32) -> (^World_Quad, bool) #no_bounds_check {
 	w := &world_quads
+	if !w.marked {
+		world_decals_mark()
+	}
 	key := addr & 0x1ffffc | 1 << 31
 	s := world_slot(key)
 	for _ in 0 ..< WORLD_RUN {
@@ -131,12 +141,105 @@ world_quad :: proc(addr: u32) -> (^World_Quad, bool) #no_bounds_check {
 @(private)
 world_walk_end :: proc() {
 	world_quads.now += 1
+	world_quads.marked = false
+}
+
+// Units a quad's corners may stray from another's plane and bounds and still
+// lie in them (view-space rounding), and the most of the other's area it may
+// cover.
+@(private = "file")
+DECAL_SLACK :: f32(0.5)
+@(private = "file")
+DECAL_SHARE :: f32(0.9)
+
+// A filed quad's view-space bounds, by slot.
+@(private = "file")
+Decal_Box :: struct {
+	lo, hi: [3]f32,
+	slot:   u32,
+}
+
+@(private = "file")
+decal_boxes: [WORLD_SLOTS]Decal_Box
+
+// Mark the walk's decals: quads lying in another's plane, inside its bounds
+// and smaller, as the scalloped valance of an awning painted over a wall
+// top. The table orders the two by their farthest corners, which trade
+// places as the camera moves, so the depth buffer takes a decal nearer
+// (Z_LIFT) to keep it over the surface it lies on.
+@(private = "file")
+world_decals_mark :: proc() #no_bounds_check {
+	w := &world_quads
+	w.marked = true
+	n := 0
+	for &e, s in w.slots {
+		if e.gen != w.now || e.key == 0 {
+			continue
+		}
+		b := &decal_boxes[n]
+		b.lo, b.hi, b.slot = e.p[0], e.p[0], u32(s)
+		for c in e.p[1:] {
+			for k in 0 ..< 3 {
+				b.lo[k] = min(b.lo[k], c[k])
+				b.hi[k] = max(b.hi[k], c[k])
+			}
+		}
+		n += 1
+	}
+	boxes := decal_boxes[:n]
+	slice.sort_by(boxes, proc(a, b: Decal_Box) -> bool {return a.lo.x < b.lo.x})
+	for &a, i in boxes {
+		for &b in boxes[i + 1:] {
+			if b.lo.x > a.hi.x + DECAL_SLACK {
+				break
+			}
+			if decal_in(b, a) {
+				world_keep(b.slot)
+				w.slots[b.slot].decal = true
+			} else if decal_in(a, b) {
+				world_keep(a.slot)
+				w.slots[a.slot].decal = true
+			}
+		}
+	}
+}
+
+// Whether quad q lies in quad p's plane and bounds, covering less of it
+// than DECAL_SHARE.
+@(private = "file")
+decal_in :: proc(q, p: Decal_Box) -> bool #no_bounds_check {
+	for k in 0 ..< 3 {
+		if q.lo[k] < p.lo[k] - DECAL_SLACK || q.hi[k] > p.hi[k] + DECAL_SLACK {
+			return false
+		}
+	}
+	pc, qc := &world_quads.slots[p.slot].p, &world_quads.slots[q.slot].p
+	// Twice the area along the normal, from the diagonals (0 1 / 2 3).
+	nrm := linalg.cross(pc[3] - pc[0], pc[2] - pc[1])
+	l := linalg.length(nrm)
+	if l < 1 || linalg.length(linalg.cross(qc[3] - qc[0], qc[2] - qc[1])) >= l * DECAL_SHARE {
+		return false
+	}
+	for c in qc {
+		if abs(linalg.dot(nrm, c - pc[0])) > DECAL_SLACK * l {
+			return false
+		}
+	}
+	return true
 }
 
 @(private)
 world_undo_begin :: proc(u: ^World_Undo) {
 	assert(u.n == 0, "world undo log not empty")
 	u.now = world_quads.now
+	u.marked = world_quads.marked
+	// The pass files its quads under a walk of its own: the frame drawn
+	// since (whose walk is still to come) filed its quads under `now`, and
+	// a packet of the pass at one of their addresses that is no world quad
+	// (a model's polygon) took that quad's corners, a stray slab over the
+	// field.
+	world_quads.now += 1
+	world_quads.marked = false
 }
 
 @(private)
@@ -149,6 +252,7 @@ world_undo_end :: proc(u: ^World_Undo) #no_bounds_check {
 	}
 	u.n = 0
 	w.now = u.now
+	w.marked = u.marked
 }
 
 // Slot s is about to change: inside a pass, log it first.

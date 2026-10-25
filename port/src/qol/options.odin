@@ -93,7 +93,7 @@ OPTIONS_PAGE_MAX :: 10
 
 // Options in all; checked against the table as it is built.
 @(private)
-OPTION_COUNT :: 68
+OPTION_COUNT :: 69
 
 @(private)
 options: [OPTION_COUNT]Option
@@ -168,6 +168,7 @@ options_init :: proc() {
 		{page = .Options, section = "camera", key = "stick_all_maps", label = "All maps", help = "Free turning on fixed-angle maps too", value = &config.camera_stick_all_maps},
 		{page = .Options, section = "camera", key = "mouse", label = "Mouse", help = "Right-button drag turns the camera", value = &config.camera_mouse, apply = apply_mouse},
 		{page = .Options, section = "camera", key = "mouse_speed", label = "M speed", help = "Degrees per pixel of drag", value = &config.camera_mouse_speed, lo = 0.01, hi = MAX_MOUSE_SPEED, step = 0.05, format = "%.2f"},
+		{page = .Options, section = "mouse", key = "menus", label = "M menus", help = "Pointer picks menu rows", value = &config.mouse_menus},
 		{page = .Options, section = "camera", key = "screen_shake", label = "Shake", help = "Camera shake of attacks and events", value = &config.camera_screen_shake},
 		{page = .Options, section = "camera", key = "third_person", label = "3rd cam", help = "Camera follows behind the leader on the field", value = &config.camera_third_person},
 	}

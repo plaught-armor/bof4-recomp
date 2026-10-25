@@ -31,6 +31,7 @@
 //                     enters it)
 //   log TEXT          print TEXT
 //   poke A V          write byte V to RAM address A (hex), to set up a test
+//   point X Y         move the mouse pointer to display pixel X, Y
 //   grid              print the leader's collision grid ('#' wall, 'E' exit,
 //                     '/' stairs, '@' the leader), to plan routes, then
 //                     the raw attributes of the cells around the leader
@@ -181,6 +182,7 @@ Op :: enum u8 {
 	Until_World,
 	Log,
 	Poke,
+	Point,
 	Grid,
 	Snap,
 	Edit,
@@ -519,6 +521,10 @@ parse_step :: proc(line: string) -> (s: Step, ok: bool) {
 		s.op = .Poke
 		s.a = num(words, 1, 16) or_return
 		s.b = num(words, 2) or_return
+	case "point":
+		s.op = .Point
+		s.a = num(words, 1) or_return
+		s.b = num(words, 2) or_return
 	case "grid":
 		s.op = .Grid
 	case "snap":
@@ -728,6 +734,9 @@ run_step :: proc(s: ^Step) -> bool {
 	case .Poke:
 		psx.sb(u32(s.a), u32(s.b))
 		fmt.eprintfln("autoplay: poke %08x = %d", u32(s.a), s.b)
+		return true
+	case .Point:
+		psx.pointer_move({f32(s.a), f32(s.b)})
 		return true
 	case .Grid:
 		print_grid()

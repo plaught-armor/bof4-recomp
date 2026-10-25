@@ -103,6 +103,7 @@ host: struct {
 	stick_script: [dynamic]Scripted_Stick,
 	poke_script: [dynamic]Scripted_Poke,
 	drag_script: [dynamic]Scripted_Drag,
+	point_script: [dynamic]Scripted_Point,
 	audio_dev:   sdl.AudioDeviceID,
 	// The audio subsystem started; audio_apply opens the device.
 	audio_ok:    bool,
@@ -332,6 +333,9 @@ platform_init :: proc(title: cstring) -> bool {
 	}
 	if spec := os.get_env("BOF4_DRAG", context.temp_allocator); spec != "" {
 		parse_drag_script(spec)
+	}
+	if spec := os.get_env("BOF4_POINT", context.temp_allocator); spec != "" {
+		parse_point_script(spec)
 	}
 	return record_init() && audio_init()
 }
@@ -924,6 +928,7 @@ present :: proc() {
 	trace_window()
 	run_poke_script()
 	run_drag_script()
+	run_point_script()
 	if .Perf in trace.active {
 		perf_report()
 	}

@@ -12,6 +12,8 @@
 //                            analog sticks from that present on, each axis
 //                            as the hex bits of its f32 so replay is exact
 //   D <present> <x> <y>      camera drag taken at that present (y optional)
+//   C <present> <x> <y>      pointer moved to display pixel (x, y), as a
+//                            menu took it at that present
 //   P <present> 0            panel shown or hidden (it takes the pad); only
 //                            older recordings have these, from the F2 key
 //                            the port no longer has
@@ -133,6 +135,13 @@ record_drag :: proc(pixels: [2]f32) {
 	}
 }
 
+@(private)
+record_point :: proc(pos: [2]f32) {
+	if debug.rec != nil {
+		record_write(fmt.tprintf("C %d %v %v\n", host.presents, pos.x, pos.y))
+	}
+}
+
 // Replay the panel toggles and timing changes due at this present, and note
 // a timing change in the record; called before it counts.
 @(private)
@@ -224,7 +233,7 @@ replay_load :: proc(path: string) -> bool {
 		fmt.eprintln("BOF4_REPLAY: cannot read", path, err)
 		return false
 	}
-	presses, drags, moves := 0, 0, 0
+	presses, drags, moves, points := 0, 0, 0, 0
 	open, open_stick := -1, -1
 	charge_native = true
 	for line, n in strings.split_lines(string(data), context.temp_allocator) {
@@ -233,7 +242,7 @@ replay_load :: proc(path: string) -> bool {
 			continue
 		}
 		at, at_ok := u64(0), false
-		if len(f) == 3 || (f[0] == "D" && len(f) == 4) || (f[0] == "S" && len(f) == 6) {
+		if len(f) == 3 || (f[0] == "D" && len(f) == 4) || (f[0] == "C" && len(f) == 4) || (f[0] == "S" && len(f) == 6) {
 			at, at_ok = strconv.parse_u64(f[1])
 		}
 		if !at_ok {
@@ -269,6 +278,14 @@ replay_load :: proc(path: string) -> bool {
 			}
 			append(&host.drag_script, Scripted_Drag{at = at, pixels = px, hold = 1})
 			drags += 1
+		case "C":
+			px, ok := parse_drag_pixels(strings.join(f[2:], "/", context.temp_allocator))
+			if !ok {
+				fmt.eprintf("BOF4_REPLAY: %s:%d: bad pointer %q\n", path, n + 1, line)
+				return false
+			}
+			append(&host.point_script, Scripted_Point{at = at, pos = px})
+			points += 1
 		case "S":
 			if !replay_stick(f[2:], at, &open_stick) {
 				fmt.eprintf("BOF4_REPLAY: %s:%d: bad sticks %q\n", path, n + 1, line)
@@ -293,7 +310,7 @@ replay_load :: proc(path: string) -> bool {
 			return false
 		}
 	}
-	fmt.eprintf("replay: %d presses, %d drags, %d stick moves from %s%s\n", presses, drags, moves, path,
+	fmt.eprintf("replay: %d presses, %d drags, %d stick moves, %d pointer moves from %s%s\n", presses, drags, moves, points, path,
 		charge_native ? " (old timing: native code charges game cycles)" : "")
 	return true
 }

@@ -77,7 +77,8 @@ up, fix or open up what it already does.
   specials (Phoenix, Mudslide, Ice Sword, Reflect) and their recipes. The
   Journal says where he was last seen and which scene to try.
 - Dialogue portraits no longer vanish in third-person (a stale sprite depth
-  at a reused packet address hid them).
+  at a reused packet address hid them), nor blink out for a frame while
+  their text prints.
 - **Dengeki store** (off by default): the store cut from the US release
   reopened in a forest south-west of Mt. Glom, in English when the files from
   `bof4tools dengeki-patch` are present.
@@ -106,6 +107,11 @@ up, fix or open up what it already does.
   in use (pad or keyboard/mouse).
 - Full keyboard, mouse and controller rebinding (`[keys]`, `[pad]`, and the
   game's action buttons in `[controller]`), rebindable in game.
+- Mouse menus (`[mouse] menus`): moving the pointer over a row of any menu
+  drawn with the game's highlight bar (CURSOR_DRAW 0x80151f54, style 0 =
+  the list taking input) taps Up/Down until the bar is under it; a click
+  during the move confirms on arrival. Battle command menus draw their own
+  cursors and are not covered.
 
 ## Battle
 

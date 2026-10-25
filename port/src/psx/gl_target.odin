@@ -109,6 +109,8 @@ Gl_Flag :: enum u32 {
 	Z_Test,
 	Z_Write,
 	Z_Plane,
+	Z_Exact,
+	Z_Decal,
 }
 
 @(private)
@@ -394,9 +396,10 @@ const int F_RECT = 1 << 0, F_TEXTURED = 1 << 1, F_RAW = 1 << 2, F_SEMI = 1 << 3,
 	F_SEE_ACTIVE = 1 << 12, F_SEE_DIRECT = 1 << 13, F_READ_OK = 1 << 14,
 	F_FLIP_X = 1 << 15, F_FLIP_Y = 1 << 16, F_GHOST_ACC = 1 << 18, F_SMOOTH = 1 << 22,
 	F_GLOW = 1 << 23, F_SMOOTH_ALL = 1 << 24, F_FOG = 1 << 25, F_Z_TEST = 1 << 26,
-	F_Z_WRITE = 1 << 27, F_Z_PLANE = 1 << 28;
-// depth_buffer.odin's Z_BIAS, Z_BIAS_SPRITE, Z_BIAS_SHIFT.
+	F_Z_WRITE = 1 << 27, F_Z_PLANE = 1 << 28, F_Z_EXACT = 1 << 29, F_Z_DECAL = 1 << 30;
+// depth_buffer.odin's Z_BIAS, Z_BIAS_SPRITE, Z_BIAS_SHIFT, Z_LIFT.
 const uint Z_BIAS = 8u, Z_BIAS_SPRITE = 192u, Z_BIAS_SHIFT = 7u;
+const float Z_LIFT = 4.0;
 // gpu.odin's GLOW_FLOOR.
 const int GLOW_FLOOR = 48;
 
@@ -718,6 +721,9 @@ void main() {
 			precise float iz = max(intBitsToFloat(P.w.x) * sy + intBitsToFloat(P.w.y), intBitsToFloat(P.w.z));
 			zd = iz > 0.0 ? 1.0 / iz : 0.0;
 		}
+		if ((fl & F_Z_DECAL) != 0) {
+			zd = max(zd - Z_LIFT, 0.5 * zd);
+		}
 		if (zd > 0.0) {
 			uint key = uint(P.e.y) << 16;
 			zw = key | z_step(zd);
@@ -725,7 +731,7 @@ void main() {
 			uint d = s & 0xffffu;
 			bool sprite = (fl & F_Z_PLANE) != 0;
 			if (zpass == 0 && (s >> 16) == (key >> 16) &&
-				(zw & 0xffffu) > d + (sprite ? Z_BIAS_SPRITE : Z_BIAS) + (d >> Z_BIAS_SHIFT)) {
+				(zw & 0xffffu) > d + (sprite ? Z_BIAS_SPRITE : Z_BIAS) + ((fl & F_Z_EXACT) != 0 ? 0u : d >> Z_BIAS_SHIFT)) {
 				discard;
 			}
 		}
@@ -2141,6 +2147,8 @@ gl_queue_tri :: proc(t: ^Target, d: ^Draw) {
 	if m.z_mode != .Off && e.z_key != 0 {
 		f += {.Z_Test}
 		if m.z_mode == .Write {f += {.Z_Write}}
+		if m.world {f += {.Z_Exact}}
+		if m.decal {f += {.Z_Decal}}
 		p.e.y = f32(e.z_key >> 16)
 		// A sprite is never mapped with perspective: w is free.
 		if m.z_plane != {} {
