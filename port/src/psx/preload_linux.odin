@@ -4,6 +4,8 @@ package psx
 import "core:sys/linux"
 import "core:sys/posix"
 
+import "ps:core"
+
 @(private = "file")
 PR_SET_PDEATHSIG :: 1
 
@@ -30,8 +32,8 @@ preload_fork :: proc() -> (pid: i32, ok: bool) {
 		}
 		preload_child = true
 		gl_fork_child()
-		host.audio_dev = 0
-		host.audio_dump = nil
+		core.audio.dev = 0
+		core.audio.dump = nil
 		// The input record is the parent's: the child's own pad reads would
 		// land in it out of order.
 		record_close()

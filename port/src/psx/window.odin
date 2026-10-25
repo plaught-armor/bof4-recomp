@@ -169,8 +169,8 @@ set_paused :: proc(on: bool, from_focus: bool) {
 		rumble_stop()
 		mouse_release()
 	}
-	if host.audio_dev != 0 {
-		sdl.PauseAudioDevice(host.audio_dev, sdl.bool(on))
+	if core.audio.dev != 0 {
+		sdl.PauseAudioDevice(core.audio.dev, sdl.bool(on))
 	}
 	if .Perf in core.trace.active {
 		core.tracef(.Perf, "paused %v", on)

@@ -62,7 +62,7 @@ Scripted input without a recording (all lists are comma-separated):
 | `BOF4_MAPS=<dir>` | load `<map>.blk` from there in place of a map's data block and apply `<map>.edit` patches; the F4 map editor saves there (default `maps`), see field.md Edited maps |
 | `BOF4_SPRITES=<dir>` | write every distinct texture rectangle a 4- or 8-bit textured polygon or rectangle draws as a PNG in its CLUT's colours (index 0 transparent), named `<tex x>_<tex y>_<clut x>_<clut y>_<u>_<v>_<w>x<h>.png`; rectangles under 8 pixels are skipped, duplicates too, at most 20000 (`psx/sprite_dump.odin`). Collects coloured sprites while VRAM holds them, e.g. for reference art |
 | `BOF4_RAMDUMP=<file>` | save main RAM at exit (also when an autopilot script ends or times out) |
-| `BOF4_AUDIO_DUMP=<file>` | write the audio output (s16le, 44100 Hz, stereo) |
+| `BOF4_AUDIO_DUMP=<file>` | write the audio output as a WAV file (16-bit stereo, 44100 Hz), its header kept valid every second so a killed run still leaves a readable file |
 | `BOF4_CAPTURE=<file.mkv>` | record the window as a 60 fps video on the wall clock, from present `BOF4_CAPTURE_FROM` (default 1); a picture shown late is repeated for as long as it stayed up, so stalls show as they were seen. Run paced (no `BOF4_FAST`); needs `ffmpeg` on the PATH; Matroska survives the process being killed |
 
 A RAM dump is 2 MiB, address 0x80000000 at offset 0.

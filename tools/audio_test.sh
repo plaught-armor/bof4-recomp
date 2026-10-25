@@ -24,7 +24,7 @@ rec=$!
 sleep 0.5
 status=0
 env SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=pulseaudio PULSE_SINK=bof4_test \
-	BOF4_TRACE=qol,perf BOF4_AUDIO_DUMP="$out/mixed.raw" "$@" \
+	BOF4_TRACE=game,perf BOF4_AUDIO_DUMP="$out/mixed.wav" "$@" \
 	timeout 600 ./bof4 > "$out/log" 2>&1 || status=$?
 sleep 0.5
 kill -INT $rec

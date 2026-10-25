@@ -23,6 +23,8 @@ import "core:strings"
 
 import "../psx"
 
+import "ps:core"
+
 @(private)
 Options_Page :: enum u8 {
 	// The Extras pages.
@@ -134,7 +136,7 @@ options_init :: proc() {
 		{page = .Enemies, section = "battle", key = "ai_moods", label = "Moods", help = "Enemy personalities react to how the fight goes", value = &config.battle_ai_moods},
 		{page = .Pace, section = "disc", key = "instant_loading", label = "Fast loads", help = "Skip loads behind a still screen", value = &config.disc_instant_loading, apply = apply_disc},
 		{page = .Pace, section = "disc", key = "skip_black", label = "Skip black", help = "Full speed while the screen is black", value = &config.disc_skip_black, apply = apply_disc},
-		{page = .Pace, section = "minigame", key = "speed", label = "Minigames", help = "Fishing, Sandflier hunt and Kecak", value = &config.minigame_speed, lo = psx.MIN_SPEED, hi = 1, step = 0.25, format = "x%.2f"},
+		{page = .Pace, section = "minigame", key = "speed", label = "Minigames", help = "Fishing, Sandflier hunt and Kecak", value = &config.minigame_speed, lo = core.AUDIO_MIN_SPEED, hi = 1, step = 0.25, format = "x%.2f"},
 		{page = .Pace, section = "battle", key = "skip_seen", label = "Skip seen", help = "Hurry through skill cinematics seen once", value = &config.battle_skip_seen},
 		{page = .System, section = "save", key = "anywhere", label = "Save anywhere", help = "The camp menu's Save works everywhere", value = &config.save_anywhere},
 		{page = .System, section = "save", key = "autosave", label = "Autosave", help = "Save on each new map, to card 2", value = &config.autosave},
@@ -156,7 +158,7 @@ options_init :: proc() {
 		{page = .Display, section = "window", key = "smooth_effects", label = "Soft FX", help = "Soften see-through effect textures", value = &config.window_smooth_effects, apply = apply_effects},
 		{page = .Display, section = "window", key = "smooth_textures", label = "Soft texels", help = "Smooth texel edges of the world and people", value = &config.window_smooth_textures, apply = apply_effects},
 		{page = .Display, section = "window", key = "bloom_effects", label = "Glow FX", help = "Light around glowing effects", value = &config.window_bloom_effects, apply = apply_effects},
-		{page = .Options, section = "audio", key = "latency_ms", label = "Latency", help = "Lower answers sooner; raise if crackly", value = &config.audio_latency_ms, lo = psx.AUDIO_LATENCY_MIN, hi = psx.AUDIO_LATENCY_MAX, step = 10, format = "%.0f ms", apply = apply_audio},
+		{page = .Options, section = "audio", key = "latency_ms", label = "Latency", help = "Lower answers sooner; raise if crackly", value = &config.audio_latency_ms, lo = core.AUDIO_LATENCY_MIN, hi = core.AUDIO_LATENCY_MAX, step = 10, format = "%.0f ms", apply = apply_audio},
 		{page = .Options, section = "text", key = "instant", label = "Instant", help = "Show each page of a message at once", value = &config.text_instant},
 		{page = .Options, section = "text", key = "hold_to_advance", label = "Hold msg", help = "Holding confirm turns the pages", value = &config.text_hold_to_advance},
 		{page = .Options, section = "move", key = "stick", label = "Analog", help = "Left stick walks at its exact angle", value = &config.move_stick},
@@ -328,7 +330,7 @@ apply_window :: proc() {
 
 @(private = "file")
 apply_audio :: proc() {
-	psx.audio_apply(config.audio_latency_ms)
+	core.audio_apply(config.audio_latency_ms)
 }
 
 @(private = "file")

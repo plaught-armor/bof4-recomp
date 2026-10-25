@@ -460,7 +460,7 @@ SPU_HANDOFF :: 4
 @(private)
 spu_event :: proc() {
 	// Counted from the due cycle: from the handling one, the batches fell
-	// about 0.9% short of 44100 Hz, more than audio_step corrects, and the
+	// about 0.9% short of 44100 Hz, more than core.audio_push corrects, and the
 	// host queue ran dry every few seconds.
 	schedule_period(.Spu, SAMPLE_CYCLES * SPU_BATCH)
 	m := &spu_mixer

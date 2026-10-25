@@ -109,62 +109,12 @@ host: struct {
 	poke_script: [dynamic]Scripted_Poke,
 	drag_script: [dynamic]Scripted_Drag,
 	point_script: [dynamic]Scripted_Point,
-	audio_dev:   sdl.AudioDeviceID,
-	// The audio subsystem started; audio_apply opens the device.
-	audio_ok:    bool,
-	// Frames to keep in the host queue, from the latency setting.
-	audio_target: int,
-	// Since the last .Perf report: times the queue ran dry, and batches
-	// dropped for a queue over target.
-	audio_dry:     int,
-	audio_dropped: int,
-	// Since the last .Perf report: frames mixed, which over the cycles run
-	// should come to 44100 Hz (the host can only correct AUDIO_RATE_MAX
-	// off it), and the lowest the host queue was when a batch came.
-	audio_mixed:   int,
-	audio_low:     int,
+	// Cycles run at the last .Perf report, for its audio mix rate.
 	perf_cycles:   u64,
-	// Resampling state: output position within the batch being read (in
-	// input frames), and the last input frame of the previous batch.
-	stretch_pos:  f64,
-	stretch_prev: [2]i16,
-	stretch_buf:  [AUDIO_STRETCH_MAX][2]i16,
-	// Zeros queued after the device ran dry.
-	silence:      [AUDIO_HZ * AUDIO_LATENCY_MAX / 1000][2]i16,
-	// BOF4_AUDIO_DUMP: raw s16le stereo 44100 Hz copy of everything mixed.
-	audio_dump:  ^os.File,
 }
 
 @(private)
 AUDIO_HZ :: 44100
-
-// Range of the output latency setting, in ms: queued sound plus the device's
-// own buffer.
-AUDIO_LATENCY_MIN :: 20
-AUDIO_LATENCY_MAX :: 250
-
-// Largest playback rate correction that keeps the queue at its target: 0.5%,
-// about 9 cents of pitch.
-@(private)
-AUDIO_RATE_MAX :: 0.005
-
-// Queue beyond the target before new batches are dropped: two vblanks of
-// sound. Paced emulation makes a vblank's sound in one burst, so the queue
-// swings by one vblank; it outgrows this only while emulation runs ahead
-// (battle speed). During fast-forward batches are dropped from the target
-// on, so the queue is not left long when pacing resumes.
-@(private)
-AUDIO_SLACK :: AUDIO_HZ * 2 / 60
-
-// Slowest emulated speed. Audio below speed 1 is stretched to fill real
-// time, into a buffer sized for this.
-MIN_SPEED :: 0.25
-
-// One mixed batch stretched for the slowest speed, plus one frame for the
-// rate correction (0.5% of 128 frames) and one for the fractional frame a
-// stretch can carry over.
-@(private)
-AUDIO_STRETCH_MAX :: int(SPU_BATCH / MIN_SPEED) + 2
 
 // Debug aid: BOF4_INPUT="<present>:<hex mask>[:<presents>],..." holds each
 // mask from the given present count, for SCRIPT_HOLD presents by default.
@@ -312,7 +262,6 @@ platform_init :: proc(title: cstring) -> bool {
 	host.start = time.tick_now()
 	host.speed = 1
 	host.perf_mark = host.start
-	host.audio_low = max(int)
 	host.dump_dir = os.get_env("BOF4_DUMP", context.allocator)
 	host.unpaced = os.get_env("BOF4_FAST", context.temp_allocator) == "1"
 	host.ram_every = env_period("BOF4_DUMP_RAM", 1500) or_return
@@ -351,152 +300,24 @@ platform_init :: proc(title: cstring) -> bool {
 	if spec := os.get_env("BOF4_POINT", context.temp_allocator); spec != "" {
 		parse_point_script(spec)
 	}
-	return record_init() && audio_init()
-}
-
-// Start the audio subsystem. A missing device leaves the game silent but
-// running; a dump file that cannot be created is an error.
-@(private)
-audio_init :: proc() -> bool {
-	if path := os.get_env("BOF4_AUDIO_DUMP", context.temp_allocator); path != "" {
-		f, err := os.create(path)
-		if err != nil {
-			fmt.eprintln("BOF4_AUDIO_DUMP: cannot create", path, err)
-			return false
-		}
-		host.audio_dump = f
-	}
-	if sdl.InitSubSystem({.AUDIO}) != 0 {
-		fmt.eprintln("audio disabled: SDL_InitSubSystem:", sdl.GetError())
-		return true
-	}
-	host.audio_ok = true
-	return true
-}
-
-// Open the output device for about `latency_ms` from a sound being mixed to
-// it reaching the speakers (plus whatever the OS mixer adds). The device
-// buffer takes about a quarter of it, as a power of two of 256 frames or
-// more; the host queue is kept at the rest.
-audio_apply :: proc(latency_ms: int) {
-	assert(latency_ms >= AUDIO_LATENCY_MIN && latency_ms <= AUDIO_LATENCY_MAX)
-	total := AUDIO_HZ * latency_ms / 1000
-	samples := 256
-	for samples * 2 <= total / 4 && samples < 4096 {
-		samples *= 2
-	}
-	host.audio_target = total - samples
-	if !host.audio_ok {
-		return
-	}
-	if host.audio_dev != 0 {
-		sdl.CloseAudioDevice(host.audio_dev)
-	}
-	want := sdl.AudioSpec {
-		freq     = AUDIO_HZ,
-		format   = sdl.AUDIO_S16LSB,
-		channels = 2,
-		samples  = u16(samples),
-	}
-	host.audio_dev = sdl.OpenAudioDevice(nil, false, &want, nil, {})
-	if host.audio_dev == 0 {
-		fmt.eprintln("audio disabled: SDL_OpenAudioDevice:", sdl.GetError())
-		return
-	}
-	sdl.PauseAudioDevice(host.audio_dev, false)
+	return record_init() && core.audio_init(AUDIO_HZ, os.get_env("BOF4_AUDIO_DUMP", context.temp_allocator))
 }
 
 // A batch of mixed SPU output.
 platform_audio :: proc(frames: [][2]i16) {
-	bytes := len(frames) * size_of([2]i16)
-	host.audio_mixed += len(frames)
-	if host.audio_dump != nil {
-		if _, err := os.write(host.audio_dump, ([^]u8)(raw_data(frames))[:bytes]); err != nil {
-			fmt.eprintln("BOF4_AUDIO_DUMP: write failed:", err)
-			os.close(host.audio_dump)
-			host.audio_dump = nil
-		}
+	pace := core.Audio_Pace.Paced
+	if host.unpaced || skipping {
+		pace = .Off
+	} else if host.fast {
+		pace = .Fast
 	}
-	if host.audio_dev == 0 || host.unpaced || skipping {
-		return
-	}
-	queued := int(sdl.GetQueuedAudioSize(host.audio_dev)) / size_of([2]i16)
-	host.audio_low = min(host.audio_low, queued)
-	if queued > host.audio_target + (host.fast ? 0 : AUDIO_SLACK) {
-		if !host.fast {
-			host.audio_dropped += 1
-		}
-		return
-	}
-	if queued == 0 {
-		host.audio_dry += 1
-		if .Perf in core.trace.active {
-			core.tracef(.Perf, "audio ran dry")
-		}
-		// Ran dry (a slow frame): refill the target at once, or the rate
-		// correction would take seconds and every vblank would click.
-		audio_queue(host.silence[:host.audio_target])
-	}
-	audio_queue(audio_resample(frames, audio_step(queued)))
-}
-
-// Input frames per output frame. Below speed 1, sound is stretched to fill
-// real time: it plays lower and slower, in step with the picture. On top of
-// that, up to AUDIO_RATE_MAX faster or slower keeps the queue at its target
-// against drift between the emulated clock and the sound card's.
-@(private)
-audio_step :: proc(queued: int) -> f64 {
-	error := f64(queued - host.audio_target) / f64(host.audio_target)
-	return min(host.speed, 1) * (1 + AUDIO_RATE_MAX * clamp(error, -1, 1))
-}
-
-// Sound waiting in the host queue, for .Perf reports.
-@(private)
-audio_queued_ms :: proc() -> f64 {
-	if host.audio_dev == 0 {
-		return 0
-	}
-	return f64(sdl.GetQueuedAudioSize(host.audio_dev) / size_of([2]i16)) * 1000 / AUDIO_HZ
-}
-
-
-@(private)
-audio_queue :: proc(frames: [][2]i16) {
-	bytes := len(frames) * size_of([2]i16)
-	if sdl.QueueAudio(host.audio_dev, raw_data(frames), u32(bytes)) != 0 {
-		fmt.eprintln("audio disabled: SDL_QueueAudio:", sdl.GetError())
-		sdl.CloseAudioDevice(host.audio_dev)
-		host.audio_dev = 0
-	}
-}
-
-// Resample a batch to 1/step times its length by linear interpolation. The
-// previous batch's last frame joins the two.
-@(private)
-audio_resample :: proc(frames: [][2]i16, step: f64) -> [][2]i16 {
-	assert(len(frames) <= SPU_BATCH && step >= MIN_SPEED * (1 - AUDIO_RATE_MAX))
-	n := 0
-	for host.stretch_pos < f64(len(frames)) && n < AUDIO_STRETCH_MAX {
-		i := int(host.stretch_pos)
-		t := host.stretch_pos - f64(i)
-		a := i == 0 ? host.stretch_prev : frames[i - 1]
-		b := frames[i]
-		for c in 0 ..< 2 {
-			host.stretch_buf[n][c] = i16(f64(a[c]) + (f64(b[c]) - f64(a[c])) * t)
-		}
-		n += 1
-		host.stretch_pos += step
-	}
-	host.stretch_pos -= f64(len(frames))
-	if len(frames) > 0 {
-		host.stretch_prev = frames[len(frames) - 1]
-	}
-	return host.stretch_buf[:n]
+	core.audio_push(frames, host.speed, pace)
 }
 
 platform_shutdown :: proc() {
 	spu_sync()
 	record_close()
+	core.audio_close()
 	core.capture_close()
 	sdl.DestroyTexture(host.texture)
 	sdl.DestroyTexture(host.held)
@@ -557,7 +378,7 @@ vblank_due_ns :: proc(n: u64) -> i64 {
 // the coming one is due one vblank at the new speed after it, with no gap or
 // burst however often the speed changes.
 set_speed :: proc(speed: f64) {
-	assert(speed >= MIN_SPEED)
+	assert(speed >= core.AUDIO_MIN_SPEED)
 	if speed == host.speed {
 		return
 	}
@@ -585,7 +406,7 @@ VSYNC_SHOWS_MAX :: 4
 // console speed: every emulated vblank then shows for exactly that many
 // display refreshes, with no tearing and no dropped or doubled frame from
 // the two clocks drifting apart. The display clock then sets emulated time;
-// audio_step absorbs its small difference from 60 Hz. Any other refresh rate
+// core.audio_push absorbs its small difference from 60 Hz. Any other refresh rate
 // (144 Hz: 2.4 refreshes a vblank) or speed, or no pacing at all (`paced`
 // false), keeps vsync off.
 // SDL_RenderSetVSync came in SDL 2.0.18, and the SDL2.dll that ships with
@@ -878,14 +699,10 @@ perf_report :: proc() {
 	}
 	now := time.tick_now()
 	secs := time.duration_seconds(time.tick_diff(host.perf_mark, now))
-	mixed_hz := f64(host.audio_mixed) * CPU_HZ * f64(clock_mul) / f64(max(cpu.cycles - host.perf_cycles, 1))
-	low_ms := host.audio_low == max(int) ? 0 : f64(host.audio_low) * 1000 / AUDIO_HZ
-	core.tracef(.Perf, "%d presents in %.3f s (%.1f/s), %d cycles, audio mixed %.1f Hz, queued %.1f ms (lowest %.1f), ran dry %d, dropped %d", PERF_PERIOD, secs, f64(PERF_PERIOD) / secs, cpu.cycles, mixed_hz, audio_queued_ms(), low_ms, host.audio_dry, host.audio_dropped)
+	audio := core.audio_take_stats()
+	mixed_hz := f64(audio.mixed) * CPU_HZ * f64(clock_mul) / f64(max(cpu.cycles - host.perf_cycles, 1))
+	core.tracef(.Perf, "%d presents in %.3f s (%.1f/s), %d cycles, audio mixed %.1f Hz, queued %.1f ms (lowest %.1f), ran dry %d, dropped %d", PERF_PERIOD, secs, f64(PERF_PERIOD) / secs, cpu.cycles, mixed_hz, core.audio_queued_ms(), audio.low_ms, audio.dry, audio.dropped)
 	gl_perf()
-	host.audio_dry = 0
-	host.audio_dropped = 0
-	host.audio_mixed = 0
-	host.audio_low = max(int)
 	host.perf_cycles = cpu.cycles
 	host.perf_mark = now
 }
@@ -1115,7 +932,7 @@ fast_forward :: proc() -> bool {
 		if .Perf in core.trace.active {
 			ms := time.duration_milliseconds(time.tick_since(host.fast_start))
 			n := host.presents - host.fast_vblank
-			core.tracef(.Perf, "fast-forward off: %d vblanks in %.1f ms (%.1f ms at console speed), audio queued %.1f ms", n, ms, f64(n) * VBLANK_NS / 1e6, audio_queued_ms())
+			core.tracef(.Perf, "fast-forward off: %d vblanks in %.1f ms (%.1f ms at console speed), audio queued %.1f ms", n, ms, f64(n) * VBLANK_NS / 1e6, core.audio_queued_ms())
 		}
 		host.fast = false
 		pacing_rebase()

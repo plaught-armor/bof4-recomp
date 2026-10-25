@@ -200,6 +200,8 @@ import "core:strings"
 
 import "../psx"
 
+import "ps:core"
+
 Config :: struct {
 	window:                psx.Window_Options,
 	window_smooth_motion:  bool,
@@ -371,7 +373,7 @@ init :: proc() -> bool {
 	psx.depth_of_field = config.window_depth_of_field
 	psx.vignette = config.window_vignette
 	psx.skip_black = config.disc_skip_black
-	psx.audio_apply(config.audio_latency_ms)
+	core.audio_apply(config.audio_latency_ms)
 	psx.pad_set_rumble(1)
 	psx.mouse_drag = config.camera_mouse
 	return psx.window_apply(config.window) && encounter_init() && text_init() && camera_init() && movement_init() && save_init() && tracker_init() && popup_init() && learning_init() && combo_menu_init() && guard_init() && rewards_init() && damage_init() && ai_init() && ko_loss_init() && status_init() && victory_init() && quick_battle_init() && shake_init() && warp_init() && menu_draw_init() && button_text_init() && identify_init() && balance_init() && camp_menu_init() && setting_menu_init() && map_geometry_init() && collision_init() && sections_init() && fade_init() && inbetween_init() && interiors_init() && map_mods_init() && map_editor_init() && mouse_menus_init() && dengeki_init() && restored_init() && teacher_init() && descriptions_init() && npc_swap_init() && cinematics_init() && autoplay_init()
@@ -453,7 +455,7 @@ apply_setting :: proc(section, key, value: string) -> bool {
 	case section == "window":
 		return apply_window_setting(key, value)
 	case section == "audio" && key == "latency_ms":
-		return parse_int(value, psx.AUDIO_LATENCY_MIN, psx.AUDIO_LATENCY_MAX, &config.audio_latency_ms)
+		return parse_int(value, core.AUDIO_LATENCY_MIN, core.AUDIO_LATENCY_MAX, &config.audio_latency_ms)
 	case section == "disc" && key == "instant_loading":
 		return parse_bool(value, &config.disc_instant_loading)
 	case section == "disc" && key == "skip_black":
@@ -537,7 +539,7 @@ apply_setting :: proc(section, key, value: string) -> bool {
 	case section == "battle" && key == "combo_uses":
 		return parse_combo_uses(value, &config.battle_combo_uses)
 	case section == "minigame" && key == "speed":
-		return parse_range(value, psx.MIN_SPEED, 1, &config.minigame_speed)
+		return parse_range(value, core.AUDIO_MIN_SPEED, 1, &config.minigame_speed)
 	case section == "text" && key == "instant":
 		return parse_bool(value, &config.text_instant)
 	case section == "text" && key == "hold_to_advance":
