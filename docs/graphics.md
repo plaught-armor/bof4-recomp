@@ -366,7 +366,7 @@ the picture is captured from the hi-res target, so polygons, rectangles,
 lines and picture lays skip native VRAM. Fills and moves still go to
 both. A pass that reads VRAM it left undrawn (a move or a download from a
 cell drawn hi-only, or a hi-res textured draw from one) sets
-`hi_only.missed`. The pass is then drawn again in full, with a `.Qol`
+`hi_only.missed`. The pass is then drawn again in full, with a `.Game`
 trace ("pass read VRAM it did not draw"); the town replay has none. Room
 passes nested in an in-between pass inherit this; room passes in real
 frames draw both. Whole pass: 3.3 to 2.0 ms, frames identical.
