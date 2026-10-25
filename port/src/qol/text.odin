@@ -22,6 +22,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 TEXT_TICK :: 0x8014c840
 
@@ -58,8 +60,8 @@ text_tick :: proc() {
 		text.original()
 		return
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "text: box %08x state %d, confirm pressed", box, psx.lbu(box))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "text: box %08x state %d, confirm pressed", box, psx.lbu(box))
 	}
 	pressed := psx.lhu(PAD_PRESSED)
 	psx.sh(PAD_PRESSED, pressed | psx.lhu(CONFIRM_MASK))

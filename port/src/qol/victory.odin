@@ -27,6 +27,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 END_ID :: 0x35
 @(private = "file")
@@ -100,8 +102,8 @@ victory_tick :: proc() {
 		victory.tick()
 		return
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "victory: state %d member %d, confirm pressed", state, psx.lbu(COUNT))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "victory: state %d member %d, confirm pressed", state, psx.lbu(COUNT))
 	}
 	pressed := psx.lhu(PAD_PRESSED)
 	psx.sh(PAD_PRESSED, pressed | psx.lhu(CONFIRM_MASK))

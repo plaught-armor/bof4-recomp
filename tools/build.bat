@@ -2,4 +2,5 @@
 rem Build the checkout's tools into tools\bof4tools.exe (see main.odin).
 setlocal
 cd /d "%~dp0"
-odin build . -out:bof4tools.exe -o:speed
+if not defined PS_RECOMP set PS_RECOMP=..\ps-recomp
+odin build . -out:bof4tools.exe -o:speed -collection:ps=%PS_RECOMP%

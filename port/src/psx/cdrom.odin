@@ -7,6 +7,8 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 
+import "ps:core"
+
 @(private)
 SECTOR_SIZE :: 2352
 @(private)
@@ -183,8 +185,8 @@ queue_int :: proc(kind: u8, delay: u64, bytes: ..u8) {
 		delay = delay,
 	}
 	append(&it.bytes, ..bytes)
-	if .Cdrom in trace.active {
-		tracef(.Cdrom, "queue int%d delay %d %x", kind, delay, bytes)
+	if .Cdrom in core.trace.active {
+		core.tracef(.Cdrom, "queue int%d delay %d %x", kind, delay, bytes)
 	}
 	append(&cd.queue, it)
 	if len(cd.queue) == 1 && cd.int_flag == 0 {
@@ -263,8 +265,8 @@ cdrom_read_event :: proc() {
 		queue_int(5, 0, stat_byte() | 0x01, 0x04)
 		return
 	}
-	if .Cdrom in trace.active {
-		tracef(.Cdrom, "sector lba %d", cd.lba)
+	if .Cdrom in core.trace.active {
+		core.tracef(.Cdrom, "sector lba %d", cd.lba)
 	}
 	// A movie's video sectors (data sectors to the drive) begin 60 01 01 80,
 	// with the frame number at +8.
@@ -288,8 +290,8 @@ cdrom_read_event :: proc() {
 @(private)
 cdrom_command :: proc(c: u8) {
 	p := cd.params[:]
-	if .Cdrom in trace.active {
-		tracef(.Cdrom, "command %02x params %x", c, p)
+	if .Cdrom in core.trace.active {
+		core.tracef(.Cdrom, "command %02x params %x", c, p)
 	}
 	cd.busy = true
 	switch c {

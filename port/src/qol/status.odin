@@ -23,6 +23,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 ROUND_ID :: 0x34
 @(private = "file")
@@ -77,8 +79,8 @@ status_init :: proc() -> bool {
 @(private = "file")
 resist_check :: proc() {
 	if psx.lbu(TARGET) < ENEMY_IDS && autoplay_party_unhurt() {
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "status: kind %d on party slot %d misses", psx.cpu.r[4] & 0xff, psx.lbu(TARGET))
+		if .Game in core.trace.active {
+			core.tracef(.Game, "status: kind %d on party slot %d misses", psx.cpu.r[4] & 0xff, psx.lbu(TARGET))
 		}
 		psx.cpu.r[2] = 1
 		return
@@ -115,16 +117,16 @@ resist_check :: proc() {
 	psx.call(RAND)
 	roll := i32(c.r[2]) % 100
 	c.r[2] = 1 if roll >= scaled else 0
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "status: kind %d target %d chance %d -> %d roll %d %s", kind, psx.lbu(TARGET), chance, scaled, roll, "miss" if c.r[2] != 0 else "lands")
+	if .Game in core.trace.active {
+		core.tracef(.Game, "status: kind %d target %d chance %d -> %d roll %d %s", kind, psx.lbu(TARGET), chance, scaled, roll, "miss" if c.r[2] != 0 else "lands")
 	}
 }
 
 @(private = "file")
 status_set :: proc() {
 	if psx.lbu(TARGET) < ENEMY_IDS && autoplay_party_unhurt() {
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "status: bits %04x on party slot %d blocked", psx.cpu.r[4] & 0xffff, psx.lbu(TARGET))
+		if .Game in core.trace.active {
+			core.tracef(.Game, "status: bits %04x on party slot %d blocked", psx.cpu.r[4] & 0xffff, psx.lbu(TARGET))
 		}
 		psx.cpu.r[4] = 0
 	}

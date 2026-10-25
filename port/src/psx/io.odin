@@ -6,6 +6,8 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 
+import "ps:core"
+
 // ---------------------------------------------------------------- timing
 
 CPU_HZ :: 33_868_800
@@ -97,8 +99,8 @@ run_events :: proc() {
 		due := false
 		for e in Event {
 			if events[e] <= cpu.cycles {
-				if .Event in trace.active {
-					tracef(.Event, "%v (due %d)", e, events[e])
+				if .Event in core.trace.active {
+					core.tracef(.Event, "%v (due %d)", e, events[e])
 				}
 				event_due = events[e]
 				events[e] = EVENT_OFF
@@ -161,8 +163,8 @@ irq_regs: struct {
 }
 
 irq_raise :: proc(i: Irq) {
-	if .Irq in trace.active {
-		tracef(.Irq, "raise %v stat=%x mask=%x sr=%x", i, irq_regs.stat, irq_regs.mask, cop0.sr)
+	if .Irq in core.trace.active {
+		core.tracef(.Irq, "raise %v stat=%x mask=%x sr=%x", i, irq_regs.stat, irq_regs.mask, cop0.sr)
 	}
 	irq_regs.stat |= 1 << u32(i)
 	if next_event > cpu.cycles {
@@ -252,8 +254,8 @@ timer_fire :: proc(n: int) {
 		t.value = 0
 	}
 	t.mode |= 0x800 if t.mode & 0x10 != 0 else 0x1000
-	if .Timer in trace.active {
-		tracef(.Timer, "timer%d fire mode=%x target=%x", n, t.mode, t.target)
+	if .Timer in core.trace.active {
+		core.tracef(.Timer, "timer%d fire mode=%x target=%x", n, t.mode, t.target)
 	}
 	irq_raise(Irq(u32(Irq.Timer0) + u32(n)))
 	timer_reschedule(n)
@@ -293,8 +295,8 @@ timer_read :: proc(n: int, reg: u32) -> u32 {
 @(private)
 timer_write :: proc(n: int, reg, v: u32) {
 	t := &timers[n]
-	if .Timer in trace.active {
-		tracef(.Timer, "timer%d write reg%d <- %x", n, reg, v)
+	if .Timer in core.trace.active {
+		core.tracef(.Timer, "timer%d write reg%d <- %x", n, reg, v)
 	}
 	switch reg {
 	case 0:
@@ -318,8 +320,8 @@ memctrl: [16]u32
 
 io_read :: proc(p: u32, size: u32) -> u32 {
 	v := io_read_reg(p, size)
-	if .Io in trace.active {
-		tracef(.Io, "read%d  %08x -> %x ra=%x", size * 8, p, v, cpu.r[31])
+	if .Io in core.trace.active {
+		core.tracef(.Io, "read%d  %08x -> %x ra=%x", size * 8, p, v, cpu.r[31])
 	}
 	return v
 }
@@ -365,8 +367,8 @@ io_read_reg :: proc(p: u32, size: u32) -> u32 {
 }
 
 io_write :: proc(p, v: u32, size: u32) {
-	if .Io in trace.active {
-		tracef(.Io, "write%d %08x <- %x ra=%x", size * 8, p, v, cpu.r[31])
+	if .Io in core.trace.active {
+		core.tracef(.Io, "write%d %08x <- %x ra=%x", size * 8, p, v, cpu.r[31])
 	}
 	switch p {
 	case 0x1f801000 ..< 0x1f801040:
@@ -375,8 +377,8 @@ io_write :: proc(p, v: u32, size: u32) {
 		sio0_write(p - 0x1f801040, v, size)
 	case 0x1f801050 ..< 0x1f801064:
 	case 0x1f801070:
-		if .Irq in trace.active {
-			tracef(.Irq, "ack stat=%x & %x ra=%x", irq_regs.stat, v, cpu.r[31])
+		if .Irq in core.trace.active {
+			core.tracef(.Irq, "ack stat=%x & %x ra=%x", irq_regs.stat, v, cpu.r[31])
 		}
 		irq_regs.stat &= v
 	case 0x1f801074:
@@ -510,8 +512,8 @@ dma_write :: proc(off, v: u32) {
 @(private)
 dma_run :: proc(n: u32) {
 	c := &dma.ch[n]
-	if .Dma in trace.active {
-		tracef(.Dma, "ch%d start madr=%x bcr=%x chcr=%x", n, c.madr, c.bcr, c.chcr)
+	if .Dma in core.trace.active {
+		core.tracef(.Dma, "ch%d start madr=%x bcr=%x chcr=%x", n, c.madr, c.bcr, c.chcr)
 	}
 	switch n {
 	case 2:
@@ -537,8 +539,8 @@ dma_run :: proc(n: u32) {
 
 // Complete channel n: clear its busy bit and raise its interrupt shortly after.
 dma_finish :: proc(n: u32) {
-	if .Dma in trace.active {
-		tracef(.Dma, "ch%d finish", n)
+	if .Dma in core.trace.active {
+		core.tracef(.Dma, "ch%d finish", n)
 	}
 	dma.ch[n].chcr &= ~u32(0x11000000)
 	dma.pending |= 1 << n
@@ -628,7 +630,7 @@ dma_gpu :: proc(c: ^Dma_Channel) {
 			// would walk for ever (it happens for a frame after an instant
 			// door's world switch): the walk ends where it comes round.
 			if dma_walk_seen[a >> 2] == dma_walk_serial {
-				tracef(.Dma, "gpu list: packet %#x linked again from %#x, list ends", a, prev)
+				core.tracef(.Dma, "gpu list: packet %#x linked again from %#x, list ends", a, prev)
 				break
 			}
 			dma_walk_seen[a >> 2] = dma_walk_serial

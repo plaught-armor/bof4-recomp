@@ -27,6 +27,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 ROUND_ID :: 0x34
 
@@ -177,8 +179,8 @@ phase_run :: proc(handler: psx.Func_Proc) {
 		if !step_passed(before, after) || !snapshot_same() {
 			return
 		}
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "quick turns: %08x -> %08x in the same frame", before, after)
+		if .Game in core.trace.active {
+			core.tracef(.Game, "quick turns: %08x -> %08x in the same frame", before, after)
 		}
 		before = after
 		psx.cpu.r = regs

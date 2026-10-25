@@ -17,7 +17,7 @@ instance at a time: two share the memory card files.
 | `BOF4_WARP=map[.section][:x,z]` | every save loaded resumes on that map (hex id, see [story-and-maps.md](story-and-maps.md)), section (decimal) and tile; a section the map lacks hangs the game |
 | `BOF4_FLAGLOG=1` | log every story flag change with the last message shown |
 | `BOF4_NPC_SPRITE=<from>:<to>[:<x>,<z>]` | every NPC spawned with sprite `<from>` (hex) gets sprite `<to>`, standing at tile x,z (decimal) when given; every spawn is printed as `npc sprite S at x,z script N`, so `0:0` lists a map's NPCs. For looking at sprites a map's sprite table lists but no NPC shows (field.md NPCs) |
-| `BOF4_ENEMY_STATS=<hp>,<exp>,<zenny>` | every enemy record gets this HP, EXP and zenny (decimal) before the battle setup copies it; with `[battle] balance` and `BOF4_TRACE=qol` the scaled values are logged as `balance: enemy ...` (battle.md Rebalanced mode) |
+| `BOF4_ENEMY_STATS=<hp>,<exp>,<zenny>` | every enemy record gets this HP, EXP and zenny (decimal) before the battle setup copies it; with `[battle] balance` and `BOF4_TRACE=game` the scaled values are logged as `balance: enemy ...` (battle.md Rebalanced mode) |
 
 ## Recording and replaying
 
@@ -70,7 +70,7 @@ section with an upper floor.
 
 | Variable | Meaning |
 |---|---|
-| `BOF4_TRACE=io,irq,...` | channels to log, or `all`: `io irq event sio timer dma cdrom gpu bios call block interp mem perf qol` |
+| `BOF4_TRACE=io,irq,...` | channels to log, or `all`: `io irq event sio timer dma cdrom gpu bios call block interp mem perf game` |
 | `BOF4_TRACE_AT=10000-10003` | only while the present count is in this range (decimal) |
 | `BOF4_TRACE_PC=80171500-80171900` | limit block, call and interp lines to a PC range (hex) |
 | `BOF4_WATCH=80116d0c[-80116d10]` | log every CPU store into the range (channel `mem`) |

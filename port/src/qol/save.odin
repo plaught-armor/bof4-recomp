@@ -31,6 +31,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 MAP_KIND_WORLD :: 1
 
@@ -123,8 +125,8 @@ map_kind :: proc() {
 	if !config.save_anywhere || ra != CAMP_CONFIRM_RA && ra != CAMP_DRAW_RA || c.r[2] == MAP_KIND_WORLD {
 		return
 	}
-	if ra == CAMP_CONFIRM_RA && .Qol in psx.trace.active {
-		psx.tracef(.Qol, "save: camp menu on map %04x (kind %d), save allowed", map_id & 0xffff, c.r[2])
+	if ra == CAMP_CONFIRM_RA && .Game in core.trace.active {
+		core.tracef(.Game, "save: camp menu on map %04x (kind %d), save allowed", map_id & 0xffff, c.r[2])
 	}
 	c.r[2] = MAP_KIND_WORLD
 }
@@ -167,8 +169,8 @@ autosave :: proc(map_id: u32) {
 		fmt.eprintfln("autosave: writing %s to the slot 2 card failed", name)
 		return
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "save: autosaved map %04x as %s on card 2", map_id, name)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "save: autosaved map %04x as %s on card 2", map_id, name)
 	}
 }
 

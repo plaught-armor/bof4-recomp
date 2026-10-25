@@ -13,6 +13,8 @@ import "core:strconv"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 ACTION_SKILL :: 0x8011e0c2
 
@@ -124,8 +126,8 @@ combos_vblank :: proc() {
 	if config.battle_combos & bit != 0 {
 		return
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "combo %d seen", skill)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "combo %d seen", skill)
 	}
 	combos_add(bit)
 }

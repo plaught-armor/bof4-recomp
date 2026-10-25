@@ -69,6 +69,8 @@ import "core:time"
 
 import "../psx"
 
+import "ps:core"
+
 // Whether doorways show the rooms behind them (pictures), and an instant door
 // lays the town over the room while the camera comes in (door_cover,
 // door_out). Off: a door is a plain cut, the switch alone (user, 2026-10-21:
@@ -599,8 +601,8 @@ world_note :: proc() {
 	w.stepped, w.rand = 0, key[0] ~ 0x9e3779b9
 	world_take(w, key)
 	interiors.noting = w
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "interiors: noting world %04x.%d (sound bank %x..%x)", key[0], key[1], w.bank[0], w.bank[1])
+	if .Game in core.trace.active {
+		core.tracef(.Game, "interiors: noting world %04x.%d (sound bank %x..%x)", key[0], key[1], w.bank[0], w.bank[1])
 	}
 }
 
@@ -733,8 +735,8 @@ interiors_layer_draw :: proc() {
 		// beside a back on it (Sarai 0204.2) is not one.
 		if off, ok := psx.picture_off(d.pic); ok && !on && d.pic_inset == 0 && d.inset == 0 {
 			d.inset = off
-			if .Qol in psx.trace.active {
-				psx.tracef(.Qol, "interiors: %04x.%d inset %v", d.world[0], d.world[1], d.inset)
+			if .Game in core.trace.active {
+				core.tracef(.Game, "interiors: %04x.%d inset %v", d.world[0], d.world[1], d.inset)
 			}
 		}
 		d.pic = -1
@@ -889,10 +891,10 @@ doors_find :: proc(section: u32) {
 		}
 		interiors.n_doors += 1
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "interiors: %d doors in %04x.%d", interiors.n_doors, m, section)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "interiors: %d doors in %04x.%d", interiors.n_doors, m, section)
 		for d in interiors.doors[:interiors.n_doors] {
-			psx.tracef(.Qol, "interiors:   to %04x.%d cells %v quad %v", d.world[0], d.world[1], d.cells, d.quad)
+			core.tracef(.Game, "interiors:   to %04x.%d cells %v quad %v", d.world[0], d.world[1], d.cells, d.quad)
 		}
 	}
 }
@@ -963,8 +965,8 @@ door_cover :: proc() -> f32 {
 	if config.camera_third_person && third_person_keeps() {
 		if interiors.cover_in == 0 && door_lens_in() {
 			interiors.cover_in = now
-			if .Qol in psx.trace.active {
-				psx.tracef(.Qol, "interiors: lens over the room's floor %.0f vblanks after walking in", now - f64(interiors.cover_at))
+			if .Game in core.trace.active {
+				core.tracef(.Game, "interiors: lens over the room's floor %.0f vblanks after walking in", now - f64(interiors.cover_at))
 			}
 		}
 		from = interiors.cover_in != 0 ? interiors.cover_in : max(f64)
@@ -1282,8 +1284,8 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 			slide := linalg.normalize0(d.quad[1] - d.quad[0]) * place
 			interiors.settled[{town[0], d.world[0], d.world[1]}] = slide
 			interiors.settled[{d.world[0], town[0], town[1]}] = -slide
-			if .Qol in psx.trace.active {
-				psx.tracef(.Qol, "interiors: %04x.%d settled at %.0f (back %v, curtain %v)", d.world[0], d.world[1], place, d.back, curtain)
+			if .Game in core.trace.active {
+				core.tracef(.Game, "interiors: %04x.%d settled at %.0f (back %v, curtain %v)", d.world[0], d.world[1], place, d.back, curtain)
 			}
 		}
 	}
@@ -1499,8 +1501,8 @@ preload_step :: proc() {
 			return
 		}
 		free.pid, free.since = pid, psx.vblanks()
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "interiors: loading %04x.%d in the background", d.world[0], d.world[1])
+		if .Game in core.trace.active {
+			core.tracef(.Game, "interiors: loading %04x.%d in the background", d.world[0], d.world[1])
 		}
 		return
 	}
@@ -1567,8 +1569,8 @@ preload_poll :: proc(l: ^Preload) {
 	}
 	l.pid = 0
 	if !sh.done {
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "interiors: background load of %04x.%d failed", l.door[0], l.door[1])
+		if .Game in core.trace.active {
+			core.tracef(.Game, "interiors: background load of %04x.%d failed", l.door[0], l.door[1])
 		}
 		return
 	}
@@ -1583,8 +1585,8 @@ preload_poll :: proc(l: ^Preload) {
 	psx.draw_start_adopt(w.start)
 	w.vram^ = sh.vram
 	w.ready = true
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "interiors: background load of %04x.%d done in %d vblanks", sh.key[0], sh.key[1], psx.vblanks() - l.since)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "interiors: background load of %04x.%d done in %d vblanks", sh.key[0], sh.key[1], psx.vblanks() - l.since)
 	}
 }
 
@@ -1598,8 +1600,8 @@ preload_wait :: proc(l: ^Preload) -> ^World {
 	for !l.share.done && !psx.preload_ended(l.pid) && time.tick_since(start) < PRELOAD_WAIT {
 		time.sleep(time.Millisecond)
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "interiors: waited %v for the background load of %04x.%d", time.tick_since(start), l.door[0], l.door[1])
+	if .Game in core.trace.active {
+		core.tracef(.Game, "interiors: waited %v for the background load of %04x.%d", time.tick_since(start), l.door[0], l.door[1])
 	}
 	key := l.door
 	preload_poll(l)
@@ -1695,8 +1697,8 @@ door_enter :: proc(m, section: u32, dark: bool) -> bool {
 	}
 	if w.story != story_key() {
 		w.ready = false
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "interiors: world %04x.%d is from before the story moved on", m, section)
+		if .Game in core.trace.active {
+			core.tracef(.Game, "interiors: world %04x.%d is from before the story moved on", m, section)
 		}
 		return false
 	}
@@ -1793,8 +1795,8 @@ door_through :: proc(p: u32) {
 	interiors.through = true
 	game_call(MAP_REQUEST, MAP_REQUEST_RET)
 	interiors.through = interiors.entering != nil
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "interiors: walked through the door to %04x.%d", m, section)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "interiors: walked through the door to %04x.%d", m, section)
 	}
 }
 
@@ -1927,8 +1929,8 @@ through_clamp :: proc() {
 		psx.sw(obj + OBJ_POS + 4 * k, v)
 		psx.sw(obj + OBJ_TARGET + 4 * k, v)
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "interiors: walked-through party moved %.2f cells into the exit", f32(d) / THROUGH_CELL)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "interiors: walked-through party moved %.2f cells into the exit", f32(d) / THROUGH_CELL)
 	}
 }
 
@@ -2080,7 +2082,7 @@ world_enter :: proc(w: ^World) {
 	w.used = psx.vblanks()
 	interiors.load_end = w.map_end
 	inbetween_world_switch()
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "interiors: entered world %04x.%d at once (map data to %08x, sound bank %x..%x)", w.key[0], w.key[1], w.map_end, w.bank[0], w.bank[1])
+	if .Game in core.trace.active {
+		core.tracef(.Game, "interiors: entered world %04x.%d at once (map data to %08x, sound bank %x..%x)", w.key[0], w.key[1], w.map_end, w.bank[0], w.bank[1])
 	}
 }

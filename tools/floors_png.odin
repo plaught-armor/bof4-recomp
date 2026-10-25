@@ -12,7 +12,7 @@ import "core:fmt"
 import "core:strconv"
 import "core:strings"
 
-import "../port/src/png"
+import "ps:core"
 
 FLOORS_PNG_USAGE :: "Usage: bof4tools floors-png <map>.json <out dir> [pixels per cell, 4]"
 
@@ -79,7 +79,7 @@ floors_png_main :: proc(args: []string) {
 			}
 		}
 		path := join(out_dir, fmt.aprintf("%s_f%d.png", json_str(json_at(m, "map")), json_int_at(f, "floor")))
-		if !png.write(path, pix, width * k, depth * k, 3) {
+		if !core.png_write(path, pix, width * k, depth * k, 3) {
 			fail("%s: cannot write", path)
 		}
 		print("%s ground %d..%d", path, f_lo, f_hi)

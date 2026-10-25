@@ -21,6 +21,8 @@ import "core:slice"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 MAX_PRIMS :: 8192
 // Longest ordering table walk, in packets.
@@ -177,8 +179,8 @@ tween_draw :: proc(send: psx.Func_Proc, cp: ^psx.Checkpoint) {
 	}
 	paired, moving := tween_pair(cur, prev)
 	sprites := tween_sprites(cur, prev)
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "tween: %d of %d prims paired, %d moving, %d sprites changing cel, period %d", paired, cur.count, moving, sprites, period)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "tween: %d of %d prims paired, %d moving, %d sprites changing cel, period %d", paired, cur.count, moving, sprites, period)
 	}
 	if moving + sprites == 0 {
 		return
@@ -197,8 +199,8 @@ tween_pass :: proc(send: psx.Func_Proc, cp: ^psx.Checkpoint, back: f64, step: in
 	cur, prev := &tween.lists[tween.cur], &tween.lists[tween.cur ~ 1]
 	main := psx.cpu
 	if !psx.checkpoint_save(cp) {
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "tween: GPU busy, frame skipped")
+		if .Game in core.trace.active {
+			core.tracef(.Game, "tween: GPU busy, frame skipped")
 		}
 		return false
 	}

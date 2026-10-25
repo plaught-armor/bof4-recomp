@@ -8,7 +8,8 @@ cd /d "%~dp0"
 if not defined BOF4_OPT set BOF4_OPT=speed
 if not defined BOF4_ARCH set BOF4_ARCH=native
 if not defined BOF4_GL_DEBUG set BOF4_GL_DEBUG=false
-odin build src -out:bof4.exe -use-separate-modules -debug -o:%BOF4_OPT% -microarch:%BOF4_ARCH% -define:GL_DEBUG=%BOF4_GL_DEBUG% -extra-linker-flags:/STACK:8388608 %*
+if not defined PS_RECOMP set PS_RECOMP=..\ps-recomp
+odin build src -out:bof4.exe -use-separate-modules -debug -o:%BOF4_OPT% -microarch:%BOF4_ARCH% -define:GL_DEBUG=%BOF4_GL_DEBUG% -collection:ps=%PS_RECOMP% -define:ENV_PREFIX=BOF4_ -extra-linker-flags:/STACK:8388608 %*
 if errorlevel 1 exit /b 1
 for /f "delims=" %%r in ('odin root') do set ODIN_ROOT=%%r
 copy /y "%ODIN_ROOT%\vendor\sdl2\SDL2.dll" . >nul

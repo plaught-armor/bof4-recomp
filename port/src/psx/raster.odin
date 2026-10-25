@@ -25,6 +25,8 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 
+import "ps:core"
+
 
 @(private)
 Draw_Kind :: enum u8 {
@@ -104,7 +106,7 @@ sync_t: [Sync_Cause]time.Duration
 sync_n: [Sync_Cause]int
 
 sync_perf :: proc() {
-	tracef(.Perf, "stream waits: %v %v", sync_n, sync_t)
+	core.tracef(.Perf, "stream waits: %v %v", sync_n, sync_t)
 	sync_t, sync_n = {}, {}
 }
 

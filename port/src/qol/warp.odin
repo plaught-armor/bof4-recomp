@@ -20,6 +20,8 @@ import "core:strings"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 SAVE_PREFIX :: "BASLUS-01324BOF4"
 // File offset of the resume section (u8), map id (u16), then tile x (u16)
@@ -115,7 +117,7 @@ warp_read :: proc(name: string, file_pos: u32, buf: u32, length: u32) {
 	}
 	at := buf + WARP_CHECKSUM - file_pos
 	psx.sb(at, psx.lbu(at) ~ u32(warp.delta))
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "warp: %s resumes on map %02x%02x.%d", name, warp.bytes[2], warp.bytes[1], warp.bytes[0])
+	if .Game in core.trace.active {
+		core.tracef(.Game, "warp: %s resumes on map %02x%02x.%d", name, warp.bytes[2], warp.bytes[1], warp.bytes[0])
 	}
 }

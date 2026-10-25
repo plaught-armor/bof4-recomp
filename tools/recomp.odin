@@ -558,7 +558,7 @@ PATCHES :: [?]Patch {
 // Per-block hook for BOF4_TRACE=block; one bit test when tracing is off.
 @(private = "file")
 trace_stmt :: proc(pc: u32) -> string {
-	return fmt.aprintf("if .Block in psx.trace.active {{psx.trace_block(%s)}}", hexu(pc))
+	return fmt.aprintf("if .Block in core.trace.active {{psx.trace_block(%s)}}", hexu(pc))
 }
 
 @(private = "file")
@@ -1273,7 +1273,7 @@ recomp_exe :: proc(exe_path, ovl_dir, funcs_path, out_dir: string, quiet := fals
 	entries, calls := module_entries(img, EXE_CODE_LO, EXE_CODE_HI, spaces["ram"][:], refs, {})
 	funcs := build_module(img, EXE_CODE_LO, EXE_CODE_HI, entries, ptrs, calls, refs)
 	b := strings.builder_make()
-	line(&b, "%s\npackage rec\n\nimport \"../psx\"\n", REC_HEADER)
+	line(&b, "%s\npackage rec\n\nimport \"../psx\"\nimport \"ps:core\"\n", REC_HEADER)
 	names := make([]string, len(funcs))
 	n := 0
 	for f, k in funcs {
@@ -1364,7 +1364,7 @@ recomp_overlays :: proc(exe_path, ovl_dir, funcs_path, out_dir: string, quiet :=
 		dir := join(out_dir, p.name)
 		make_dirs(dir)
 		b := strings.builder_make()
-		line(&b, "%s\npackage %s\n\nimport \"../../psx\"", REC_HEADER, p.name)
+		line(&b, "%s\npackage %s\n\nimport \"../../psx\"\nimport \"ps:core\"", REC_HEADER, p.name)
 		deps := make([]string, len(p.deps))
 		n := 0
 		for d in p.deps {
@@ -1388,7 +1388,7 @@ recomp_overlays :: proc(exe_path, ovl_dir, funcs_path, out_dir: string, quiet :=
 		write_file(join(dir, "funcs.odin"), b.buf[:])
 	}
 	b := strings.builder_make()
-	line(&b, "%s\npackage rec\n\nimport \"../psx\"", REC_HEADER)
+	line(&b, "%s\npackage rec\n\nimport \"../psx\"\nimport \"ps:core\"", REC_HEADER)
 	for p in packages {
 		line(&b, "import \"%s\"", p.name)
 	}

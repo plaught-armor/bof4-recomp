@@ -11,6 +11,8 @@
 // lives outside `sio` because an SIO reset does not reset the pad.
 package psx
 
+import "ps:core"
+
 @(private)
 SIO_ACK_DELAY :: 400
 // Data bytes after the 0x5a byte: digital pad, analog mode and config mode.
@@ -187,16 +189,16 @@ pad_motor_byte :: proc(k: int, tx: u8) {
 	case:
 		return
 	}
-	if .Sio in trace.active && (small != pad.small || large != pad.large) {
-		tracef(.Sio, "motor small %v large %d", pad.small, pad.large)
+	if .Sio in core.trace.active && (small != pad.small || large != pad.large) {
+		core.tracef(.Sio, "motor small %v large %d", pad.small, pad.large)
 	}
 	pad_rumble(pad.small, pad.large)
 }
 
 @(private)
 sio_transfer :: proc(tx: u8) {
-	if .Sio in trace.active {
-		tracef(.Sio, "tx %02x step %d ctrl %x ra=%x", tx, sio.step, sio.ctrl, cpu.r[31])
+	if .Sio in core.trace.active {
+		core.tracef(.Sio, "tx %02x step %d ctrl %x ra=%x", tx, sio.step, sio.ctrl, cpu.r[31])
 	}
 	sio.rx_full = true
 	selected := sio.ctrl & 0x2 != 0
@@ -205,8 +207,8 @@ sio_transfer :: proc(tx: u8) {
 		return
 	}
 	rx, ack := pad_response(tx)
-	if .Sio in trace.active {
-		tracef(.Sio, "rx %02x ack %v", rx, ack)
+	if .Sio in core.trace.active {
+		core.tracef(.Sio, "rx %02x ack %v", rx, ack)
 	}
 	sio.rx = rx
 	if sio.step >= 0 {
@@ -219,8 +221,8 @@ sio_transfer :: proc(tx: u8) {
 
 @(private)
 sio_event :: proc() {
-	if .Sio in trace.active {
-		tracef(.Sio, "ack ctrl %x", sio.ctrl)
+	if .Sio in core.trace.active {
+		core.tracef(.Sio, "ack ctrl %x", sio.ctrl)
 	}
 	sio.ack = true
 	if sio.ctrl & 0x1000 != 0 {

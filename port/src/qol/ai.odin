@@ -55,6 +55,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private)
 Enemy_AI :: enum u8 {
 	Original,
@@ -336,8 +338,8 @@ tier_of :: proc(slot: u32) -> Enemy_AI {
 		tier += 1
 	}
 	ai.tiers[slot] = Enemy_AI(min(tier, int(top)))
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "ai: enemy slot %d max HP %d, party average %d: %v", slot, psx.lw(enemy_combatant(slot) + COMBATANT_HP_MAX), sum / max(count, 1), ai.tiers[slot])
+	if .Game in core.trace.active {
+		core.tracef(.Game, "ai: enemy slot %d max HP %d, party average %d: %v", slot, psx.lw(enemy_combatant(slot) + COMBATANT_HP_MAX), sum / max(count, 1), ai.tiers[slot])
 	}
 	return ai.tiers[slot]
 }
@@ -397,8 +399,8 @@ decide :: proc() {
 	}
 	think(enemy, plan_of(index))
 	mark_cast()
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "ai: enemy %d %v decides kind %d skill %d on %d, AP %d", psx.lbu(ACTION), ai.mood, psx.lbu(ACTION + 1), psx.lhu(ACTION + 2), psx.lbu(TARGET), psx.lw(enemy + COMBATANT_AP))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "ai: enemy %d %v decides kind %d skill %d on %d, AP %d", psx.lbu(ACTION), ai.mood, psx.lbu(ACTION + 1), psx.lhu(ACTION + 2), psx.lbu(TARGET), psx.lw(enemy + COMBATANT_AP))
 	}
 }
 
@@ -773,8 +775,8 @@ attack :: proc(enemy: u32) {
 	if target == NO_TARGET {
 		return
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "ai: enemy %d %v attacks %d (rolled skill %d)", psx.lbu(ACTION), ai.tier, target, psx.lhu(ACTION + 2))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "ai: enemy %d %v attacks %d (rolled skill %d)", psx.lbu(ACTION), ai.tier, target, psx.lhu(ACTION + 2))
 	}
 	psx.sb(ACTION + 1, KIND_ATTACK)
 	psx.sh(ACTION + 2, 0)
@@ -866,8 +868,8 @@ use_skill :: proc(enemy: u32, skill: u8, aim: u32) {
 // Store the acting enemy's action, as DECIDE stores a rolled one.
 @(private = "file")
 set_action :: proc(enemy: u32, skill: u8, target: u32) {
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "ai: enemy %d %v uses skill %d (rolled kind %d skill %d) on %d", psx.lbu(ACTION), ai.tier, skill, psx.lbu(ACTION + 1), psx.lhu(ACTION + 2), target)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "ai: enemy %d %v uses skill %d (rolled kind %d skill %d) on %d", psx.lbu(ACTION), ai.tier, skill, psx.lbu(ACTION + 1), psx.lhu(ACTION + 2), target)
 	}
 	psx.sb(ACTION + 1, KIND_SKILL)
 	psx.sh(ACTION + 2, u32(skill))
@@ -921,8 +923,8 @@ random_member :: proc() {
 		ai.random_member()
 		return
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "ai: enemy %d %v targets member %d", actor, ai.tier, pick)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "ai: enemy %d %v targets member %d", actor, ai.tier, pick)
 	}
 	c.r[2] = pick
 }

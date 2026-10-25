@@ -17,6 +17,8 @@ package psx
 
 import "core:fmt"
 
+import "ps:core"
+
 Checkpoint :: struct {
 	// RAM is saved a page at a time, on the pass's first write to the page
 	// (ram_keep); only the pages in `kept` hold saved bytes.
@@ -466,8 +468,8 @@ capture_extra_frame :: proc(x, y: i32, step: int) {
 	convert_area(extra.x, extra.y, extra.w, extra.h, false, extra.frames[step][:], step)
 	extra.count += 1
 	extra.ready = true
-	if .Gpu in trace.active {
-		tracef(.Gpu, "extra frame %d from %d,%d %dx%d", step, extra.x, extra.y, extra.w, extra.h)
+	if .Gpu in core.trace.active {
+		core.tracef(.Gpu, "extra frame %d from %d,%d %dx%d", step, extra.x, extra.y, extra.w, extra.h)
 	}
 }
 

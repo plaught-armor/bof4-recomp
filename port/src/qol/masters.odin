@@ -37,6 +37,8 @@ import sdl "vendor:sdl2"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 CHAR_NAME_LEN :: 8
 @(private = "file")
@@ -348,8 +350,8 @@ masters_alert :: proc(m: Master, ready: int, pupil: string) {
 	t.len = len(fmt.bprintf(t.text[:], "%s has %s for %s", m.name, m.reward[ready], pupil))
 	t.expires = sdl.GetTicks() + TOAST_MS
 	masters.toast_count += 1
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "masters toast: %s", string(t.text[:t.len]))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "masters toast: %s", string(t.text[:t.len]))
 	}
 }
 

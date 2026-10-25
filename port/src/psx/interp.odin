@@ -10,6 +10,8 @@ package psx
 import "core:fmt"
 import "core:os"
 
+import "ps:core"
+
 @(private)
 INTERP_EVENT_STRIDE :: 64
 
@@ -31,8 +33,8 @@ interp_run :: proc(start: u32) {
 		w := lw(st.pc)
 		pc := st.pc
 		st.pc += 4
-		if .Interp in trace.active && trace_pc_ok(pc) {
-			tracef(.Interp, "%08x %08x", pc, w)
+		if .Interp in core.trace.active && core.trace_pc_ok(pc) {
+			core.tracef(.Interp, "%08x %08x", pc, w)
 		}
 		interp_exec(&st, pc, w)
 		cpu.r[0] = 0
@@ -58,8 +60,8 @@ branch :: proc(st: ^Interp, taken: bool, target: u32) {
 	slot := st.pc
 	w := lw(slot)
 	st.pc += 4
-	if .Interp in trace.active && trace_pc_ok(slot) {
-		tracef(.Interp, "%08x %08x (delay)", slot, w)
+	if .Interp in core.trace.active && core.trace_pc_ok(slot) {
+		core.tracef(.Interp, "%08x %08x (delay)", slot, w)
 	}
 	interp_exec(st, slot, w)
 	cpu.r[0] = 0

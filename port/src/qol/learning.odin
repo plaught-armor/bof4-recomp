@@ -31,6 +31,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 ROUND_ID :: 0x34
 @(private = "file")
@@ -179,8 +181,8 @@ learn_check :: proc() {
 		c.r[2] = 255
 		return
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "learn: member %d skill %02x, chance %d/%d %v", learner, skill, chance, ROLL, rolled)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "learn: member %d skill %02x, chance %d/%d %v", learner, skill, chance, ROLL, rolled)
 	}
 	c.r[4], c.r[5] = 3, 4
 	psx.call(WINDOW_OPEN)

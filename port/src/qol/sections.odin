@@ -36,6 +36,8 @@ import "core:math"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 LAYER_SETUP :: 0x80143304 // per-layer drawing pointers for DRAW_LAYER
 @(private = "file")
@@ -427,8 +429,8 @@ map_request :: proc() {
 			sections.door_ease = true
 			sections.ease_v = {}
 		}
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "sections: door to %04x.%d at once%s", m, section, scripted ? " at black" : "")
+		if .Game in core.trace.active {
+			core.tracef(.Game, "sections: door to %04x.%d at once%s", m, section, scripted ? " at black" : "")
 		}
 		return
 	}
@@ -448,8 +450,8 @@ map_request :: proc() {
 		sections.dir = psx.lbu(leader_obj() + OBJ_DIRECTION) & 7
 		sections.pending = true
 	}
-	if .Qol in psx.trace.active && door {
-		psx.tracef(.Qol, "sections: door to %04x.%d without fades", m, section)
+	if .Game in core.trace.active && door {
+		core.tracef(.Game, "sections: door to %04x.%d without fades", m, section)
 	}
 	for nb in sections.list[:sections.n] {
 		if nb.section == section {
@@ -573,7 +575,7 @@ layer_draw :: proc() {
 		sections.key = key
 		sections.n = neighbours(section, &sections.list)
 		for nb in sections.list[:sections.n] {
-			psx.tracef(.Qol, "sections: %x.%d neighbour %d at %v door %v rise %v", key[0], section, nb.section, nb.offset, nb.door, nb.rise)
+			core.tracef(.Game, "sections: %x.%d neighbour %d at %v door %v rise %v", key[0], section, nb.section, nb.offset, nb.door, nb.rise)
 		}
 		floor_fill(&sections.floors[0], section)
 		for nb, i in sections.list[:sections.n] {
@@ -697,7 +699,7 @@ spawn_actors :: proc(section: u32) {
 	for a in sections.actors[:sections.n_actors] {
 		models += int(a.object[0] & OBJ_MODEL != 0)
 	}
-	psx.tracef(.Qol, "sections: %d neighbour objects, %d models", sections.n_actors, models)
+	core.tracef(.Game, "sections: %d neighbour objects, %d models", sections.n_actors, models)
 }
 
 @(private = "file")

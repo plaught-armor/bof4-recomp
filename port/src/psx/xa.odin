@@ -3,6 +3,8 @@
 // through the CD-ROM volume matrix as the SPU's CD audio input.
 package psx
 
+import "ps:core"
+
 @(private)
 XA_RING :: 1 << 15
 
@@ -51,8 +53,8 @@ xa_set_volume :: proc(i: int, v: u8) {
 
 xa_apply :: proc(v: u8) {
 	spu_sync()
-	if .Cdrom in trace.active {
-		tracef(.Cdrom, "xa volume apply %02x pending %x", v, xa.pending)
+	if .Cdrom in core.trace.active {
+		core.tracef(.Cdrom, "xa volume apply %02x pending %x", v, xa.pending)
 	}
 	xa.adpcm_mute = v & 1 != 0
 	if v & 0x20 != 0 {
@@ -67,8 +69,8 @@ xa_sector :: proc(s: []u8) {
 		return
 	}
 	spu_sync()
-	if .Cdrom in trace.active {
-		tracef(.Cdrom, "xa file %d chan %d coding %02x fill %d", file, chan, coding, xa.head - xa.tail)
+	if .Cdrom in core.trace.active {
+		core.tracef(.Cdrom, "xa file %d chan %d coding %02x fill %d", file, chan, coding, xa.head - xa.tail)
 	}
 	if xa.adpcm_mute {
 		return

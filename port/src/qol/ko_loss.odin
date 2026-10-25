@@ -20,6 +20,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private)
 Ko_Hp_Loss :: enum u8 {
 	Inn,
@@ -101,8 +103,8 @@ clear_marks :: proc(give_back: bool) {
 		if give_back {
 			psx.sw(record + RECORD_HP_MAX, psx.lw(record + RECORD_HP_MAX) + psx.lw(record + BASE_HP_MAX) / MARK_SHARE * marks)
 		}
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "ko_loss: character %d marks %d cleared, max HP %d", index, marks, psx.lw(record + RECORD_HP_MAX))
+		if .Game in core.trace.active {
+			core.tracef(.Game, "ko_loss: character %d marks %d cleared, max HP %d", index, marks, psx.lw(record + RECORD_HP_MAX))
 		}
 	}
 }

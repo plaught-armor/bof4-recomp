@@ -19,6 +19,8 @@ import "core:os"
 import "core:time"
 import sdl "vendor:sdl2"
 
+import "ps:core"
+
 Scale_Mode :: enum u8 {
 	Fit,     // largest 4:3 picture the window holds
 	Integer, // largest whole multiple of 640x480, for even pixels and lines
@@ -170,8 +172,8 @@ set_paused :: proc(on: bool, from_focus: bool) {
 	if host.audio_dev != 0 {
 		sdl.PauseAudioDevice(host.audio_dev, sdl.bool(on))
 	}
-	if .Perf in trace.active {
-		tracef(.Perf, "paused %v", on)
+	if .Perf in core.trace.active {
+		core.tracef(.Perf, "paused %v", on)
 	}
 }
 
@@ -207,7 +209,11 @@ draw :: proc() {
 		dump_window_picture("window")
 	}
 	snapshot_take()
-	capture_frame()
+	if !preload_child && core.capture_wanted(host.presents) {
+		if pix, w, h, ok := window_pixels(); ok {
+			core.capture_frame(pix, w, h, host.presents)
+		}
+	}
 	sdl.RenderPresent(host.renderer)
 	gl_shown()
 	for _ in 1 ..< (host.vsync ? host.vsync_shows : 1) {

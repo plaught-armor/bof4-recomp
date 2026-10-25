@@ -240,7 +240,10 @@ minimap) with `psx/osd.odin`.
 
 ## Building
 
-Needs the Odin compiler and SDL2. From `port/`:
+Needs the Odin compiler, SDL2 and ps-recomp's `core` package (as
+`ps-recomp/` in the repository root, or wherever `PS_RECOMP` names; the
+build passes it as `-collection:ps` with `-define:ENV_PREFIX=BOF4_`, so its
+environment variables keep the `BOF4_` names). From `port/`:
 
 ```sh
 ./build.sh                 # optimized with debug info, writes ./bof4

@@ -86,6 +86,8 @@ import "core:strings"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 CHAR_HP :: 20 // u16
 @(private = "file")
@@ -695,7 +697,7 @@ next_step :: proc() {
 	auto.ticks, auto.settled = 0, 0
 	auto.why = ""
 	s := auto.steps[auto.at]
-	psx.tracef(.Qol, "autoplay: line %d %v %d %d", s.line, s.op, s.a, s.b)
+	core.tracef(.Game, "autoplay: line %d %v %d %d", s.line, s.op, s.a, s.b)
 }
 
 // Run one vblank of step s; true when it is done.

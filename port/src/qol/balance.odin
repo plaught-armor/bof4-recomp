@@ -51,6 +51,8 @@ import "core:strings"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 GAME_ID :: 0x0e
 
@@ -345,8 +347,8 @@ field_tick :: proc() {
 	regs, hi, lo := psx.cpu.r, psx.cpu.hi, psx.cpu.lo
 	psx.call(RECOMPUTE)
 	psx.cpu.r, psx.cpu.hi, psx.cpu.lo = regs, hi, lo
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "balance: party stats rebuilt (balance %v)", config.battle_balance)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "balance: party stats rebuilt (balance %v)", config.battle_balance)
 	}
 }
 
@@ -503,7 +505,7 @@ enemy_setup :: proc() {
 	if zenny > ZENNY_KEEP {
 		psx.sh(who + COMBATANT_ZENNY, ZENNY_KEEP + (zenny - ZENNY_KEEP) / 2)
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "balance: enemy %d record %d hp %d -> %d exp %d zenny %d", slot, index, hp, psx.lw(who + COMBATANT_HP_MAX), psx.lw(who + COMBATANT_EXP), psx.lhu(who + COMBATANT_ZENNY))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "balance: enemy %d record %d hp %d -> %d exp %d zenny %d", slot, index, hp, psx.lw(who + COMBATANT_HP_MAX), psx.lw(who + COMBATANT_EXP), psx.lhu(who + COMBATANT_ZENNY))
 	}
 }

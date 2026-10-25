@@ -20,6 +20,8 @@ package psx
 import "core:fmt"
 import sdl "vendor:sdl2"
 
+import "ps:core"
+
 // Longest line, in characters; longer text is cut at this width.
 OSD_COLS :: 72
 @(private)
@@ -121,8 +123,8 @@ osd_toast :: proc(text: string) {
 	t.expires = sdl.GetTicks() + OSD_TOAST_MS
 	osd.toast_count += 1
 	osd.dirty = true
-	if .Qol in trace.active {
-		tracef(.Qol, "osd toast: %s", text)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "osd toast: %s", text)
 	}
 }
 

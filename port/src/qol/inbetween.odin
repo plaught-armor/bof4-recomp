@@ -63,6 +63,8 @@ import "core:slice"
 
 import "../psx"
 
+import "ps:core"
+
 // Background layer list draw (16 slots at 0x80116c00); the battle frame's
 // first drawing call.
 @(private = "file")
@@ -366,8 +368,8 @@ late_copy :: proc(late: ^Late) {
 		used += n
 	}
 	late.ready = !late.overflow
-	if late.overflow && .Qol in psx.trace.active {
-		psx.tracef(.Qol, "inbetween: more than %d late prims, frame not smoothed", MAX_LATE)
+	if late.overflow && .Game in core.trace.active {
+		core.tracef(.Game, "inbetween: more than %d late prims, frame not smoothed", MAX_LATE)
 	}
 }
 
@@ -383,8 +385,8 @@ late_replay :: proc(late: ^Late) {
 		used += late.size[i]
 		psx.cpu.r[4], psx.cpu.r[5] = late.layer[i], late.size[i]
 		inbetween.layer_add()
-		if psx.lw(SPRITE_PACKETS) == addr && .Qol in psx.trace.active {
-			psx.tracef(.Qol, "inbetween: prim pool full, %d late prims left out", late.count - i)
+		if psx.lw(SPRITE_PACKETS) == addr && .Game in core.trace.active {
+			core.tracef(.Game, "inbetween: prim pool full, %d late prims left out", late.count - i)
 			return
 		}
 	}
@@ -527,8 +529,8 @@ inbetween_pass :: proc(f: f64, index: int) -> bool {
 	if !missed {
 		return ok
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "inbetween: pass read VRAM it did not draw, drawn again in full")
+	if .Game in core.trace.active {
+		core.tracef(.Game, "inbetween: pass read VRAM it did not draw, drawn again in full")
 	}
 	ok, _ = inbetween_draw(f, index, false)
 	return ok
@@ -540,8 +542,8 @@ inbetween_draw :: proc(f: f64, index: int, hi_only: bool) -> (ok, missed: bool) 
 	q := inbetween.queued
 	note, prev := &inbetween.notes[q], &inbetween.notes[(q + NOTES - 1) % NOTES]
 	if !psx.checkpoint_save(inbetween.checkpoint) {
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "inbetween: GPU busy, frame skipped")
+		if .Game in core.trace.active {
+			core.tracef(.Game, "inbetween: GPU busy, frame skipped")
 		}
 		return false, false
 	}
@@ -698,8 +700,8 @@ pose_blend :: proc(prev, cur: ^Pose, f: f64) -> (camera_moved: bool) {
 		}
 		moved += object_blend(cur.addr[i], prev.pos[j], cur.pos[i], back, cur.cut) ? 1 : 0
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "inbetween: f %.2f, %d of %d objects moved, %d camera fields snapped", f, moved, cur.count, snapped)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "inbetween: f %.2f, %d of %d objects moved, %d camera fields snapped", f, moved, cur.count, snapped)
 	}
 	return
 }
@@ -726,8 +728,8 @@ object_blend :: proc(obj: u32, from, to: [3]i32, back: f64, cut: i64) -> bool {
 	for axis in 0 ..< 3 {
 		d[axis] = i64(to[axis]) - i64(from[axis])
 		if abs(d[axis]) > cut {
-			if .Qol in psx.trace.active {
-				psx.tracef(.Qol, "inbetween: object %08x jumped %v, snapped", obj, d)
+			if .Game in core.trace.active {
+				core.tracef(.Game, "inbetween: object %08x jumped %v, snapped", obj, d)
 			}
 			return false
 		}

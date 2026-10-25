@@ -14,6 +14,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 ROUND_ID :: 0x34
 @(private = "file")
@@ -68,8 +70,8 @@ round_end :: proc() {
 		ap, ap_max := psx.lw(p + COMBATANT_AP), psx.lw(p + COMBATANT_AP_MAX)
 		gained := min(ap + (ap_max + GUARD_AP_PART - 1) / GUARD_AP_PART, ap_max)
 		psx.sw(p + COMBATANT_AP, max(ap, gained))
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "guard: member %d AP %d -> %d of %d", member, ap, max(ap, gained), ap_max)
+		if .Game in core.trace.active {
+			core.tracef(.Game, "guard: member %d AP %d -> %d of %d", member, ap, max(ap, gained), ap_max)
 		}
 	}
 }

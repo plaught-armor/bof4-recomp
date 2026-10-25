@@ -4,6 +4,8 @@ package psx
 
 import "core:fmt"
 
+import "ps:core"
+
 // Displayed VRAM region derived from GP1 state.
 display: struct {
 	x, y, w, h: i32,
@@ -94,8 +96,8 @@ gp0_write :: proc(w: u32) {
 
 @(private)
 gp0_command :: proc(cmd: []u32) {
-	if .Gpu in trace.active {
-		tracef(.Gpu, "gp0 %x", cmd)
+	if .Gpu in core.trace.active {
+		core.tracef(.Gpu, "gp0 %x", cmd)
 	}
 	switch cmd[0] >> 29 {
 	case 5:
@@ -165,8 +167,8 @@ gpu_stat :: proc() -> u32 {
 }
 
 gp1_write :: proc(v: u32) {
-	if .Gpu in trace.active {
-		tracef(.Gpu, "gp1 %08x", v)
+	if .Gpu in core.trace.active {
+		core.tracef(.Gpu, "gp1 %08x", v)
 	}
 	switch v >> 24 {
 	case 0x00:

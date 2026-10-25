@@ -35,6 +35,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private)
 Mood :: enum u8 {
 	Calm,
@@ -367,8 +369,8 @@ personality :: proc(slot: u32) -> Personality {
 		}
 	}
 	s.known, s.culprit = true, NO_CULPRIT
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "ai: enemy slot %d %s is %v", slot, string(name[:n]), s.kind)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "ai: enemy slot %d %s is %v", slot, string(name[:n]), s.kind)
 	}
 	return s.kind
 }
@@ -432,8 +434,8 @@ mood_turn :: proc(slot: u32) {
 	}
 	s := &moods.slots[slot]
 	mood, _ := mood_of(slot)
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "moods: slot %d turn ends %v (was %v), HP %d/%d", slot, mood, s.mood, psx.lw(enemy_combatant(slot) + COMBATANT_HP), psx.lw(enemy_combatant(slot) + COMBATANT_HP_MAX))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "moods: slot %d turn ends %v (was %v), HP %d/%d", slot, mood, s.mood, psx.lw(enemy_combatant(slot) + COMBATANT_HP), psx.lw(enemy_combatant(slot) + COMBATANT_HP_MAX))
 	}
 	if mood != s.mood {
 		s.mood = mood
@@ -490,7 +492,7 @@ mood_hit :: proc(actor, target: u32, dealt: i32) {
 enrage :: proc(slot, member: u32) {
 	moods.slots[slot].culprit = u8(member)
 	moods.slots[slot].rage = RAGE_TURNS
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "ai: enemy slot %d enraged at member %d", slot, member)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "ai: enemy slot %d enraged at member %d", slot, member)
 	}
 }

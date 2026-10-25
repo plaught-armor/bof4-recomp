@@ -26,6 +26,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 POPUP_TICK :: 0x801af9d8 // a0 = popup
 @(private = "file")
@@ -79,8 +81,8 @@ popup_tick :: proc() {
 		popup.tick()
 	} else {
 		phase, step := psx.lbu(p + POPUP_PHASE), psx.lbu(p + POPUP_STEP)
-		if .Qol in psx.trace.active && phase == 0 && step == 0 {
-			psx.tracef(.Qol, "popup: hidden kind %02x target %d value %d",
+		if .Game in core.trace.active && phase == 0 && step == 0 {
+			core.tracef(.Game, "popup: hidden kind %02x target %d value %d",
 				kind, psx.lbu(p + POPUP_TARGET), i32(psx.lw(p + POPUP_VALUE)))
 		}
 		popup_step(p)
@@ -109,8 +111,8 @@ popup_step :: proc(p: u32) {
 popup_finish :: proc(p: u32) {
 	for n in 0 ..< MAX_POPUP_STEPS {
 		if psx.lbu(p) & POPUP_ACTIVE == 0 {
-			if .Qol in psx.trace.active {
-				psx.tracef(.Qol, "quick idle: popup %08x finished, %d steps cut", p, n)
+			if .Game in core.trace.active {
+				core.tracef(.Game, "quick idle: popup %08x finished, %d steps cut", p, n)
 			}
 			return
 		}

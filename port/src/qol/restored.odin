@@ -29,6 +29,8 @@ import "core:strconv"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 SHOP_ID :: 0x12
 @(private = "file")
@@ -205,8 +207,8 @@ shop_copy :: proc() {
 		psx.sb(at + 1, u32(g.kind))
 	}
 	psx.sb(BUY_COUNT, count + u32(len(goods)))
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "restored: shop %d gets %d more goods", shop, len(goods))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "restored: shop %d gets %d more goods", shop, len(goods))
 	}
 }
 

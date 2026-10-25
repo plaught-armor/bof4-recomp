@@ -23,6 +23,9 @@ Requirements:
   guide)
 - OpenGL 4.5 drivers; on Linux also SDL2 (Windows uses the `SDL2.dll` that
   ships with Odin)
+- ps-recomp's `core` package
+  (tracing, capture, PNG, environment), checked out as `ps-recomp/` in the
+  repository root, or anywhere else named by `PS_RECOMP`
 
 Steps:
 

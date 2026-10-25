@@ -16,6 +16,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 BTLEND_ID :: 0x35
 @(private = "file")
@@ -67,7 +69,7 @@ scale_reward :: proc(addr: u32, rate: f64) {
 	total := psx.lw(addr)
 	scaled := u32(min(f64(total) * rate + 0.5, REWARD_MAX))
 	psx.sw(addr, scaled)
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "rewards: %08x %d -> %d", addr, total, scaled)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "rewards: %08x %d -> %d", addr, total, scaled)
 	}
 }

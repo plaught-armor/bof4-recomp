@@ -11,6 +11,8 @@ package psx
 import "core:fmt"
 import "core:os"
 
+import "ps:core"
+
 Cpu :: struct {
 	r:      [32]u32,
 	hi, lo: u32,
@@ -134,8 +136,8 @@ frame_ret: u32
 call :: proc(addr: u32) {
 	// A jump to the caller's return address through a register other than
 	// $ra (hand-written code saves $ra elsewhere) is a return; track it.
-	if .Call in trace.active && trace_pc_ok(addr) {
-		tracef(.Call, "%08x ra=%x sp=%x a0=%x a1=%x", addr, cpu.r[31], cpu.r[29], cpu.r[4], cpu.r[5])
+	if .Call in core.trace.active && core.trace_pc_ok(addr) {
+		core.tracef(.Call, "%08x ra=%x sp=%x a0=%x a1=%x", addr, cpu.r[31], cpu.r[29], cpu.r[4], cpu.r[5])
 	}
 	outer := frame_ret
 	frame_ret = cpu.r[31]

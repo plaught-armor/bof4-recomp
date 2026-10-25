@@ -22,6 +22,8 @@ import "core:strings"
 
 import "../psx"
 
+import "ps:core"
+
 
 // Free RAM: past the longest map text (bank 0 at 0x80010000, at most 0x5f6d
 // bytes) and before bank 2's table at 0x80017000.
@@ -213,8 +215,8 @@ spawn :: proc() {
 		return
 	}
 	if !sprite_add(s) {
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "combo dog: no room for his sprite on map %04x", s.map_id)
+		if .Game in core.trace.active {
+			core.tracef(.Game, "combo dog: no room for his sprite on map %04x", s.map_id)
 		}
 		return
 	}
@@ -229,8 +231,8 @@ spawn :: proc() {
 	}
 	game_routine(SPAWN_LIST, {RECORD_AT, 0, 0, 0, 0})
 	dog_hold()
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "combo dog added on map %04x at %d,%d", s.map_id, s.tile.x, s.tile.y)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "combo dog added on map %04x at %d,%d", s.map_id, s.tile.x, s.tile.y)
 	}
 }
 
@@ -455,8 +457,8 @@ message_text :: proc() {
 		for s, i in stops {
 			if u32(s.message) == psx.cpu.r[4] & 0xffff && u32(s.map_id) == psx.lhu(MAP_ID) &&
 			   u32(s.section) == psx.lbu(MAP_SECTION) {
-				if .Qol in psx.trace.active {
-					psx.tracef(.Qol, "combo dog talks at stop %d", i)
+				if .Game in core.trace.active {
+					core.tracef(.Game, "combo dog talks at stop %d", i)
 				}
 				psx.cpu.r[2] = lesson_text(s)
 				return

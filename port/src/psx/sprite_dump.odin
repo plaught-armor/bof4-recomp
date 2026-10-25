@@ -10,7 +10,8 @@ import "core:fmt"
 import "core:hash"
 import "core:os"
 
-import "../png"
+import "ps:core"
+
 
 
 @(private = "file")
@@ -77,7 +78,7 @@ sprite_rect :: proc(u0, v0, w, h: i32, m: ^Prim_Mode) {
 	}
 	sprites.seen[key] = true
 	path := fmt.tprintf("%s/%d_%d_%d_%d_%d_%d_%dx%d.png", sprites.dir, gpu.tex_x, gpu.tex_y, m.clut_x, m.clut_y, u0, v0, w, h)
-	if !png.write(path, rgba, int(w), int(h), 4) {
+	if !core.png_write(path, rgba, int(w), int(h), 4) {
 		fmt.eprintln("BOF4_SPRITES: png write failed:", path)
 	}
 }

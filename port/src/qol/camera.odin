@@ -43,6 +43,8 @@ import "core:math"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 GAME_ID :: 0x0e
 @(private = "file")
@@ -170,8 +172,8 @@ field_tick :: proc() {
 	}
 	free := config.camera_stick_all_maps || config.camera_third_person
 	if rotation := map_rotation(); rotation != MAP_FREE_ROTATION && !free {
-		if degrees != 0 && .Qol in psx.trace.active {
-			psx.tracef(.Qol, "camera: map rotation %02x, stick ignored", rotation)
+		if degrees != 0 && .Game in core.trace.active {
+			core.tracef(.Game, "camera: map rotation %02x, stick ignored", rotation)
 		}
 		drag_turn(drag)
 		return
@@ -183,8 +185,8 @@ field_tick :: proc() {
 	}
 	third_person_follow(gap, true)
 	yaw := yaw_turn(degrees * YAW_PER_DEGREE)
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "camera: free turn %.2f degrees, yaw %03x", degrees, yaw)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "camera: free turn %.2f degrees, yaw %03x", degrees, yaw)
 	}
 }
 
@@ -199,8 +201,8 @@ drag_turn :: proc(drag: f64) {
 	button := u16(camera.drag_px > 0 ? psx.PAD_L1 : psx.PAD_R1)
 	psx.press_for(button, psx.TAP_HOLD)
 	camera.drag_px = 0
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "camera: drag turn %s", button == psx.PAD_L1 ? "L1" : "R1")
+	if .Game in core.trace.active {
+		core.tracef(.Game, "camera: drag turn %s", button == psx.PAD_L1 ? "L1" : "R1")
 	}
 }
 
@@ -217,15 +219,15 @@ camera_tick :: proc() {
 		psx.sb(ROTATE_LEFT, ROTATE_TICKS)
 		psx.sh(MODE_PHASE, u32(Phase.Turn))
 		phase = .Turn
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "camera: spin again, sign %d", i8(psx.lbu(ROTATE_SIGN)))
+		if .Game in core.trace.active {
+			core.tracef(.Game, "camera: spin again, sign %d", i8(psx.lbu(ROTATE_SIGN)))
 		}
 	}
 	camera.original()
 	if phase == .Turn {
 		turn_extra_steps()
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "camera: yaw %03x, %d steps left", psx.lhu(CAMERA_YAW), psx.lbu(ROTATE_LEFT))
+		if .Game in core.trace.active {
+			core.tracef(.Game, "camera: yaw %03x, %d steps left", psx.lhu(CAMERA_YAW), psx.lbu(ROTATE_LEFT))
 		}
 	}
 }

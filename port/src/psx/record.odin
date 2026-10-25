@@ -30,7 +30,8 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 
-import "../png"
+import "ps:core"
+
 
 // A replayed mask with no later entry stays held this long.
 @(private = "file")
@@ -214,13 +215,13 @@ snapshot_take :: proc() {
 		record_write(fmt.tprintf("M %d %d\n", host.presents, debug.snaps))
 	}
 	fmt.eprintf("snapshot %d at present %d: %s_*\n", debug.snaps, host.presents, base)
-	tracef(.Qol, "snapshot %d", debug.snaps)
+	core.tracef(.Game, "snapshot %d", debug.snaps)
 }
 
 @(private = "file")
 write_png :: proc(path: string, rgb: []u8, w, h: i32) {
 	assert(len(rgb) >= int(w * h * 3), "picture smaller than its size")
-	if !png.write(path, rgb, int(w), int(h), 3) {
+	if !core.png_write(path, rgb, int(w), int(h), 3) {
 		fmt.eprintln("snapshot: png write failed:", path)
 	}
 }

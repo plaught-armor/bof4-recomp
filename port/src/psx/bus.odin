@@ -7,6 +7,8 @@ package psx
 
 import "core:fmt"
 
+import "ps:core"
+
 RAM_SIZE :: 2 * 1024 * 1024
 SCRATCH_BASE :: 0x1f800000
 SCRATCH_SIZE :: 1024
@@ -161,7 +163,7 @@ lb :: #force_inline proc(a: u32) -> u32 {
 }
 
 sw :: #force_inline proc(a, v: u32) #no_bounds_check {
-	if trace.watching {trace_store(a, v, 4)}
+	if core.trace.watching {trace_store(a, v, 4)}
 	if o, ok := in_ram(a); ok && cop0.sr & 0x10000 == 0 {
 		ram_guard(o)
 		(^u32le)(&ram[o])^ = u32le(v)
@@ -171,7 +173,7 @@ sw :: #force_inline proc(a, v: u32) #no_bounds_check {
 }
 
 sh :: #force_inline proc(a, v: u32) #no_bounds_check {
-	if trace.watching {trace_store(a, v & 0xffff, 2)}
+	if core.trace.watching {trace_store(a, v & 0xffff, 2)}
 	if o, ok := in_ram(a); ok && cop0.sr & 0x10000 == 0 {
 		ram_guard(o)
 		(^u16le)(&ram[o])^ = u16le(v)
@@ -181,7 +183,7 @@ sh :: #force_inline proc(a, v: u32) #no_bounds_check {
 }
 
 sb :: #force_inline proc(a, v: u32) {
-	if trace.watching {trace_store(a, v & 0xff, 1)}
+	if core.trace.watching {trace_store(a, v & 0xff, 1)}
 	if o, ok := in_ram(a); ok && cop0.sr & 0x10000 == 0 {
 		ram_guard(o)
 		ram[o] = u8(v)

@@ -6,6 +6,8 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
+import "ps:core"
+
 @(private)
 bios: struct {
 	// HookEntryInt jump buffer: [0]=ra [1]=sp [2]=fp [3..10]=s0-s7 [11]=gp.
@@ -56,8 +58,8 @@ bios_pad_vblank :: proc() {
 }
 
 bios_a :: proc(fn: u32) {
-	if .Bios in trace.active {
-		tracef(.Bios, "A(%02xh) a0=%x a1=%x a2=%x ra=%x", fn, arg(0), arg(1), arg(2), cpu.r[31])
+	if .Bios in core.trace.active {
+		core.tracef(.Bios, "A(%02xh) a0=%x a1=%x a2=%x ra=%x", fn, arg(0), arg(1), arg(2), cpu.r[31])
 	}
 	switch fn {
 	case 0x13:
@@ -104,8 +106,8 @@ bios_a :: proc(fn: u32) {
 }
 
 bios_b :: proc(fn: u32) {
-	if .Bios in trace.active {
-		tracef(.Bios, "B(%02xh) a0=%x a1=%x a2=%x ra=%x", fn, arg(0), arg(1), arg(2), cpu.r[31])
+	if .Bios in core.trace.active {
+		core.tracef(.Bios, "B(%02xh) a0=%x a1=%x a2=%x ra=%x", fn, arg(0), arg(1), arg(2), cpu.r[31])
 	}
 	switch fn {
 	case 0x07:
@@ -177,8 +179,8 @@ bios_b :: proc(fn: u32) {
 }
 
 bios_c :: proc(fn: u32) {
-	if .Bios in trace.active {
-		tracef(.Bios, "C(%02xh) a0=%x a1=%x a2=%x ra=%x", fn, arg(0), arg(1), arg(2), cpu.r[31])
+	if .Bios in core.trace.active {
+		core.tracef(.Bios, "C(%02xh) a0=%x a1=%x a2=%x ra=%x", fn, arg(0), arg(1), arg(2), cpu.r[31])
 	}
 	switch fn {
 	case 0x02:
@@ -404,8 +406,8 @@ deliver_irq :: proc() {
 	if target == 0 && bios.chains == {} {
 		return
 	}
-	if .Irq in trace.active {
-		tracef(.Irq, "deliver stat=%x mask=%x hook=%x", irq_regs.stat, irq_regs.mask, target)
+	if .Irq in core.trace.active {
+		core.tracef(.Irq, "deliver stat=%x mask=%x hook=%x", irq_regs.stat, irq_regs.mask, target)
 	}
 	saved_cpu := cpu
 	saved_sr := cop0.sr

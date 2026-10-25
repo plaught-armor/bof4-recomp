@@ -28,6 +28,8 @@ package qol
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 ROUND_ACTION :: 0x0303 // phase 3 the round, sub-phase 3 an actor's action
 @(private = "file")
@@ -148,8 +150,8 @@ action_start :: proc(frame: u32) {
 	timed.learned = nil
 	timed.learning = {key = timed.key}
 	timed.hits = 0
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "timed: actor %d kind %d skill %d starts", psx.lbu(ACTION), psx.lbu(ACTION + ACTION_KIND), psx.lhu(ACTION + ACTION_SKILL))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "timed: actor %d kind %d skill %d starts", psx.lbu(ACTION), psx.lbu(ACTION + ACTION_KIND), psx.lhu(ACTION + ACTION_SKILL))
 	}
 	for &t in timed.timings {
 		if t.key == timed.key && t.count != 0 {
@@ -166,8 +168,8 @@ action_end :: proc() {
 	}
 	timed.timings[timed.next] = timed.learning
 	timed.next = (timed.next + 1) % TIMING_COUNT
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "timed: learned %016x, %d hits, first at %d", timed.learning.key, timed.learning.count, timed.learning.leads[0])
+	if .Game in core.trace.active {
+		core.tracef(.Game, "timed: learned %016x, %d hits, first at %d", timed.learning.key, timed.learning.count, timed.learning.leads[0])
 	}
 }
 
@@ -233,8 +235,8 @@ timed_rate :: proc(target: u32) -> f64 {
 		timed.last_hit = frame
 		timed.result = timed.last_grade
 		timed.result_till = frame + RESULT_FRAMES
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "timed: actor %d target %d hit at +%d, press %d before, %v", actor, target, frame - timed.start, before, timed.last_grade)
+		if .Game in core.trace.active {
+			core.tracef(.Game, "timed: actor %d target %d hit at +%d, press %d before, %v", actor, target, frame - timed.start, before, timed.last_grade)
 		}
 	}
 	switch timed.last_grade {

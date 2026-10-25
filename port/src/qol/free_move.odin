@@ -58,6 +58,8 @@ import "core:math"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 STEPPER :: 0x801d1b30
 @(private = "file")
@@ -314,8 +316,8 @@ move :: proc(obj: u32, degrees: f64) {
 		free.checked = false
 		door_through(p)
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "free: %.0f deg, v %d,%d, pos %x,%x, cell %d,%d", degrees, vx, vz, x, z, to.x, to.y)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "free: %.0f deg, v %d,%d, pos %x,%x, cell %d,%d", degrees, vx, vz, x, z, to.x, to.y)
 	}
 }
 
@@ -474,8 +476,8 @@ step_bound :: proc(obj, direction: u32) -> bool {
 	case 0xff, 2, 3, 4:
 		return false
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "free: step %d bound (result %d)", direction, psx.lbu(out))
+	if .Game in core.trace.active {
+		core.tracef(.Game, "free: step %d bound (result %d)", direction, psx.lbu(out))
 	}
 	return true
 }
@@ -505,8 +507,8 @@ arrive :: proc(obj: u32, from, to: Cell, x, z: i32) {
 	substate := psx.lbu(obj + OBJ_SUBSTATE)
 	if psx.lbu(obj + OBJ_STATE) != state || substate > SUBSTATE_STEP {
 		free.moving = false
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "free: arrival at %d,%d handed over (state %x, substate %d)", to.x, to.y, psx.lbu(obj + OBJ_STATE), substate)
+		if .Game in core.trace.active {
+			core.tracef(.Game, "free: arrival at %d,%d handed over (state %x, substate %d)", to.x, to.y, psx.lbu(obj + OBJ_STATE), substate)
 		}
 		return
 	}

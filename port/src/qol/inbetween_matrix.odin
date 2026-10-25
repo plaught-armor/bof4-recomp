@@ -23,6 +23,8 @@ package qol
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 MAX_MATRIX_WRITES :: 1024
 
@@ -117,8 +119,8 @@ matrix_blend_begin :: proc(f: f64, prev, cur: int, camera_moved: bool) {
 // A drawing (real or the pass's) has finished its scene render.
 @(private)
 matrix_end :: proc() {
-	if gte_log.mode == .Blend && .Qol in psx.trace.active {
-		psx.tracef(.Qol, "inbetween: %d of %d matrix writes blended", gte_log.blended, gte_log.pass.count)
+	if gte_log.mode == .Blend && .Game in core.trace.active {
+		core.tracef(.Game, "inbetween: %d of %d matrix writes blended", gte_log.blended, gte_log.pass.count)
 	}
 	gte_log.mode = .Off
 }

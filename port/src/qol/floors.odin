@@ -26,6 +26,8 @@ import "core:os"
 import "core:strings"
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 SECTION_COUNT :: 3
 @(private = "file")
@@ -206,5 +208,5 @@ floors_dump :: proc() {
 		fmt.eprintfln("floors: cannot write %s", path)
 		return
 	}
-	psx.tracef(.Qol, "floors: %04x: %d floors to %s", id, count, path)
+	core.tracef(.Game, "floors: %04x: %d floors to %s", id, count, path)
 }

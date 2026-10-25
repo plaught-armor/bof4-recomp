@@ -30,6 +30,8 @@ import "core:strconv"
 import "core:strings"
 import sdl "vendor:sdl2"
 
+import "ps:core"
+
 @(private)
 Mouse_Source :: enum {
 	Left,
@@ -166,8 +168,8 @@ mouse_button :: proc(ev: sdl.MouseButtonEvent) {
 		return
 	}
 	if !mouse.focused || ev.timestamp - mouse.focus_at < FOCUS_CLICK_MS {
-		if .Qol in trace.active {
-			tracef(.Qol, "mouse: %v press swallowed (focused %v)", s, mouse.focused)
+		if .Game in core.trace.active {
+			core.tracef(.Game, "mouse: %v press swallowed (focused %v)", s, mouse.focused)
 		}
 		return
 	}

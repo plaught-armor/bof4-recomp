@@ -52,7 +52,7 @@ def route_case(route, config, env, checks, timeout=300):
         "replay": LOCAL / "c1" / "load.rec",
         "config": TESTS / "configs" / config,
         "route": TESTS / "routes" / route,
-        "env": {"BOF4_CHEAT": "1", "BOF4_TRACE": "qol", **env},
+        "env": {"BOF4_CHEAT": "1", "BOF4_TRACE": "game", **env},
         "checks": [PANIC, *checks],
         "timeout": timeout,
     }

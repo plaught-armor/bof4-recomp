@@ -11,6 +11,8 @@ import "core:strings"
 import "core:time"
 import sdl "vendor:sdl2"
 
+import "ps:core"
+
 WINDOW_W :: 640
 WINDOW_H :: 480
 // NTSC field rate.
@@ -316,7 +318,7 @@ platform_init :: proc(title: cstring) -> bool {
 	host.ram_every = env_period("BOF4_DUMP_RAM", 1500) or_return
 	host.frame_every = env_period("BOF4_DUMP_EVERY", 30) or_return
 	host.dump_from = env_period("BOF4_DUMP_FROM", 1) or_return
-	capture_init()
+	core.capture_init()
 	sprite_dump_init()
 	host.dump_window = host.dump_dir != "" && os.get_env("BOF4_DUMP_WINDOW", context.temp_allocator) == "1"
 	if host.dump_dir != "" && os.get_env("BOF4_DUMP_HASH", context.temp_allocator) == "1" {
@@ -428,8 +430,8 @@ platform_audio :: proc(frames: [][2]i16) {
 	}
 	if queued == 0 {
 		host.audio_dry += 1
-		if .Perf in trace.active {
-			tracef(.Perf, "audio ran dry")
+		if .Perf in core.trace.active {
+			core.tracef(.Perf, "audio ran dry")
 		}
 		// Ran dry (a slow frame): refill the target at once, or the rate
 		// correction would take seconds and every vblank would click.
@@ -495,7 +497,7 @@ audio_resample :: proc(frames: [][2]i16, step: f64) -> [][2]i16 {
 platform_shutdown :: proc() {
 	spu_sync()
 	record_close()
-	capture_close()
+	core.capture_close()
 	sdl.DestroyTexture(host.texture)
 	sdl.DestroyTexture(host.held)
 	sdl.DestroyRenderer(host.renderer)
@@ -570,8 +572,8 @@ set_speed :: proc(speed: f64) {
 	if speed == host.speed {
 		return
 	}
-	if .Perf in trace.active {
-		tracef(.Perf, "speed %v -> %v", host.speed, speed)
+	if .Perf in core.trace.active {
+		core.tracef(.Perf, "speed %v -> %v", host.speed, speed)
 	}
 	last := host.presents - min(host.presents, 1)
 	last_due := time.tick_add(host.start, time.Duration(vblank_due_ns(last)))
@@ -627,8 +629,8 @@ vsync_update :: proc(paced: bool) {
 		want = false
 	}
 	host.vsync = want
-	if .Perf in trace.active {
-		tracef(.Perf, "vsync %v (%d Hz)", want, mode.refresh_rate)
+	if .Perf in core.trace.active {
+		core.tracef(.Perf, "vsync %v (%d Hz)", want, mode.refresh_rate)
 	}
 }
 
@@ -889,7 +891,7 @@ perf_report :: proc() {
 	secs := time.duration_seconds(time.tick_diff(host.perf_mark, now))
 	mixed_hz := f64(host.audio_mixed) * CPU_HZ * f64(clock_mul) / f64(max(cpu.cycles - host.perf_cycles, 1))
 	low_ms := host.audio_low == max(int) ? 0 : f64(host.audio_low) * 1000 / AUDIO_HZ
-	tracef(.Perf, "%d presents in %.3f s (%.1f/s), %d cycles, audio mixed %.1f Hz, queued %.1f ms (lowest %.1f), ran dry %d, dropped %d", PERF_PERIOD, secs, f64(PERF_PERIOD) / secs, cpu.cycles, mixed_hz, audio_queued_ms(), low_ms, host.audio_dry, host.audio_dropped)
+	core.tracef(.Perf, "%d presents in %.3f s (%.1f/s), %d cycles, audio mixed %.1f Hz, queued %.1f ms (lowest %.1f), ran dry %d, dropped %d", PERF_PERIOD, secs, f64(PERF_PERIOD) / secs, cpu.cycles, mixed_hz, audio_queued_ms(), low_ms, host.audio_dry, host.audio_dropped)
 	gl_perf()
 	host.audio_dry = 0
 	host.audio_dropped = 0
@@ -946,11 +948,11 @@ render_scale_apply :: proc() -> bool {
 present :: proc() {
 	replay_panel()
 	host.presents += 1
-	trace_window()
+	core.trace_window()
 	run_poke_script()
 	run_drag_script()
 	run_point_script()
-	if .Perf in trace.active {
+	if .Perf in core.trace.active {
 		perf_report()
 	}
 	render_scale_apply()
@@ -1112,8 +1114,8 @@ picture_still :: proc() {
 fast_forward :: proc() -> bool {
 	loading := instant_loading && cd_loading() && host.still >= STILL_PRESENTS
 	if (loading || skip_black && host.black || skipping || hold_picture > 0) && !movie_playing() {
-		if !host.fast && .Perf in trace.active {
-			tracef(.Perf, "fast-forward on")
+		if !host.fast && .Perf in core.trace.active {
+			core.tracef(.Perf, "fast-forward on")
 			host.fast_start = time.tick_now()
 			host.fast_vblank = host.presents
 		}
@@ -1121,10 +1123,10 @@ fast_forward :: proc() -> bool {
 		return true
 	}
 	if host.fast {
-		if .Perf in trace.active {
+		if .Perf in core.trace.active {
 			ms := time.duration_milliseconds(time.tick_since(host.fast_start))
 			n := host.presents - host.fast_vblank
-			tracef(.Perf, "fast-forward off: %d vblanks in %.1f ms (%.1f ms at console speed), audio queued %.1f ms", n, ms, f64(n) * VBLANK_NS / 1e6, audio_queued_ms())
+			core.tracef(.Perf, "fast-forward off: %d vblanks in %.1f ms (%.1f ms at console speed), audio queued %.1f ms", n, ms, f64(n) * VBLANK_NS / 1e6, audio_queued_ms())
 		}
 		host.fast = false
 		pacing_rebase()
@@ -1143,10 +1145,10 @@ platform_frame :: proc() {
 		preload_frame()
 		return
 	}
-	if .Perf in trace.active {
+	if .Perf in core.trace.active {
 		work := time.tick_since(host.work_mark)
 		if host.work_mark != {} && work > VBLANK_NS && !host.vsync {
-			tracef(.Perf, "late vblank: %.1f ms of work", time.duration_milliseconds(work))
+			core.tracef(.Perf, "late vblank: %.1f ms of work", time.duration_milliseconds(work))
 		}
 	}
 	poll_events()

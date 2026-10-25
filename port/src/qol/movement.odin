@@ -37,6 +37,8 @@ import "core:math"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 SCREEN_DIRECTION :: 0x801d9948
 @(private = "file")
@@ -107,8 +109,8 @@ screen_direction :: proc() {
 		world := int(math.round(psx.stick_angle(stick) / DEGREES_PER_DIRECTION + yaw / YAW_PER_DIRECTION))
 		screen := (world - int((psx.lhu(CAMERA_YAW) + 0x100) >> 9)) & 7
 		c.r[4] = c.r[4] & ~u32(DIRECTION_BITS) | u32(psx.STICK_SECTORS[screen])
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "move: stick %.0f deg, yaw %03x, world %d", psx.stick_angle(stick), u32(yaw), world & 7)
+		if .Game in core.trace.active {
+			core.tracef(.Game, "move: stick %.0f deg, yaw %03x, world %d", psx.stick_angle(stick), u32(yaw), world & 7)
 		}
 	}
 	movement.screen_direction()
@@ -125,8 +127,8 @@ stand :: proc() {
 	movement.stand()
 	if config.move_instant_start && psx.lbu(obj + OBJ_SUBSTATE) == SUBSTATE_TURNING && psx.lbu(obj + OBJ_TURN) != 0 && is_leader(obj) {
 		psx.sb(obj + OBJ_TURN, 0)
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "move: instant start")
+		if .Game in core.trace.active {
+			core.tracef(.Game, "move: instant start")
 		}
 	}
 }
@@ -155,7 +157,7 @@ dash_held :: proc() {
 	}
 	movement.dash_held()
 	psx.sb(obj + OBJ_PAD, pad)
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "move: tilt %.2f, run %v", tilt, c.r[2] != 0)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "move: tilt %.2f, run %v", tilt, c.r[2] != 0)
 	}
 }

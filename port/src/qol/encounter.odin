@@ -16,6 +16,8 @@ import "core:math"
 
 import "../psx"
 
+import "ps:core"
+
 @(private)
 FLD_MAIN_ID :: 0x0f
 
@@ -100,8 +102,8 @@ encounter_step :: proc(obj: u32) -> bool {
 		taken := math.floor(encounter.carry)
 		encounter.carry -= taken
 		left = u32(max(f64(left) - taken, 0))
-		if .Qol in psx.trace.active {
-			psx.tracef(.Qol, "encounter: %v steps taken, %d left", taken, left)
+		if .Game in core.trace.active {
+			core.tracef(.Game, "encounter: %v steps taken, %d left", taken, left)
 		}
 		psx.sb(STEPS_LEFT, left)
 		if left != 0 {

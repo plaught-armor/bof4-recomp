@@ -38,6 +38,8 @@ import "core:strings"
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 COMMAND_ID :: 0x33 // BTLCOMD.EMI
 @(private = "file")
@@ -657,8 +659,8 @@ plan_combo :: proc(o: Combo_Option) {
 	}
 	combo_menu.plan = plan
 	plan_aim(combo_menu.enemy, -1)
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "combo plan: %d skill %d, then %d skill %d", o.members[0], o.skills[0], o.members[1], o.skills[1])
+	if .Game in core.trace.active {
+		core.tracef(.Game, "combo plan: %d skill %d, then %d skill %d", o.members[0], o.skills[0], o.members[1], o.skills[1])
 	}
 }
 
@@ -699,8 +701,8 @@ plan_settle :: proc() {
 	target := int(psx.lbu(p + C_TARGET))
 	enemy := target - FIRST_ENEMY if target >= FIRST_ENEMY && target < FIRST_ENEMY + ENEMY_COUNT else next_enemy(-1, 1)
 	plan_aim(enemy, k)
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "combo plan settled on enemy %d", enemy)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "combo plan settled on enemy %d", enemy)
 	}
 }
 
@@ -872,8 +874,8 @@ turn_order :: proc() {
 	for i in 0 ..< count {
 		psx.sb(ORDER + u32(i), u32(order[i]))
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "combo order: %d behind %d", plan.members[1], plan.members[0])
+	if .Game in core.trace.active {
+		core.tracef(.Game, "combo order: %d behind %d", plan.members[1], plan.members[0])
 	}
 }
 
@@ -908,8 +910,8 @@ chain :: proc() {
 		return
 	}
 	psx.sh(p2 + C_AP, ap - surcharge)
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "combo surcharge: member %d pays %d AP chaining onto %d", second, surcharge, first)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "combo surcharge: member %d pays %d AP chaining onto %d", second, surcharge, first)
 	}
 }
 

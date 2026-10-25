@@ -20,6 +20,8 @@ import "core:fmt"
 
 import "../psx"
 
+import "ps:core"
+
 
 @(private)
 Field_Kind :: enum u8 {
@@ -126,8 +128,8 @@ shake_step :: proc(frame: u32) {
 			limit := SHAKE_LIMIT[f.kind]
 			if now * was < 0 && abs(now) <= limit && abs(was) <= limit {
 				shake.offset[i] = -now / 2
-				if .Qol in psx.trace.active {
-					psx.tracef(.Qol, "shake: %08x swung %d after %d, view holds midpoint", f.addr, now, was)
+				if .Game in core.trace.active {
+					core.tracef(.Game, "shake: %08x swung %d after %d, view holds midpoint", f.addr, now, was)
 				}
 			}
 		}

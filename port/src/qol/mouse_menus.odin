@@ -23,6 +23,8 @@ package qol
 
 import "../psx"
 
+import "ps:core"
+
 @(private = "file")
 CURSOR_DRAW_ADDR :: 0x80151f54
 
@@ -135,7 +137,7 @@ pointed_bar :: proc(set: Bar_Set, p: [2]f32) -> (bar: Bar, ok: bool) {
 @(private = "file")
 seek_end :: proc() {
 	m := &mouse_menus
-	psx.tracef(.Qol, "mouse menus: seek to %v ends (confirm %v)", m.pointer, m.confirm)
+	core.tracef(.Game, "mouse menus: seek to %v ends (confirm %v)", m.pointer, m.confirm)
 	if m.confirm {
 		psx.press_for(psx.PAD_CROSS, psx.TAP_HOLD)
 	}
@@ -218,7 +220,7 @@ mouse_menus_step :: proc(held: u16) -> u16 {
 	if m.dir != 0 && now - m.step_at < STEP_REST {
 		return held
 	}
-	psx.tracef(.Qol, "mouse menus: bar %v, pointer %v, step %s", bar, m.pointer, dir == psx.PAD_UP ? "up" : "down")
+	core.tracef(.Game, "mouse menus: bar %v, pointer %v, step %s", bar, m.pointer, dir == psx.PAD_UP ? "up" : "down")
 	m.dir, m.step, m.from, m.step_at = dir, dir, bar, now
 	return held | dir
 }

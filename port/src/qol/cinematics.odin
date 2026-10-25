@@ -14,6 +14,8 @@ import "core:strconv"
 
 import "../psx"
 
+import "ps:core"
+
 // Game files of the cinematics: MAG060_0 to MAG211_1.
 @(private = "file")
 FIRST_CINEMATIC :: 0x62
@@ -91,8 +93,8 @@ cinematics_vblank :: proc() {
 	if !ended {
 		return
 	}
-	if .Qol in psx.trace.active {
-		psx.tracef(.Qol, "cinematic %x ended, %d vblanks skipped", cinematics.playing, cinematics.skipped)
+	if .Game in core.trace.active {
+		core.tracef(.Game, "cinematic %x ended, %d vblanks skipped", cinematics.playing, cinematics.skipped)
 	}
 	if cinematics.skipped < 0 && config.battle_seen & cinematics.playing == 0 {
 		config.battle_seen |= cinematics.playing
