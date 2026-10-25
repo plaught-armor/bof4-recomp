@@ -25,7 +25,8 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 // The game's Options (save block bytes): Text 0 Slow, 1 Norm, 2 Fast; Dash
 // 1 Auto; Camera 1 Reverse.
@@ -238,9 +239,9 @@ setting_menu_init :: proc() -> bool {
 // Hook a function in both overlays (fns note the overlay, then run the
 // port's), returning the game's.
 @(private)
-setting_hook :: proc(addrs: [Setting_Overlay]u32, fns: [Setting_Overlay]psx.Func_Proc, what: string) -> (originals: [Setting_Overlay]psx.Func_Proc, ok: bool) {
+setting_hook :: proc(addrs: [Setting_Overlay]u32, fns: [Setting_Overlay]cpu.Func_Proc, what: string) -> (originals: [Setting_Overlay]cpu.Func_Proc, ok: bool) {
 	for o in Setting_Overlay {
-		if originals[o], ok = psx.hook_overlay(addrs[o], SLOT_MENU, SETTING_IDS[o], fns[o]); !ok {
+		if originals[o], ok = cpu.hook_overlay(addrs[o], SLOT_MENU, SETTING_IDS[o], fns[o]); !ok {
 			fmt.eprintf("qol: %s function %08x not found\n", what, addrs[o])
 			return
 		}
@@ -251,54 +252,54 @@ setting_hook :: proc(addrs: [Setting_Overlay]u32, fns: [Setting_Overlay]psx.Func
 // The window a draw is for: a0 in the camp, WIN_CURRENT in the title.
 @(private)
 setting_draw_record :: proc() -> u32 {
-	return setting_overlay == .Title ? psx.lw(WIN_CURRENT) : psx.cpu.r[4]
+	return setting_overlay == .Title ? cpu.lw(WIN_CURRENT) : cpu.state.r[4]
 }
 
 // The Setting screen's tick (a0 the menu record), as the game's with the
 // Extras row.
 @(private = "file")
 setting_tick :: proc() {
-	menu := psx.cpu.r[4]
-	if x := i16(psx.lhu(SETTING_WIN + SETTING_X)); x >= SLIDE_FROM {
-		psx.sh(SETTING_WIN + SETTING_X, u32(x - SLIDE_STEP))
+	menu := cpu.state.r[4]
+	if x := i16(cpu.lhu(SETTING_WIN + SETTING_X)); x >= SLIDE_FROM {
+		cpu.sh(SETTING_WIN + SETTING_X, u32(x - SLIDE_STEP))
 	}
-	if setting_overlay == .Camp && psx.lhu(COMMAND_WIN + WIN_DRAWS) == 0 {
+	if setting_overlay == .Camp && cpu.lhu(COMMAND_WIN + WIN_DRAWS) == 0 {
 		return
 	}
 	if setting.open {
 		pages_tick()
 		return
 	}
-	if psx.lhu(PAD_PRESSED) & psx.PAD_SELECT != 0 {
-		psx.sb(SELECT_STATE, 0)
+	if cpu.lhu(PAD_PRESSED) & host.PAD_SELECT != 0 {
+		cpu.sb(SELECT_STATE, 0)
 		game_routine(SHOW_MESSAGE, {SELECT_MESSAGE[setting_overlay], 0, 0, 0, 0})
 		return
 	}
-	repeat := psx.lhu(PAD_REPEAT)
-	row := int(psx.lbu(COMMAND_WIN + WIN_ROW))
-	if repeat & (psx.PAD_UP | psx.PAD_DOWN) != 0 {
+	repeat := cpu.lhu(PAD_REPEAT)
+	row := int(cpu.lbu(COMMAND_WIN + WIN_ROW))
+	if repeat & (host.PAD_UP | host.PAD_DOWN) != 0 {
 		game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
-		row = (row + (repeat & psx.PAD_DOWN != 0 ? 1 : -1)) %% len(Setting_Row)
-		psx.sb(COMMAND_WIN + WIN_ROW, u32(row))
+		row = (row + (repeat & host.PAD_DOWN != 0 ? 1 : -1)) %% len(Setting_Row)
+		cpu.sb(COMMAND_WIN + WIN_ROW, u32(row))
 	}
 	ours := Setting_Row(row) == .Extras || Setting_Row(row) == .Screen
-	psx.sh(INFO_TEXT, ours ? INFO_NONE : GAME_INFO[setting_overlay] + u32(row))
+	cpu.sh(INFO_TEXT, ours ? INFO_NONE : GAME_INFO[setting_overlay] + u32(row))
 	if Setting_Row(row) == .Buttons {
-		game_routine(BUTTONS_PREVIEW, {0, psx.lbu(BUTTONS_ARG) + 1, 0, 0, 0})
+		game_routine(BUTTONS_PREVIEW, {0, cpu.lbu(BUTTONS_ARG) + 1, 0, 0, 0})
 	}
-	pressed := psx.lhu(PAD_PRESSED)
-	if pressed & psx.lhu(CONFIRM_MASK) != 0 {
+	pressed := cpu.lhu(PAD_PRESSED)
+	if pressed & cpu.lhu(CONFIRM_MASK) != 0 {
 		row_confirm(menu, Setting_Row(row))
-	} else if pressed & psx.lhu(CANCEL_MASK) != 0 && setting_overlay == .Title {
+	} else if pressed & cpu.lhu(CANCEL_MASK) != 0 && setting_overlay == .Title {
 		game_routine(SOUND, {SOUND_CANCEL, 0, 0, 0, 0})
-		psx.sh(TITLE_MODE, TITLE_MODE_MENU)
-		psx.sh(TITLE_MODE_STEP, 0)
-	} else if pressed & psx.lhu(CANCEL_MASK) != 0 {
+		cpu.sh(TITLE_MODE, TITLE_MODE_MENU)
+		cpu.sh(TITLE_MODE_STEP, 0)
+	} else if pressed & cpu.lhu(CANCEL_MASK) != 0 {
 		game_routine(SOUND, {SOUND_CANCEL, 0, 0, 0, 0})
-		psx.sh(INFO_TEXT, INFO_NONE)
-		psx.sb(menu + MENU_STEP, 0)
-		psx.sb(menu + MENU_SUB, 0)
-		psx.sb(menu + MENU_STATE, STATE_MAIN)
+		cpu.sh(INFO_TEXT, INFO_NONE)
+		cpu.sb(menu + MENU_STEP, 0)
+		cpu.sb(menu + MENU_SUB, 0)
+		cpu.sb(menu + MENU_STATE, STATE_MAIN)
 	}
 }
 
@@ -313,19 +314,19 @@ row_confirm :: proc(menu: u32, row: Setting_Row) {
 		pages_open(true)
 		return
 	}
-	psx.sb(menu + MENU_STEP, 0)
-	psx.sb(menu + MENU_STATE, u32(row) + 1)
+	cpu.sb(menu + MENU_STEP, 0)
+	cpu.sb(menu + MENU_STATE, u32(row) + 1)
 	#partial switch row {
 	case .Options:
-		psx.sh(COMMAND_WIN + WIN_GREY, 1)
-		psx.sb(SETTING_WIN + OPTIONS_OPEN, 1)
-		psx.sb(SETTING_WIN + OPTIONS_STEP, 0)
+		cpu.sh(COMMAND_WIN + WIN_GREY, 1)
+		cpu.sb(SETTING_WIN + OPTIONS_OPEN, 1)
+		cpu.sb(SETTING_WIN + OPTIONS_STEP, 0)
 		options_screen_open()
 	case .Reset:
-		psx.sh(COMMAND_WIN + WIN_GREY, 1)
+		cpu.sh(COMMAND_WIN + WIN_GREY, 1)
 	case:
-		psx.sb(COMMAND_WIN + WIN_SCREEN, 0xff)
-		psx.sh(INFO_TEXT, INFO_NONE)
+		cpu.sb(COMMAND_WIN + WIN_SCREEN, 0xff)
+		cpu.sh(INFO_TEXT, INFO_NONE)
 	}
 }
 
@@ -335,22 +336,22 @@ pages_open :: proc(single: bool) {
 	setting.single = single
 	setting.on_options = single
 	setting.row = 0
-	psx.sh(COMMAND_WIN + WIN_GREY, 1)
+	cpu.sh(COMMAND_WIN + WIN_GREY, 1)
 	// F11 may have changed it since start.
-	config.window.fullscreen = psx.window_options().fullscreen
+	config.window.fullscreen = host.window_options().fullscreen
 }
 
 @(private = "file")
 pages_close :: proc() {
 	setting.open = false
-	psx.sh(COMMAND_WIN + WIN_GREY, 0)
+	cpu.sh(COMMAND_WIN + WIN_GREY, 0)
 	game_routine(SOUND, {SOUND_CANCEL, 0, 0, 0, 0})
 	dirty := false
 	for c in setting.changed {
 		dirty ||= c
 	}
 	if dirty && !options_save(setting.changed[:]) {
-		psx.osd_toast("Settings not saved")
+		host.osd_toast("Settings not saved")
 		return
 	}
 	setting.changed = {}
@@ -358,10 +359,10 @@ pages_close :: proc() {
 
 @(private = "file")
 pages_tick :: proc() {
-	pressed := psx.lhu(PAD_PRESSED)
-	repeat := psx.lhu(PAD_REPEAT)
-	confirm := pressed & psx.lhu(CONFIRM_MASK) != 0
-	cancel := pressed & psx.lhu(CANCEL_MASK) != 0
+	pressed := cpu.lhu(PAD_PRESSED)
+	repeat := cpu.lhu(PAD_REPEAT)
+	confirm := pressed & cpu.lhu(CONFIRM_MASK) != 0
+	cancel := pressed & cpu.lhu(CANCEL_MASK) != 0
 	if setting.on_options {
 		options_tick(repeat, confirm, cancel)
 		return
@@ -369,13 +370,13 @@ pages_tick :: proc() {
 	switch {
 	case cancel:
 		pages_close()
-	case confirm || repeat & psx.PAD_RIGHT != 0:
+	case confirm || repeat & host.PAD_RIGHT != 0:
 		game_routine(SOUND, {SOUND_CONFIRM, 0, 0, 0, 0})
 		setting.on_options = true
 		setting.row = 0
-	case repeat & (psx.PAD_UP | psx.PAD_DOWN) != 0:
+	case repeat & (host.PAD_UP | host.PAD_DOWN) != 0:
 		game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
-		step := repeat & psx.PAD_DOWN != 0 ? 1 : -1
+		step := repeat & host.PAD_DOWN != 0 ? 1 : -1
 		setting.page = Options_Page((int(setting.page) + step) %% EXTRAS_COUNT)
 	}
 }
@@ -390,11 +391,11 @@ options_tick :: proc(repeat: u32, confirm, cancel: bool) {
 	case cancel:
 		game_routine(SOUND, {SOUND_CANCEL, 0, 0, 0, 0})
 		setting.on_options = false
-	case repeat & (psx.PAD_UP | psx.PAD_DOWN) != 0:
+	case repeat & (host.PAD_UP | host.PAD_DOWN) != 0:
 		game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
-		setting.row = (setting.row + (repeat & psx.PAD_DOWN != 0 ? 1 : -1)) %% count
-	case repeat & (psx.PAD_LEFT | psx.PAD_RIGHT) != 0 || confirm && option_toggles(options[i]):
-		if option_step(options[i], repeat & psx.PAD_LEFT != 0 ? -1 : 1) {
+		setting.row = (setting.row + (repeat & host.PAD_DOWN != 0 ? 1 : -1)) %% count
+	case repeat & (host.PAD_LEFT | host.PAD_RIGHT) != 0 || confirm && option_toggles(options[i]):
+		if option_step(options[i], repeat & host.PAD_LEFT != 0 ? -1 : 1) {
 			game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
 			setting.changed[i] = true
 		} else {
@@ -409,24 +410,24 @@ options_tick :: proc(repeat: u32, confirm, cancel: bool) {
 command_draw :: proc() {
 	win := setting_draw_record()
 	frame := FRAME
-	if w := psx.lbu(win + WIN_WIDTH); w >= 0x10 {
+	if w := cpu.lbu(win + WIN_WIDTH); w >= 0x10 {
 		game_routine(WINDOW_DRAW, {frame.x, frame.y, w, frame.w, 0})
 	}
 	command_open_step(win)
-	if psx.lbu(win + WIN_OPEN) == 0 {
+	if cpu.lbu(win + WIN_OPEN) == 0 {
 		return
 	}
-	camp_shut := setting_overlay == .Camp && psx.lbu(COMMAND_SCREEN) == 0
-	if camp_shut || i8(psx.lbu(win + WIN_SCREEN)) != 0 {
+	camp_shut := setting_overlay == .Camp && cpu.lbu(COMMAND_SCREEN) == 0
+	if camp_shut || i8(cpu.lbu(win + WIN_SCREEN)) != 0 {
 		// Shutting: narrow, then the game's shut step.
-		if w := psx.lbu(win + WIN_WIDTH); w != 0 {
-			psx.sb(win + WIN_WIDTH, w == FRAME_OPEN_W ? w - 8 : w - 16)
+		if w := cpu.lbu(win + WIN_WIDTH); w != 0 {
+			cpu.sb(win + WIN_WIDTH, w == FRAME_OPEN_W ? w - 8 : w - 16)
 		}
 		command_shut_step(win)
 		return
 	}
-	cursor := Setting_Row(psx.lbu(win + WIN_ROW))
-	grey := psx.lhu(win + WIN_GREY) != 0
+	cursor := Setting_Row(cpu.lbu(win + WIN_ROW))
+	grey := cpu.lhu(win + WIN_GREY) != 0
 	for row in Setting_Row {
 		colour: u32 = grey && row != cursor ? MENU_GREY : MENU_WHITE
 		y := ROW_Y + int(row) * ROW_STEP
@@ -438,11 +439,11 @@ command_draw :: proc() {
 		game_routine(TEXT_DRAW, {ROW_X, u32(y), colour, 0xff, label})
 	}
 	cy := ROW_Y + int(cursor) * ROW_STEP - 2
-	game_routine(CURSOR_DRAW, {ROW_X - 4, u32(cy), CURSOR_W, CURSOR_H, psx.lbu(win + WIN_GREY)})
+	game_routine(CURSOR_DRAW, {ROW_X - 4, u32(cy), CURSOR_W, CURSOR_H, cpu.lbu(win + WIN_GREY)})
 	title := TITLE_AT
 	game_routine(TITLE_DRAW, {u32(title.x), u32(title.y), TITLE_SETTING, 0, 0})
-	if draws := psx.lhu(win + WIN_DRAWS); setting_overlay == .Camp && draws != 2 {
-		psx.sh(win + WIN_DRAWS, draws + 1)
+	if draws := cpu.lhu(win + WIN_DRAWS); setting_overlay == .Camp && draws != 2 {
+		cpu.sh(win + WIN_DRAWS, draws + 1)
 	}
 }
 
@@ -452,17 +453,17 @@ command_open_step :: proc(win: u32) {
 		game_routine(COMMAND_OPEN_STEP, {win, 0, 0, 0, 0})
 		return
 	}
-	if psx.lbu(win + WIN_OPEN) != 0 {
+	if cpu.lbu(win + WIN_OPEN) != 0 {
 		return
 	}
-	switch w := psx.lbu(win + WIN_WIDTH); w {
+	switch w := cpu.lbu(win + WIN_WIDTH); w {
 	case 0:
-		psx.sb(OPEN_SOUND_AT, OPEN_SOUND)
-		psx.sb(win + WIN_WIDTH, OPEN_FIRST_W)
+		cpu.sb(OPEN_SOUND_AT, OPEN_SOUND)
+		cpu.sb(win + WIN_WIDTH, OPEN_FIRST_W)
 	case FRAME_OPEN_W:
-		psx.sb(win + WIN_OPEN, 1)
+		cpu.sb(win + WIN_OPEN, 1)
 	case:
-		psx.sb(win + WIN_WIDTH, w + OPEN_STEP_W)
+		cpu.sb(win + WIN_WIDTH, w + OPEN_STEP_W)
 	}
 }
 
@@ -473,15 +474,15 @@ command_shut_step :: proc(win: u32) {
 		game_routine(COMMAND_SHUT_STEP, {win, 0, 0, 0, 0})
 		return
 	}
-	if psx.lbu(win + WIN_WIDTH) != 0 {
+	if cpu.lbu(win + WIN_WIDTH) != 0 {
 		return
 	}
-	if i8(psx.lbu(win + WIN_SCREEN)) == -1 {
-		psx.sb(win + WIN_NEXT, psx.lbu(win + WIN_STATE))
-		psx.sb(win + WIN_STATE, WIN_REPLACED)
+	if i8(cpu.lbu(win + WIN_SCREEN)) == -1 {
+		cpu.sb(win + WIN_NEXT, cpu.lbu(win + WIN_STATE))
+		cpu.sb(win + WIN_STATE, WIN_REPLACED)
 	}
-	psx.sb(win + WIN_OPEN, 0)
-	psx.sh(win + WIN_DRAWS, 0)
+	cpu.sb(win + WIN_OPEN, 0)
+	cpu.sh(win + WIN_DRAWS, 0)
 }
 
 // The right-hand windows (a0 SETTING_WIN): the option pages while Extras or
@@ -489,15 +490,15 @@ command_shut_step :: proc(win: u32) {
 @(private = "file")
 windows_draw :: proc() {
 	rec := setting_draw_record()
-	row := Setting_Row(psx.lbu(COMMAND_WIN + WIN_ROW))
+	row := Setting_Row(cpu.lbu(COMMAND_WIN + WIN_ROW))
 	if !setting.open && row != .Extras && row != .Screen {
 		options_screen_draw(rec)
 		return
 	}
 	single := setting.open ? setting.single : row == .Screen
 	page := single ? Options_Page.Display : setting.page
-	x := int(i16(psx.lhu(rec + SETTING_X)))
-	y := int(i16(psx.lhu(rec + SETTING_Y)))
+	x := int(i16(cpu.lhu(rec + SETTING_X)))
+	y := int(i16(cpu.lhu(rec + SETTING_Y)))
 	ox, ow := x + PAGES_W - 1, OPTIONS_W
 	if single {
 		ox, ow = x, PAGES_W - 1 + OPTIONS_W

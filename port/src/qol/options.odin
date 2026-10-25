@@ -21,7 +21,8 @@ import "core:math"
 import "core:os"
 import "core:strings"
 
-import "ps:psx"
+import host "ps:psx/host"
+import render "ps:psx/render"
 
 import "ps:core"
 
@@ -65,9 +66,9 @@ Option_Value :: union {
 	^bool,
 	^f64,
 	^int,
-	^psx.Scale_Mode,
-	^psx.Filter,
-	^psx.Detail,
+	^host.Scale_Mode,
+	^host.Filter,
+	^host.Detail,
 	^Enemy_AI,
 	^Ko_Hp_Loss,
 }
@@ -203,7 +204,7 @@ options_on :: proc(page: Options_Page) -> (first, count: int) {
 }
 
 @(private = "file")
-DETAIL_TEXT := [psx.Detail]string {
+DETAIL_TEXT := [host.Detail]string {
 	.X1 = "x1",
 	.X2 = "x2",
 	.X4 = "x4",
@@ -215,11 +216,11 @@ option_text :: proc(o: Option) -> string {
 	switch v in o.value {
 	case ^bool:
 		return v^ ? "On" : "Off"
-	case ^psx.Scale_Mode:
+	case ^host.Scale_Mode:
 		return v^ == .Fit ? "Fit" : "Integer"
-	case ^psx.Filter:
+	case ^host.Filter:
 		return v^ == .Nearest ? "Sharp" : "Smooth"
-	case ^psx.Detail:
+	case ^host.Detail:
 		return DETAIL_TEXT[v^]
 	case ^Enemy_AI:
 		return ENEMY_AI_TEXT[v^]
@@ -242,11 +243,11 @@ option_ini_text :: proc(o: Option) -> string {
 	switch v in o.value {
 	case ^bool:
 		return v^ ? "true" : "false"
-	case ^psx.Scale_Mode:
+	case ^host.Scale_Mode:
 		return v^ == .Fit ? "fit" : "integer"
-	case ^psx.Filter:
+	case ^host.Filter:
 		return v^ == .Nearest ? "nearest" : "linear"
-	case ^psx.Detail:
+	case ^host.Detail:
 		return DETAIL_TEXT[v^][1:]
 	case ^Enemy_AI:
 		return ENEMY_AI_KEYS[v^]
@@ -270,16 +271,16 @@ option_step :: proc(o: Option, dir: int) -> bool {
 	switch v in o.value {
 	case ^bool:
 		v^ = !v^
-	case ^psx.Scale_Mode:
+	case ^host.Scale_Mode:
 		v^ = v^ == .Fit ? .Integer : .Fit
-	case ^psx.Filter:
+	case ^host.Filter:
 		v^ = v^ == .Nearest ? .Linear : .Nearest
-	case ^psx.Detail:
+	case ^host.Detail:
 		next := int(v^) + dir
-		if next < 0 || next > int(max(psx.Detail)) {
+		if next < 0 || next > int(max(host.Detail)) {
 			return false
 		}
-		v^ = psx.Detail(next)
+		v^ = host.Detail(next)
 	case ^Enemy_AI:
 		next := int(v^) + dir
 		if next < 0 || next > int(max(Enemy_AI)) {
@@ -315,7 +316,7 @@ option_step :: proc(o: Option, dir: int) -> bool {
 @(private)
 option_toggles :: proc(o: Option) -> bool {
 	#partial switch _ in o.value {
-	case ^f64, ^int, ^psx.Detail, ^Enemy_AI, ^Ko_Hp_Loss:
+	case ^f64, ^int, ^host.Detail, ^Enemy_AI, ^Ko_Hp_Loss:
 		return false
 	}
 	return true
@@ -323,8 +324,8 @@ option_toggles :: proc(o: Option) -> bool {
 
 @(private = "file")
 apply_window :: proc() {
-	if !psx.window_apply(config.window) {
-		psx.osd_toast("Display change failed")
+	if !host.window_apply(config.window) {
+		host.osd_toast("Display change failed")
 	}
 }
 
@@ -335,30 +336,30 @@ apply_audio :: proc() {
 
 @(private = "file")
 apply_disc :: proc() {
-	psx.instant_loading = config.disc_instant_loading
-	psx.skip_black = config.disc_skip_black
+	host.instant_loading = config.disc_instant_loading
+	host.skip_black = config.disc_skip_black
 }
 
 @(private = "file")
 apply_effects :: proc() {
-	psx.smooth_effects = config.window_smooth_effects
-	psx.smooth_textures = config.window_smooth_textures
-	psx.bloom_effects = config.window_bloom_effects
-	psx.depth_of_field = config.window_depth_of_field
-	psx.vignette = config.window_vignette
+	render.smooth_effects = config.window_smooth_effects
+	render.smooth_textures = config.window_smooth_textures
+	render.bloom_effects = config.window_bloom_effects
+	render.depth_of_field = config.window_depth_of_field
+	render.vignette = config.window_vignette
 }
 
 @(private = "file")
 apply_mouse :: proc() {
-	psx.mouse_drag = config.camera_mouse
+	host.mouse_drag = config.camera_mouse
 }
 
 @(private = "file")
 apply_masters :: proc() {
 	masters_init()
-	if psx.osd_panel_page >= psx.osd_panel_pages {
-		psx.osd_hide_panel()
-		psx.osd_panel_page = PANEL_JOURNAL
+	if host.osd_panel_page >= host.osd_panel_pages {
+		host.osd_hide_panel()
+		host.osd_panel_page = PANEL_JOURNAL
 	}
 }
 

@@ -14,7 +14,7 @@ package qol
 
 import "core:hash"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 @(private = "file")
 DESCRIPTION_BANK :: 2 // MESSAGE_TEXT's bank number (id >> 13) for item descriptions
@@ -69,7 +69,7 @@ DESCRIPTIONS :: [?]Description {
 
 @(private = "file")
 descriptions: struct {
-	message_text: psx.Func_Proc,
+	message_text: cpu.Func_Proc,
 	slot:         [len(DESCRIPTIONS)]u32,
 }
 
@@ -81,31 +81,31 @@ descriptions_init :: proc() -> bool {
 		at += u32(len(d.text)) + 1
 	}
 	assert(at <= TEXT_AT + TEXT_MAX, "description text past its buffer")
-	descriptions.message_text = psx.hook(MESSAGE_TEXT, message_text) or_return
+	descriptions.message_text = cpu.hook(MESSAGE_TEXT, message_text) or_return
 	return true
 }
 
 @(private = "file")
 message_text :: proc() {
-	id := psx.cpu.r[4] & 0xffff
+	id := cpu.state.r[4] & 0xffff
 	descriptions.message_text()
 	if !config.text_descriptions || id >> 13 != DESCRIPTION_BANK {
 		return
 	}
-	vanilla := psx.cpu.r[2]
+	vanilla := cpu.state.r[2]
 	for d, i in DESCRIPTIONS {
 		if u32(d.id) != id {
 			continue
 		}
-		if !in_ram(vanilla) || hash.fnv32a(psx.mem_slice(vanilla, VANILLA_PREFIX)) != d.vanilla {
+		if !in_ram(vanilla) || hash.fnv32a(cpu.mem_slice(vanilla, VANILLA_PREFIX)) != d.vanilla {
 			return
 		}
 		at := descriptions.slot[i]
 		for b, k in transmute([]u8)d.text {
-			psx.sb(at + u32(k), u32(b))
+			cpu.sb(at + u32(k), u32(b))
 		}
-		psx.sb(at + u32(len(d.text)), 0)
-		psx.cpu.r[2] = at
+		cpu.sb(at + u32(len(d.text)), 0)
+		cpu.state.r[2] = at
 		return
 	}
 }

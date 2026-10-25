@@ -25,7 +25,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -126,8 +126,8 @@ SNAPSHOT_SIZE :: 0x4000 // >= the WATCHED pools' total, 0x3d08
 
 @(private = "file")
 quick: struct {
-	prep:     psx.Func_Proc,
-	round:    psx.Func_Proc,
+	prep:     cpu.Func_Proc,
+	round:    cpu.Func_Proc,
 	snapshot: [SNAPSHOT_SIZE]u8,
 	camera:   [CAMERA_SIZE]u8,
 	moved:   bool, // the camera changed since the previous game frame
@@ -137,8 +137,8 @@ quick: struct {
 @(private)
 quick_battle_init :: proc() -> bool {
 	ok: [2]bool
-	quick.prep, ok[0] = psx.hook_overlay(PREP_PHASE, SLOT_MENU, BATTLE_ID, prep_phase)
-	quick.round, ok[1] = psx.hook_overlay(ROUND_PHASE, SLOT_ENGINE, ROUND_ID, round_phase)
+	quick.prep, ok[0] = cpu.hook_overlay(PREP_PHASE, SLOT_MENU, BATTLE_ID, prep_phase)
+	quick.round, ok[1] = cpu.hook_overlay(ROUND_PHASE, SLOT_ENGINE, ROUND_ID, round_phase)
 	if ok != {true, true} {
 		fmt.eprintf("qol: battle phase handlers not found %v\n", ok)
 		return false
@@ -148,7 +148,7 @@ quick_battle_init :: proc() -> bool {
 
 @(private = "file")
 prep_phase :: proc() {
-	if u8(psx.lw(BATTLE_STATE)) == PHASE_COUNTDOWN && u8(psx.lw(BATTLE_STATE) >> 8) == 0 {
+	if u8(cpu.lw(BATTLE_STATE)) == PHASE_COUNTDOWN && u8(cpu.lw(BATTLE_STATE) >> 8) == 0 {
 		quick.windows = window_mask()
 	}
 	phase_run(quick.prep)
@@ -156,7 +156,7 @@ prep_phase :: proc() {
 
 @(private = "file")
 round_phase :: proc() {
-	camera := (^[CAMERA_SIZE]u8)(&psx.ram[CAMERA])^
+	camera := (^[CAMERA_SIZE]u8)(&cpu.ram[CAMERA])^
 	quick.moved = camera != quick.camera
 	quick.camera = camera
 	phase_run(quick.round)
@@ -165,17 +165,17 @@ round_phase :: proc() {
 // Run a phase handler, then again from the same registers while it only
 // stepped through bookkeeping.
 @(private = "file")
-phase_run :: proc(handler: psx.Func_Proc) {
+phase_run :: proc(handler: cpu.Func_Proc) {
 	if !config.battle_quick_turns {
 		handler()
 		return
 	}
-	regs := psx.cpu.r
-	before := psx.lw(BATTLE_STATE)
+	regs := cpu.state.r
+	before := cpu.lw(BATTLE_STATE)
 	snapshot_take()
 	handler()
 	for _ in 1 ..< MAX_RUNS {
-		after := psx.lw(BATTLE_STATE)
+		after := cpu.lw(BATTLE_STATE)
 		if !step_passed(before, after) || !snapshot_same() {
 			return
 		}
@@ -183,7 +183,7 @@ phase_run :: proc(handler: psx.Func_Proc) {
 			core.tracef(.Game, "quick turns: %08x -> %08x in the same frame", before, after)
 		}
 		before = after
-		psx.cpu.r = regs
+		cpu.state.r = regs
 		handler()
 	}
 }
@@ -194,7 +194,7 @@ snapshot_take :: proc() {
 	n: u32
 	for pool in pools {
 		size := pool.stride * pool.count
-		copy(quick.snapshot[n:][:size], psx.mem_slice(pool.base, size))
+		copy(quick.snapshot[n:][:size], cpu.mem_slice(pool.base, size))
 		n += size
 	}
 }
@@ -208,7 +208,7 @@ snapshot_same :: proc() -> bool {
 	same := true
 	for pool in pools {
 		size := pool.stride * pool.count
-		ram := psx.mem_slice(pool.base, size)
+		ram := cpu.mem_slice(pool.base, size)
 		if same && string(ram) != string(quick.snapshot[n:][:size]) {
 			same = false
 		}
@@ -244,7 +244,7 @@ step_passed :: proc(before, after: u32) -> bool {
 // and settling numbers, with quick idle on.
 @(private)
 quick_idle :: proc() -> bool {
-	return config.battle_quick_idle && u8(psx.lw(BATTLE_STATE)) == PHASE_ROUND && !quick.moved &&
+	return config.battle_quick_idle && u8(cpu.lw(BATTLE_STATE)) == PHASE_ROUND && !quick.moved &&
 		window_mask() == quick.windows && actors_resting() && !effects_running() && !popups_rising()
 }
 
@@ -254,10 +254,10 @@ actors_resting :: proc() -> bool {
 	for pool in pools {
 		for i in 0 ..< pool.count {
 			a := pool.base + i * pool.stride
-			if psx.lbu(a) & ACTOR_ACTIVE == 0 {
+			if cpu.lbu(a) & ACTOR_ACTIVE == 0 {
 				continue
 			}
-			if psx.lbu(a + ACTOR_ACTION) != ACTION_IDLE || psx.lbu(a + ACTOR_ANIM_MODE) != ANIM_RESTING {
+			if cpu.lbu(a + ACTOR_ACTION) != ACTION_IDLE || cpu.lbu(a + ACTOR_ANIM_MODE) != ANIM_RESTING {
 				return false
 			}
 		}
@@ -268,7 +268,7 @@ actors_resting :: proc() -> bool {
 @(private = "file")
 effects_running :: proc() -> bool {
 	for i in 0 ..< EFFECTS.count {
-		flags := psx.lbu(EFFECTS.base + i * EFFECTS.stride)
+		flags := cpu.lbu(EFFECTS.base + i * EFFECTS.stride)
 		if flags & EFFECT_ACTIVE != 0 && flags & EFFECT_PERSISTENT == 0 {
 			return true
 		}
@@ -282,16 +282,16 @@ effects_running :: proc() -> bool {
 popups_rising :: proc() -> bool {
 	for i in 0 ..< POPUPS.count {
 		p := POPUPS.base + i * POPUPS.stride
-		if psx.lbu(p) & POPUP_ACTIVE == 0 {
+		if cpu.lbu(p) & POPUP_ACTIVE == 0 {
 			continue
 		}
-		kind := psx.lbu(p + POPUP_KIND)
+		kind := cpu.lbu(p + POPUP_KIND)
 		if kind != POPUP_NUMBER && kind != POPUP_NUMBER_MARKED {
 			return true
 		}
 		// A hidden number (damage_numbers off) has nothing to read.
 		if config.battle_damage_numbers &&
-		   (psx.lbu(p + POPUP_PHASE) != 0 || psx.lbu(p + POPUP_STEP) < POPUP_SETTLING) {
+		   (cpu.lbu(p + POPUP_PHASE) != 0 || cpu.lbu(p + POPUP_STEP) < POPUP_SETTLING) {
 			return true
 		}
 	}
@@ -302,7 +302,7 @@ popups_rising :: proc() -> bool {
 window_mask :: proc() -> u32 {
 	mask: u32
 	for i in 0 ..< WINDOWS.count {
-		if psx.lbu(WINDOWS.base + i * WINDOWS.stride) & 1 != 0 {
+		if cpu.lbu(WINDOWS.base + i * WINDOWS.stride) & 1 != 0 {
 			mask |= 1 << i
 		}
 	}

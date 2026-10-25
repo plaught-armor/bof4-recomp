@@ -9,7 +9,7 @@
 // inside a wall on the new map.
 //
 // The save stores the resume map and tile in its game region. The patch is
-// made to RAM as the game reads the file (psx.card_read_hook), with the save's
+// made to RAM as the game reads the file (bios.card_read_hook), with the save's
 // XOR checksum corrected to match, so the card image is never changed.
 package qol
 
@@ -18,7 +18,8 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
-import "ps:psx"
+import bios "ps:psx/bios"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -53,7 +54,7 @@ warp_init :: proc() -> bool {
 		fmt.eprintln("BOF4_WARP: expected map[.section][:x,z], map in hex, the rest in decimal; got", spec)
 		return false
 	}
-	psx.card_read_hook = warp_read
+	bios.card_read_hook = warp_read
 	return true
 }
 
@@ -102,8 +103,8 @@ warp_read :: proc(name: string, file_pos: u32, buf: u32, length: u32) {
 	for i in 0 ..< warp.count {
 		off := u32(WARP_OFFSET) + i
 		if off >= file_pos && off < file_pos + length {
-			orig := u8(psx.lbu(buf + off - file_pos))
-			psx.sb(buf + off - file_pos, u32(warp.bytes[i]))
+			orig := u8(cpu.lbu(buf + off - file_pos))
+			cpu.sb(buf + off - file_pos, u32(warp.bytes[i]))
 			warp.delta ~= orig ~ warp.bytes[i]
 			warp.done += 1
 		}
@@ -116,7 +117,7 @@ warp_read :: proc(name: string, file_pos: u32, buf: u32, length: u32) {
 		return
 	}
 	at := buf + WARP_CHECKSUM - file_pos
-	psx.sb(at, psx.lbu(at) ~ u32(warp.delta))
+	cpu.sb(at, cpu.lbu(at) ~ u32(warp.delta))
 	if .Game in core.trace.active {
 		core.tracef(.Game, "warp: %s resumes on map %02x%02x.%d", name, warp.bytes[2], warp.bytes[1], warp.bytes[0])
 	}

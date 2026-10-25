@@ -14,7 +14,7 @@ package qol
 import "core:fmt"
 import "core:math"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -57,8 +57,8 @@ encounter_init :: proc() -> bool {
 
 // Replace a FLD_MAIN function; returns the original.
 @(private)
-hook_field :: proc(addr: u32, fn: psx.Func_Proc) -> (psx.Func_Proc, bool) {
-	original, ok := psx.hook_overlay(addr, SLOT_ENGINE, FLD_MAIN_ID, fn)
+hook_field :: proc(addr: u32, fn: cpu.Func_Proc) -> (cpu.Func_Proc, bool) {
+	original, ok := cpu.hook_overlay(addr, SLOT_ENGINE, FLD_MAIN_ID, fn)
 	if !ok {
 		fmt.eprintf("qol: field function %08x not found\n", addr)
 	}
@@ -68,13 +68,13 @@ hook_field :: proc(addr: u32, fn: psx.Func_Proc) -> (psx.Func_Proc, bool) {
 // Call a game function as `jal target` from `ret - 8` would.
 @(private)
 game_call :: proc(target, ret: u32) {
-	psx.cpu.r[31] = ret
-	psx.call(target)
+	cpu.state.r[31] = ret
+	cpu.call(target)
 }
 
 @(private = "file")
 encounter_check :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	ra, sp := c.r[31], c.r[29]
 	c.r[29] = sp - 0x18
 	c.r[2] = encounter_step(c.r[4]) ? 1 : 0
@@ -84,20 +84,20 @@ encounter_check :: proc() {
 // One leader step on a field map; true starts a random battle.
 @(private = "file")
 encounter_step :: proc(obj: u32) -> bool {
-	if psx.lhu(FIELD_FLAGS) & 0x2000 != 0 || psx.lbu(GAME_REQUEST) != 0 {
+	if cpu.lhu(FIELD_FLAGS) & 0x2000 != 0 || cpu.lbu(GAME_REQUEST) != 0 {
 		return false
 	}
-	if psx.lbu(obj + 1) != psx.lbu(LEADER_ID) || !area_has_encounters(obj) {
+	if cpu.lbu(obj + 1) != cpu.lbu(LEADER_ID) || !area_has_encounters(obj) {
 		return false
 	}
-	left := psx.lbu(STEPS_LEFT)
+	left := cpu.lbu(STEPS_LEFT)
 	if left == 0xff {
-		psx.cpu.r[4] = left
+		cpu.state.r[4] = left
 		game_call(ROLL_BUDGET, 0x801d7370)
 		return false
 	}
 	if left != 0 {
-		per_step := psx.lbu(obj + 0x4d) & 1 != 0 ? 1.0 : 2.0
+		per_step := cpu.lbu(obj + 0x4d) & 1 != 0 ? 1.0 : 2.0
 		encounter.carry += per_step * config.encounter_rate
 		taken := math.floor(encounter.carry)
 		encounter.carry -= taken
@@ -105,25 +105,25 @@ encounter_step :: proc(obj: u32) -> bool {
 		if .Game in core.trace.active {
 			core.tracef(.Game, "encounter: %v steps taken, %d left", taken, left)
 		}
-		psx.sb(STEPS_LEFT, left)
+		cpu.sb(STEPS_LEFT, left)
 		if left != 0 {
 			return false
 		}
 	}
-	psx.sh(FIELD_EVENTS, psx.lhu(FIELD_EVENTS) | 0x200)
+	cpu.sh(FIELD_EVENTS, cpu.lhu(FIELD_EVENTS) | 0x200)
 	return true
 }
 
 @(private = "file")
 area_has_encounters :: proc(obj: u32) -> bool {
-	psx.cpu.r[4] = psx.lhu(FIELD_MAP)
+	cpu.state.r[4] = cpu.lhu(FIELD_MAP)
 	game_call(AREA_KIND, 0x801d72ec)
-	if psx.cpu.r[2] & 0xff == 1 {
-		row := MAP_TABLE + psx.lbu(MAP_INDEX) * 12
-		return psx.lhu(row + 4) != 0
+	if cpu.state.r[2] & 0xff == 1 {
+		row := MAP_TABLE + cpu.lbu(MAP_INDEX) * 12
+		return cpu.lhu(row + 4) != 0
 	}
-	psx.cpu.r[4] = obj
+	cpu.state.r[4] = obj
 	game_call(AREA_ENCOUNTERS, 0x801d733c)
-	table := psx.cpu.r[2]
-	return table != 0 && psx.lbu(table + 4) != 0xff
+	table := cpu.state.r[2]
+	return table != 0 && cpu.lbu(table + 4) != 0xff
 }

@@ -16,7 +16,7 @@ spell/skill effect), `BWORLD/` (battle backgrounds and bosses), `PLAYER/`,
 `SCENARIO/`, `SYSTEM/` (FLD_MAIN, GAME, CAMP, SAVE, menus), `WORLD/` (field
 maps, `AREA<letter><nnn>.EMI`), movies (`.STR`) and XA audio.
 
-The port can tell which file the game starts reading: `psx.read_start_hook`
+The port can tell which file the game starts reading: `spu.read_start_hook`
 gets the LBA, which a lookup in the table turns back into a file index (used
 by `qol/cinematics.odin`).
 
@@ -27,7 +27,7 @@ frames of 320x240 at 15 a second (92 s), with XA audio on channel 1 (1725
 sectors). Video sectors are Mode 2 data sectors (submode 0x48, not the video
 bit) whose data begins with the STR header `60 01 01 80`, then u16 chunk
 number, u16 chunk count (9) and u32 frame number at +8 (the first frame is 1).
-`psx.movie_position` keeps the LBA and frame number of the last one the drive
+`spu.movie_position` keeps the LBA and frame number of the last one the drive
 read, which `qol/subtitles.odin` times its lines by. Extract it with
 `dd bs=2352 skip=259934 count=13807` from the Track 1 image; ffmpeg plays it
 with `-f psxstr`.

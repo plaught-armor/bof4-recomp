@@ -3,7 +3,7 @@
 // address has one name (docs/address-map.md is built from these).
 package qol
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 // Overlay slots (docs/overlays.md); each hook names its overlay id itself.
 SLOT_GAME :: 0x8018d800 // SYSTEM/GAME.EMI, id 0x0e: main loop, item/skill/growth tables
@@ -67,7 +67,7 @@ MODELS_DRAW :: 0x80145674 // the placed models of DRAW_LAYER (SC_LAYER)
 DRAW_OTAG_ENV :: 0x8016c034 // a0 = ordering table, a1 = DRAWENV
 MAIN_DRAW_RET :: 0x8013971c // the main loop's DrawOTagEnv call
 
-// Hooks on one address chain: psx.hook hands each hook the one installed
+// Hooks on one address chain: cpu.hook hands each hook the one installed
 // before it as its original, so the hook installed last (later in init's
 // chain in config.odin) runs first. The chains on shared addresses, first
 // to run on the left; reordering init changes them.
@@ -116,7 +116,7 @@ combatant :: proc(id: u32) -> u32 {
 // minute at a time.
 @(private)
 play_time_jumped :: proc(clock: ^Play_Clock) -> bool {
-	minutes := psx.lw(PLAY_HOURS) * 60 + psx.lbu(PLAY_MINUTES)
+	minutes := cpu.lw(PLAY_HOURS) * 60 + cpu.lbu(PLAY_MINUTES)
 	jumped := !clock.read || minutes < clock.minutes || minutes - clock.minutes > 1
 	clock^ = {true, minutes}
 	return jumped

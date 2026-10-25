@@ -19,7 +19,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 @(private = "file")
 IDENTIFY_SLOT :: 0x801e6800
@@ -138,17 +138,17 @@ ICON_SHEET_X :: 960
 
 @(private = "file")
 identify: struct {
-	draw:   psx.Func_Proc,
-	text:   psx.Func_Proc,
-	setup:  psx.Func_Proc,
+	draw:   cpu.Func_Proc,
+	text:   cpu.Func_Proc,
+	setup:  cpu.Func_Proc,
 	inside: bool, // DATA_DRAW is running
 }
 
 @(private)
 identify_init :: proc() -> bool {
-	draw, draw_ok := psx.hook_overlay(DATA_DRAW, IDENTIFY_SLOT, IDENTIFY_ID, data_draw)
-	text, text_ok := psx.hook(TEXT_DRAW, text_draw)
-	setup, setup_ok := psx.hook_overlay(PARTY_SETUP, SLOT_MENU, BATTLE_ID, party_setup)
+	draw, draw_ok := cpu.hook_overlay(DATA_DRAW, IDENTIFY_SLOT, IDENTIFY_ID, data_draw)
+	text, text_ok := cpu.hook(TEXT_DRAW, text_draw)
+	setup, setup_ok := cpu.hook_overlay(PARTY_SETUP, SLOT_MENU, BATTLE_ID, party_setup)
 	if !draw_ok || !text_ok || !setup_ok {
 		fmt.eprintf("qol: identify function %08x / %08x / %08x not found\n", DATA_DRAW, TEXT_DRAW, PARTY_SETUP)
 		return false
@@ -162,14 +162,14 @@ identify_init :: proc() -> bool {
 @(private = "file")
 party_setup :: proc() {
 	record := char_record(SCIAS)
-	if config.battle_identify && psx.lhu(record + RECORD_LEVEL) >= SCIAS_LEVEL {
+	if config.battle_identify && cpu.lhu(record + RECORD_LEVEL) >= SCIAS_LEVEL {
 		for slot in u32(0) ..< SPELL_SLOTS {
-			spell := psx.lbu(record + RECORD_SPELLS + slot)
+			spell := cpu.lbu(record + RECORD_SPELLS + slot)
 			if spell == IDENTIFY_SKILL {
 				break
 			}
 			if spell == 0 {
-				psx.sb(record + RECORD_SPELLS + slot, IDENTIFY_SKILL)
+				cpu.sb(record + RECORD_SPELLS + slot, IDENTIFY_SKILL)
 				break
 			}
 		}
@@ -182,7 +182,7 @@ text_draw :: proc() {
 	if identify.inside {
 		dropped := DROPPED
 		for ra in dropped {
-			if psx.cpu.r[31] == ra {
+			if cpu.state.r[31] == ra {
 				return
 			}
 		}
@@ -199,14 +199,14 @@ level_group :: proc(level: u32, holy: bool) -> int {
 
 @(private = "file")
 data_draw :: proc() {
-	scan := psx.lw(SCAN)
-	x := int(i16(psx.lhu(scan + 8)))
-	y := int(i16(psx.lhu(scan + 10)))
-	who := combatant(u32(i8(psx.lbu(scan + 12))))
+	scan := cpu.lw(SCAN)
+	x := int(i16(cpu.lhu(scan + 8)))
+	y := int(i16(cpu.lhu(scan + 10)))
+	who := combatant(u32(i8(cpu.lbu(scan + 12))))
 	identify.inside = true
 	identify.draw()
 	identify.inside = false
-	if psx.lbu(SCAN_UNKNOWN) != 0 {
+	if cpu.lbu(SCAN_UNKNOWN) != 0 {
 		return
 	}
 	menu_text(x + SEPARATOR_X, y + SEPARATOR_Y, "/")
@@ -214,15 +214,15 @@ data_draw :: proc() {
 	skill_row, weapon_row := SKILL_ROW, WEAPON_ROW
 	element_u := ELEMENT_U
 	for u, i in element_u {
-		group := level_group(psx.lbu(who + ELEMENT_LEVELS + u32(i)), i == HOLY)
+		group := level_group(cpu.lbu(who + ELEMENT_LEVELS + u32(i)), i == HOLY)
 		menu_sprite(x + CELL_X + i * CELL_W, y + ELEMENT_Y, ICON_SIZE, ICON_SIZE, u, skill_row[0], ICON_PAGE, skill_row[1], skill_row[2], tints[group])
 	}
 	kind_u := KIND_U
 	for u, i in kind_u {
-		group := level_group(psx.lbu(who + KIND_LEVELS + u32(i)), false)
+		group := level_group(cpu.lbu(who + KIND_LEVELS + u32(i)), false)
 		menu_sprite(x + CELL_X + i * CELL_W, y + KIND_Y, ICON_SIZE, ICON_SIZE, u, weapon_row[0], ICON_PAGE, weapon_row[1], weapon_row[2], tints[group])
 	}
-	group := level_group(psx.lbu(who + KIND_LEVELS + len(kind_u)), false)
+	group := level_group(cpu.lbu(who + KIND_LEVELS + len(kind_u)), false)
 	dragon := DRAGON
 	dragon_x := x + CELL_X + len(kind_u) * CELL_W
 	if texels_place(ICON_SHEET_X, DRAGON_U, DRAGON_V, dragon[:]) && clut_place(DRAGON_CLUT_X, DRAGON_CLUT_Y, DRAGON_COLOURS) {

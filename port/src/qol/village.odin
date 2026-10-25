@@ -16,7 +16,7 @@
 package qol
 
 import "core:hash"
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 @(private = "file")
 VILLAGE_MAP :: 0x1013
@@ -154,13 +154,13 @@ village_vblank :: proc() {
 	if !config.field_dengeki {
 		return
 	}
-	if psx.lhu(MAP_ID) == FOREST_MAP && psx.r8(MAP_SECTION) == 0 {
+	if cpu.lhu(MAP_ID) == FOREST_MAP && cpu.r8(MAP_SECTION) == 0 {
 		forest_entry()
 	}
-	if psx.lhu(MAP_ID) != VILLAGE_MAP {
+	if cpu.lhu(MAP_ID) != VILLAGE_MAP {
 		return
 	}
-	disc := psx.ram[BANK & (psx.RAM_SIZE - 1):][:BANK_SIZE]
+	disc := cpu.ram[BANK & (cpu.RAM_SIZE - 1):][:BANK_SIZE]
 	if hash.fnv32a(disc) != BANK_HASH {
 		return
 	}
@@ -187,7 +187,7 @@ village_vblank :: proc() {
 		}
 		assert(found, "village message without English")
 	}
-	out := psx.mem_slice(BANK, next)
+	out := cpu.mem_slice(BANK, next)
 	for t, id in table {
 		out[id * 2] = u8(t)
 		out[id * 2 + 1] = u8(t >> 8)
@@ -202,34 +202,34 @@ village_vblank :: proc() {
 // added, and marks the new exit's cells on its first layer.
 @(private = "file")
 forest_entry :: proc() {
-	base := psx.lw(EXITS)
-	if !in_ram(base) || !in_ram(psx.lw(base)) {
+	base := cpu.lw(EXITS)
+	if !in_ram(base) || !in_ram(cpu.lw(base)) {
 		return
 	}
-	slot := psx.lw(base)
-	list := psx.lw(slot)
+	slot := cpu.lw(base)
+	list := cpu.lw(slot)
 	if list != FOREST_LIST {
 		size := u32(FOREST_EXITS * EXIT_SIZE + 2)
-		if !in_ram(list) || hash.fnv32a(psx.mem_slice(list, size)) != FOREST_HASH {
+		if !in_ram(list) || hash.fnv32a(cpu.mem_slice(list, size)) != FOREST_HASH {
 			return
 		}
-		out := psx.mem_slice(FOREST_LIST, size + EXIT_SIZE)
-		copy(out, psx.mem_slice(list, FOREST_EXITS * EXIT_SIZE))
+		out := cpu.mem_slice(FOREST_LIST, size + EXIT_SIZE)
+		copy(out, cpu.mem_slice(list, FOREST_EXITS * EXIT_SIZE))
 		entry := FOREST_ENTRY
 		copy(out[FOREST_EXITS * EXIT_SIZE:], entry[:])
 		out[size + EXIT_SIZE - 2] = 0xff
 		out[size + EXIT_SIZE - 1] = 0xff
-		psx.sw(slot, FOREST_LIST)
+		cpu.sw(slot, FOREST_LIST)
 	}
-	block := psx.lw(MAP_BLOCK)
+	block := cpu.lw(MAP_BLOCK)
 	if !in_ram(block) {
 		return
 	}
-	desc := block + psx.lw(block + 0xc4)
-	grid := block + psx.lw(block + 4 + 4 * u32(psx.r8(desc)))
-	attrs := block + psx.lw(block + 0xa4 + 4 * u32(psx.r8(desc + 1)))
-	row := attrs + FOREST_Z * u32(psx.r16(grid)) * 2
+	desc := block + cpu.lw(block + 0xc4)
+	grid := block + cpu.lw(block + 4 + 4 * u32(cpu.r8(desc)))
+	attrs := block + cpu.lw(block + 0xa4 + 4 * u32(cpu.r8(desc + 1)))
+	row := attrs + FOREST_Z * u32(cpu.r16(grid)) * 2
 	for x in u32(FOREST_X) ..< FOREST_X + FOREST_CELLS {
-		psx.w8(row + x, EXIT_ATTR)
+		cpu.w8(row + x, EXIT_ATTR)
 	}
 }

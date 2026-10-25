@@ -29,6 +29,11 @@ import "core:math/linalg"
 import "core:mem"
 import "core:os"
 import "ps:psx"
+import cpu "ps:psx/cpu"
+import gte "ps:psx/gte"
+import host "ps:psx/host"
+import io "ps:psx/io"
+import render "ps:psx/render"
 
 @(private = "file")
 LAYER_TILES_DRAW :: 0x80143930 // both tile passes over the runs LAYER_SETUP picked
@@ -311,7 +316,7 @@ map_layer_encode :: proc(l: Map_Layer, allocator := context.allocator) -> []u8 {
 // offset to the next offset of any table in the block.
 @(private = "file")
 map_layer_spans :: proc(spans: ^[8][2]u32) -> (n: int) {
-	block := psx.r32(MAP_BLOCK)
+	block := cpu.r32(MAP_BLOCK)
 	if block & 0x1fffff == 0 {
 		return 0
 	}
@@ -319,15 +324,15 @@ map_layer_spans :: proc(spans: ^[8][2]u32) -> (n: int) {
 	ne := 0
 	tables := [4][2]u32{{0x04, 8}, {0x24, 32}, {0xa4, 8}, {0xc4, 8}}
 	for t, k in tables {
-		count := min(u32(psx.r8(block + u32(k))), t[1])
+		count := min(u32(cpu.r8(block + u32(k))), t[1])
 		for i in 0 ..< count {
-			ends[ne] = psx.r32(block + t[0] + 4 * i)
+			ends[ne] = cpu.r32(block + t[0] + 4 * i)
 			ne += 1
 		}
 	}
-	n = min(int(psx.r8(block)), 8)
+	n = min(int(cpu.r8(block)), 8)
 	for i in 0 ..< n {
-		start := psx.r32(block + 4 + 4 * u32(i))
+		start := cpu.r32(block + 4 + 4 * u32(i))
 		end := u32(0)
 		for e in ends[:ne] {
 			if e > start && (end == 0 || e < end) {
@@ -340,8 +345,8 @@ map_layer_spans :: proc(spans: ^[8][2]u32) -> (n: int) {
 }
 
 map_geometry: struct {
-	tiles_draw: psx.Func_Proc,
-	models_draw: psx.Func_Proc,
+	tiles_draw: cpu.Func_Proc,
+	models_draw: cpu.Func_Proc,
 	check:      bool, // BOF4_MAPCHECK: run both drawings and compare
 	charge:     bool, // BOF4_MAPCHECK: native passes charge the game's cycles
 	checked:    int,
@@ -354,8 +359,8 @@ map_geometry: struct {
 @(private)
 map_geometry_init :: proc() -> bool {
 	ok: bool
-	map_geometry.tiles_draw = psx.hook(LAYER_TILES_DRAW, map_tiles_draw) or_return
-	map_geometry.models_draw = psx.hook(MODELS_DRAW, map_models_draw) or_return
+	map_geometry.tiles_draw = cpu.hook(LAYER_TILES_DRAW, map_tiles_draw) or_return
+	map_geometry.models_draw = cpu.hook(MODELS_DRAW, map_models_draw) or_return
 	map_geometry.check = os.get_env("BOF4_MAPCHECK", context.temp_allocator) != ""
 	map_geometry.charge = map_geometry.check
 	floors.dump_dir = os.get_env("BOF4_FLOORDUMP", context.allocator)
@@ -366,7 +371,7 @@ map_geometry_init :: proc() -> bool {
 // with any in use the game draws.
 @(private = "file")
 map_helpers :: proc() -> bool {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	return sc[SC_HELPERS] | sc[SC_HELPERS + 1] | sc[SC_HELPERS + 2] != 0
 }
 
@@ -381,11 +386,11 @@ map_tiles_draw :: proc() {
 		tiles_draw_native()
 		return
 	}
-	// Drawn in 3D (psx.world_on), the native passes cull and sort by view
+	// Drawn in 3D (render.world_on), the native passes cull and sort by view
 	// space corners where the game's tests screen corners: the two differ by
 	// design, so only the layer round trip is checked.
 	map_check_layers()
-	if psx.world_on() {
+	if render.world_on() {
 		tiles_draw_native()
 		return
 	}
@@ -399,7 +404,7 @@ map_models_draw :: proc() {
 		map_geometry.models_draw()
 		return
 	}
-	if !map_geometry.check || psx.world_on() {
+	if !map_geometry.check || render.world_on() {
 		models_draw_native()
 		return
 	}
@@ -507,9 +512,9 @@ Quad_Draw :: struct {
 // The drawing state as the scratchpad holds it.
 @(private = "file")
 quad_draw_begin :: proc() -> (d: Quad_Draw) {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	d = Quad_Draw {
-		ot          = psx.r32(OT_PTR),
+		ot          = cpu.r32(OT_PTR),
 		packet      = sc_u32(SC_PACKET),
 		wrap        = sc_u32(SC_PACKET_WRAP),
 		count       = sc_u16(SC_COUNT),
@@ -519,7 +524,7 @@ quad_draw_begin :: proc() -> (d: Quad_Draw) {
 		depth_mode  = sc[SC_DEPTH_MODE],
 		fog         = sc[SC_FOG],
 		fog_shift   = u32(sc[SC_FOG_SHIFT]) & 31,
-		unculled    = psx.world_3d,
+		unculled    = cpu.world_3d,
 		fogged      = sc[SC_FOGGED],
 	}
 	d.fog_base = i32(sc_u32(SC_FOG_BASE)) - (4096 >> (u32(i8(sc[SC_FOG_SHIFT])) & 31))
@@ -534,9 +539,9 @@ quad_draw_begin :: proc() -> (d: Quad_Draw) {
 quad_draw_end :: proc(d: ^Quad_Draw) {
 	sc_w32(SC_PACKET, d.packet)
 	sc_w16(SC_COUNT, d.count)
-	psx.scratch[SC_FOGGED] = d.fogged
+	cpu.scratch[SC_FOGGED] = d.fogged
 	for o, i in SC_COLOR_TAIL {
-		psx.scratch[o] = d.tail[i]
+		cpu.scratch[o] = d.tail[i]
 	}
 }
 
@@ -544,7 +549,7 @@ quad_draw_end :: proc(d: ^Quad_Draw) {
 // taken, path by path, as spans of the game's instruction addresses (delay
 // slots included), but charges them only under BOF4_MAPCHECK, which compares
 // the counts on every drawing no interrupt fell inside, and when replaying a
-// record made while it always did (psx.charge_native). Otherwise it takes no
+// record made while it always did (host.charge_native). Otherwise it takes no
 // emulated time: the map drawing was most of a town's frame (Sarai: about
 // two vblanks of the three each game frame took, 20 game frames a second
 // against 30 in rooms, so the party walked at two thirds speed), and free
@@ -560,8 +565,8 @@ cost :: #force_inline proc(from, to: u32) -> u64 {
 
 @(private)
 spend :: #force_inline proc(from, to: u32) {
-	if map_geometry.charge || psx.charge_native {
-		psx.cpu.cycles += cost(from, to)
+	if map_geometry.charge || host.charge_native {
+		cpu.state.cycles += cost(from, to)
 	}
 }
 
@@ -569,14 +574,14 @@ spend :: #force_inline proc(from, to: u32) {
 // function and on each loop back edge.
 @(private)
 events :: #force_inline proc() {
-	if psx.cpu.cycles >= psx.next_event {
-		psx.run_events()
+	if cpu.state.cycles >= cpu.next_event {
+		io.run_events()
 	}
 }
 
 @(private = "file")
 tiles_draw_native :: proc() {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	events()
 	spend(0x80143930, 0x8014393c) // LAYER_TILES_DRAW calls pass 1
 	d := quad_draw_begin()
@@ -748,7 +753,7 @@ color_unpack :: #force_inline proc(c: u16) -> [3]u8 {
 // slot's base at the opposite one, the other two mixed from those.
 @(private = "file")
 tile_uv :: proc(d: ^Quad_Draw, t: ^Map_Tile) {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	base := u32(t.page >> 4) & 3
 	bu, bv := sc[SC_UV_BASE_U + base], sc[SC_UV_BASE_V + base]
 	u, v := t.cell << 4, t.cell & 0xf0
@@ -799,7 +804,7 @@ tile_uv :: proc(d: ^Quad_Draw, t: ^Map_Tile) {
 	d.colour_cost = c
 }
 
-// The unculled drawing's test (psx.world_3d): the game's needs a
+// The unculled drawing's test (cpu.world_3d): the game's needs a
 // corner on screen, which drops a big quad whose corners all lie off it. This
 // one drops a quad only when it cannot show: every corner behind the lens, or
 // every corner before it and off the same side of the screen (the game's
@@ -832,10 +837,10 @@ quad_may_show :: proc(sxy: [4]u32, sz: [4]i32) -> bool {
 // lens.
 @(private = "file")
 world_may_show :: proc(at: [4][3]f32) -> bool {
-	h, of := psx.world_lens()
+	h, of := render.world_lens()
 	near, left, right, above, below := 0, 0, 0, 0, 0
 	for c in at {
-		near += int(c.z < psx.WORLD_NEAR)
+		near += int(c.z < render.WORLD_NEAR)
 		left += int(h * c.x + (of.x + 16) * c.z < 0)
 		right += int(h * c.x + (of.x - 336) * c.z >= 0)
 		above += int(h * c.y + (of.y + 16) * c.z < 0)
@@ -858,34 +863,34 @@ world_turn :: proc(a, b, c: [3]f32) -> i32 {
 @(private = "file")
 quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 	xy :: #force_inline proc(v: [3]i16) -> u32 {return u32(u16(v[0])) | u32(u16(v[1])) << 16}
-	psx.gte_write(0, xy(d.v[0]))
-	psx.gte_write(1, u32(u16(d.v[0][2])))
-	psx.gte_write(2, xy(d.v[1]))
-	psx.gte_write(3, u32(u16(d.v[1][2])))
-	psx.gte_write(4, xy(d.v[2]))
-	psx.gte_write(5, u32(u16(d.v[2][2])))
-	psx.gte_cmd(0x280030) // RTPT
+	gte.gte_write(0, xy(d.v[0]))
+	gte.gte_write(1, u32(u16(d.v[0][2])))
+	gte.gte_write(2, xy(d.v[1]))
+	gte.gte_write(3, u32(u16(d.v[1][2])))
+	gte.gte_write(4, xy(d.v[2]))
+	gte.gte_write(5, u32(u16(d.v[2][2])))
+	gte.gte_cmd(0x280030) // RTPT
 	sxy: [4]u32
 	sz: [4]i32
-	sxy[0], sxy[1], sxy[2] = psx.gte_read(12), psx.gte_read(13), psx.gte_read(14)
-	sz[0], sz[1], sz[2] = i32(psx.gte_read(17)), i32(psx.gte_read(18)), i32(psx.gte_read(19))
-	psx.gte_cmd(0x1400006) // NCLIP
-	turn0 := i32(psx.gte_read(24))
-	psx.gte_write(0, xy(d.v[3]))
-	psx.gte_write(1, u32(u16(d.v[3][2])))
-	psx.gte_cmd(0x180001) // RTPS
-	psx.gte_cmd(0x1400006)
-	turn1 := i32(psx.gte_read(24))
-	sxy[3], sz[3] = psx.gte_read(14), i32(psx.gte_read(19))
+	sxy[0], sxy[1], sxy[2] = gte.gte_read(12), gte.gte_read(13), gte.gte_read(14)
+	sz[0], sz[1], sz[2] = i32(gte.gte_read(17)), i32(gte.gte_read(18)), i32(gte.gte_read(19))
+	gte.gte_cmd(0x1400006) // NCLIP
+	turn0 := i32(gte.gte_read(24))
+	gte.gte_write(0, xy(d.v[3]))
+	gte.gte_write(1, u32(u16(d.v[3][2])))
+	gte.gte_cmd(0x180001) // RTPS
+	gte.gte_cmd(0x1400006)
+	turn1 := i32(gte.gte_read(24))
+	sxy[3], sz[3] = gte.gte_read(14), i32(gte.gte_read(19))
 	spend(q.project[0], q.project[1])
-	// Drawn in 3D (psx.world_on), the quad is tested by its corners in view
+	// Drawn in 3D (render.world_on), the quad is tested by its corners in view
 	// space: the GTE's screen corners are clamped, and nonsense behind the
 	// lens.
-	world := psx.world_on()
+	world := render.world_on()
 	at: [4][3]f32
 	if world {
 		for &c, i in at {
-			c = psx.world_view(d.v[i])
+			c = render.world_view(d.v[i])
 		}
 		turn0, turn1 = world_turn(at[0], at[1], at[2]), world_turn(at[1], at[2], at[3])
 	}
@@ -1013,33 +1018,33 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 		spend(q.wrap[1][0], q.wrap[1][1])
 		d.packet = d.wrap
 	}
-	if map_geometry.charge || psx.charge_native {
-		psx.cpu.cycles += d.colour_cost
+	if map_geometry.charge || host.charge_native {
+		cpu.state.cycles += d.colour_cost
 	}
 
 	p := d.packet
 	spend(q.packet[0][0], q.packet[0][1])
-	psx.w8(p + 3, 12)
-	psx.w8(p + 7, 0x3c | (d.semi ? 2 : 0))
+	cpu.w8(p + 3, 12)
+	cpu.w8(p + 7, 0x3c | (d.semi ? 2 : 0))
 	if d.semi {
 		spend(q.semi[0], q.semi[1])
 	}
 	spend(q.packet[1][0], q.packet[1][1])
 	spend(q.packet[2][0], q.packet[2][1])
 	l := q.late
-	psx.w16(p + 26, d.tpage)
-	psx.w16(p + 14, d.clut)
+	cpu.w16(p + 26, d.tpage)
+	cpu.w16(p + 14, d.clut)
 	for i in 0 ..< 4 {
 		at := p + 4 + 12 * u32(i)
 		if i == 0 {
-			psx.w8(at, d.rgb[0][0])
-			psx.w8(at + 1, d.rgb[0][1])
-			psx.w8(at + 2, d.rgb[0][2])
+			cpu.w8(at, d.rgb[0][0])
+			cpu.w8(at + 1, d.rgb[0][1])
+			cpu.w8(at + 2, d.rgb[0][2])
 		} else {
-			psx.w32(at, u32(d.rgb[i][0]) | u32(d.rgb[i][1]) << 8 | u32(d.rgb[i][2]) << 16 | u32(d.tail[i]) << 24)
+			cpu.w32(at, u32(d.rgb[i][0]) | u32(d.rgb[i][1]) << 8 | u32(d.rgb[i][2]) << 16 | u32(d.tail[i]) << 24)
 		}
-		psx.w32(at + 4, sxy[i])
-		psx.w16(at + 8, d.uv[i])
+		cpu.w32(at + 4, sxy[i])
+		cpu.w16(at + 8, d.uv[i])
 	}
 	switch {
 	case d.depth_mode == 0:
@@ -1083,7 +1088,7 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 		spend(0x8014448c + l, 0x801444e8 + l)
 	}
 	if world {
-		psx.world_quad_add(p, at)
+		render.world_quad_add(p, at)
 	}
 	ot_insert(d.ot + OT_FIRST + u32(depth) * 4, p)
 	d.count += 1
@@ -1112,27 +1117,27 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 	}
 	spend(0x80144584 + l, 0x80144790 + l)
 	p = d.packet
-	psx.w8(p + 11, 8)
-	psx.w8(p + 15, 0x38 | 2)
+	cpu.w8(p + 11, 8)
+	cpu.w8(p + 15, 0x38 | 2)
 	for i in 0 ..< 4 {
 		g := u8(fog[i] >> 1 + fog[i] >> 2)
 		at := p + 12 + 8 * u32(i)
 		if i == 0 {
-			psx.w8(at, g)
-			psx.w8(at + 1, g)
-			psx.w8(at + 2, g)
+			cpu.w8(at, g)
+			cpu.w8(at + 1, g)
+			cpu.w8(at + 2, g)
 		} else {
-			psx.w32(at, u32(g) | u32(g) << 8 | u32(g) << 16 | u32(d.tail[i]) << 24)
+			cpu.w32(at, u32(g) | u32(g) << 8 | u32(g) << 16 | u32(d.tail[i]) << 24)
 		}
-		psx.w32(at + 4, sxy[i])
+		cpu.w32(at + 4, sxy[i])
 	}
 	if world {
-		psx.world_quad_add(p + 8, at)
+		render.world_quad_add(p + 8, at)
 	}
 	slot := d.ot + OT_FIRST - 4 + u32(depth) * 4
 	ot_insert(slot, p + 8)
-	psx.w8(p + 3, 1)
-	psx.w32(p + 4, 0xe1000200 | u32(d.fog & 3) << 5)
+	cpu.w8(p + 3, 1)
+	cpu.w32(p + 4, 0xe1000200 | u32(d.fog & 3) << 5)
 	ot_insert(slot, p)
 	d.count += 1
 	d.packet += PACKET_SIZE
@@ -1148,7 +1153,7 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 
 @(private = "file")
 models_draw_native :: proc() {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	events()
 	spend(0x80145674, 0x801456a0)
 	layer := block_entry(0x80149728, 3, 0xc4, u32(sc[SC_LAYER]))
@@ -1156,7 +1161,7 @@ models_draw_native :: proc() {
 	d := quad_draw_begin()
 	visits := sc_u16(SC_VISITS)
 	at := layer + 4
-	n := psx.r8(layer + 2)
+	n := cpu.r8(layer + 2)
 	for i in 0 ..< n {
 		if i != 0 {
 			events()
@@ -1181,13 +1186,13 @@ models_draw_native :: proc() {
 block_entry :: proc(at, count_at, table, i: u32) -> u32 {
 	events()
 	spend(at, at + 0x20)
-	block := psx.r32(MAP_BLOCK)
-	if i32(psx.r8(block + count_at)) - 1 < i32(i) {
+	block := cpu.r32(MAP_BLOCK)
+	if i32(cpu.r8(block + count_at)) - 1 < i32(i) {
 		spend(at + 0x34, at + 0x38)
 		return 0
 	}
 	spend(at + 0x24, at + 0x30)
-	return block + psx.r32(block + table + 4 * i)
+	return block + cpu.r32(block + table + 4 * i)
 }
 
 // (a, c) turned `turn` quarter turns, as the models' corners turn.
@@ -1208,7 +1213,7 @@ quarter_turn :: #force_inline proc(turn: u8, a, c: i32) -> [2]i32 {
 // MODELS_DRAW's look at one placed model.
 @(private = "file")
 model_place :: proc(d: ^Quad_Draw, visits: ^u16, m: Placed_Model) {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	spend(0x801456e0, 0x801456e8)
 	group := block_entry(0x801497dc, 1, 0x24, u32(m.group))
 	sc_w32(SC_GROUP, group)
@@ -1273,7 +1278,7 @@ model_in_sight :: proc(x, z: u32) -> bool {
 		return true
 	}
 	events()
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	dx := x - (u32(sc_u16(SC_SIGHT_X)) + 64)
 	dz := z - (u32(sc_u16(SC_SIGHT_Z)) + 64)
 	sx, sz := i32(i16(dx)), i32(i16(dz))
@@ -1360,7 +1365,7 @@ model_unhidden :: proc(m: Placed_Model) -> bool {
 	spend(0x80149ee0, 0x80149ef0)
 	if m.flags & PLACED_OCTANTS != 0 {
 		spend(0x80149ef4, 0x80149f14)
-		octant := ((i32(i16(psx.r16(CAMERA_YAW))) + 256) & 4095) >> 9
+		octant := ((i32(i16(cpu.r16(CAMERA_YAW))) + 256) & 4095) >> 9
 		if (m.octants >> u32(octant)) & 1 != 0 {
 			spend(0x80149f1c, 0x80149f20)
 			return false
@@ -1374,15 +1379,15 @@ model_unhidden :: proc(m: Placed_Model) -> bool {
 // in the fixed view's sight.
 @(private = "file")
 model_draw :: proc(d: ^Quad_Draw, visits: ^u16, m: Placed_Model, group: u32) {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	events()
 	spend(0x80145d90, 0x80145e3c)
-	block := psx.r32(MAP_BLOCK)
-	colours := block + psx.r32(block + MODEL_COLOURS)
-	colour := colours + u32(psx.r16(colours + 4 + 2 * u32(m.colours)))
+	block := cpu.r32(MAP_BLOCK)
+	colours := block + cpu.r32(block + MODEL_COLOURS)
+	colour := colours + u32(cpu.r16(colours + 4 + 2 * u32(m.colours)))
 	poly := group + 8
 	base := [3]u16{u16(m.x) << 4 - 64, u16(m.y) << 4, u16(m.z) << 4 - 64}
-	count := psx.r16(group)
+	count := cpu.r16(group)
 	sc_w32(SC_COLOURS, colours)
 	sc_w16(SC_TILE_X, base[0])
 	sc_w16(SC_TILE_Z, base[2])
@@ -1453,7 +1458,7 @@ model_draw :: proc(d: ^Quad_Draw, visits: ^u16, m: Placed_Model, group: u32) {
 			corners := [4][3]i8{p.v0, p.v1, p.v2, p.v3}
 			for c, k in corners {
 				d.v[k] = corner(turn, base, c)
-				d.rgb[k] = color_unpack(psx.r16(colour + 2 * u32(k)))
+				d.rgb[k] = color_unpack(cpu.r16(colour + 2 * u32(k)))
 				d.uv[k] = u16(p.uv[k])
 			}
 			slot := u32(i32(p.texture) * 4)
@@ -1488,7 +1493,7 @@ poly_in_sight :: proc(sx, sz: i32) -> bool {
 	if models_all_shown() {
 		return true
 	}
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	reach, side := i32(i16(sc_u16(SC_REACH))), i32(i16(sc_u16(SC_SIDE)))
 	mode := sc[SC_SIGHT_MODE]
 	cull: bool
@@ -1551,21 +1556,21 @@ poly_in_sight :: proc(sx, sz: i32) -> bool {
 // Link the packet at `p` in at the head of the ordering table slot `slot`.
 @(private = "file")
 ot_insert :: #force_inline proc(slot, p: u32) {
-	link := psx.r32(slot)
-	psx.w32(p, psx.r32(p) & 0xff000000 | link & 0xffffff)
-	psx.w32(slot, link & 0xff000000 | p & 0xffffff)
+	link := cpu.r32(slot)
+	cpu.w32(p, cpu.r32(p) & 0xff000000 | link & 0xffffff)
+	cpu.w32(slot, link & 0xff000000 | p & 0xffffff)
 }
 
 @(private)
-ram_ptr :: #force_inline proc(addr: u32) -> rawptr {return &psx.ram[addr & (psx.RAM_SIZE - 1)]}
+ram_ptr :: #force_inline proc(addr: u32) -> rawptr {return &cpu.ram[addr & (cpu.RAM_SIZE - 1)]}
 @(private)
-sc_u16 :: #force_inline proc(o: u32) -> u16 {return psx.r16(psx.SCRATCH_BASE + (o & (psx.SCRATCH_SIZE - 1)))}
+sc_u16 :: #force_inline proc(o: u32) -> u16 {return cpu.r16(cpu.SCRATCH_BASE + (o & (cpu.SCRATCH_SIZE - 1)))}
 @(private)
-sc_u32 :: #force_inline proc(o: u32) -> u32 {return psx.r32(psx.SCRATCH_BASE + (o & (psx.SCRATCH_SIZE - 1)))}
+sc_u32 :: #force_inline proc(o: u32) -> u32 {return cpu.r32(cpu.SCRATCH_BASE + (o & (cpu.SCRATCH_SIZE - 1)))}
 @(private)
-sc_w16 :: #force_inline proc(o: u32, v: u16) {psx.w16(psx.SCRATCH_BASE + o, v)}
+sc_w16 :: #force_inline proc(o: u32, v: u16) {cpu.w16(cpu.SCRATCH_BASE + o, v)}
 @(private)
-sc_w32 :: #force_inline proc(o: u32, v: u32) {psx.w32(psx.SCRATCH_BASE + o, v)}
+sc_w32 :: #force_inline proc(o: u32, v: u32) {cpu.w32(cpu.SCRATCH_BASE + o, v)}
 
 // ---------------------------------------------------------------- checks
 
@@ -1577,7 +1582,7 @@ map_check_layers :: proc() {
 	n := map_layer_spans(&spans)
 	sum := u32(n)
 	for s in spans[:n] {
-		for b in psx.mem_slice(s[0], s[1] - s[0]) {
+		for b in cpu.mem_slice(s[0], s[1] - s[0]) {
 			sum = sum * 31 + u32(b)
 		}
 	}
@@ -1587,7 +1592,7 @@ map_check_layers :: proc() {
 	map_geometry.block_seen = sum
 	map_check_floors()
 	for s, i in spans[:n] {
-		data := psx.mem_slice(s[0], s[1] - s[0])
+		data := cpu.mem_slice(s[0], s[1] - s[0])
 		l, ok := map_layer_decode(data)
 		if !ok {
 			fmt.eprintfln("mapcheck: layer %d at %#08x does not decode", i, s[0])
@@ -1607,36 +1612,36 @@ map_check_layers :: proc() {
 // RAM and the scratch words `interface` the drawing leaves; with `result`,
 // also the v0 and GTE state each leaves.
 @(private)
-map_check_draw :: proc(game: psx.Func_Proc, native: proc(), interface: []u32, label: string, result := false, stack: u32 = 0x100) {
-	@(static) before, after: [psx.RAM_SIZE]u8
-	@(static) sc_before, sc_after: [psx.SCRATCH_SIZE]u8
+map_check_draw :: proc(game: cpu.Func_Proc, native: proc(), interface: []u32, label: string, result := false, stack: u32 = 0x100) {
+	@(static) before, after: [cpu.RAM_SIZE]u8
+	@(static) sc_before, sc_after: [cpu.SCRATCH_SIZE]u8
 	// Hooked functions the two passes call run natively, unchecked: the
 	// buffers above hold this check.
 	map_geometry.check = false
 	defer map_geometry.check = true
-	sp := psx.cpu.r[29] & (psx.RAM_SIZE - 1)
-	before = psx.ram
-	sc_before = psx.scratch
-	gte_before := psx.gte_save()
-	event_due := psx.next_event
-	start := psx.cpu.cycles
+	sp := cpu.state.r[29] & (cpu.RAM_SIZE - 1)
+	before = cpu.ram
+	sc_before = cpu.scratch
+	gte_before := gte.gte_save()
+	event_due := cpu.next_event
+	start := cpu.state.cycles
 	game()
 	// Interrupts that came due while the game's passes ran change RAM; the
 	// native passes run with them held off, so only untimed drawings compare.
-	timed := psx.cpu.cycles >= event_due
-	game_end, next := psx.cpu.cycles, psx.next_event
-	after = psx.ram
-	sc_after = psx.scratch
-	gte_after := psx.gte_save()
-	cpu_after := psx.cpu
-	psx.ram_touch(0, psx.RAM_SIZE)
-	psx.ram = before
-	psx.scratch = sc_before
-	psx.gte_load(gte_before)
-	psx.cpu.cycles, psx.next_event = start, psx.EVENT_OFF
+	timed := cpu.state.cycles >= event_due
+	game_end, next := cpu.state.cycles, cpu.next_event
+	after = cpu.ram
+	sc_after = cpu.scratch
+	gte_after := gte.gte_save()
+	cpu_after := cpu.state
+	cpu.ram_touch(0, cpu.RAM_SIZE)
+	cpu.ram = before
+	cpu.scratch = sc_before
+	gte.gte_load(gte_before)
+	cpu.state.cycles, cpu.next_event = start, io.EVENT_OFF
 	native()
-	native_cycles := psx.cpu.cycles - start
-	psx.cpu.cycles, psx.next_event = game_end, next
+	native_cycles := cpu.state.cycles - start
+	cpu.state.cycles, cpu.next_event = game_end, next
 	map_geometry.checked += 1
 	if !timed && native_cycles != game_end - start {
 		map_geometry.cycle_misses += 1
@@ -1647,8 +1652,8 @@ map_check_draw :: proc(game: psx.Func_Proc, native: proc(), interface: []u32, la
 	}
 	bad := 0
 	run_start := -1
-	for i in 0 ..= psx.RAM_SIZE {
-		differs := i < psx.RAM_SIZE && psx.ram[i] != after[i] && (u32(i) >= sp || u32(i) < sp - stack)
+	for i in 0 ..= cpu.RAM_SIZE {
+		differs := i < cpu.RAM_SIZE && cpu.ram[i] != after[i] && (u32(i) >= sp || u32(i) < sp - stack)
 		if differs {
 			bad += 1
 			if run_start < 0 {
@@ -1657,26 +1662,26 @@ map_check_draw :: proc(game: psx.Func_Proc, native: proc(), interface: []u32, la
 		} else if run_start >= 0 {
 			if map_geometry.mismatches < 6 && !timed {
 				fmt.eprintfln("mapcheck: %s: ram %#08x..%#08x differs (game %02x native %02x)",
-					label, 0x80000000 + run_start, 0x80000000 + i, after[run_start], psx.ram[run_start])
+					label, 0x80000000 + run_start, 0x80000000 + i, after[run_start], cpu.ram[run_start])
 			}
 			run_start = -1
 		}
 	}
 	for o in interface {
-		if psx.scratch[o] != sc_after[o] {
+		if cpu.scratch[o] != sc_after[o] {
 			if bad < 4 && map_geometry.mismatches < 40 {
-				fmt.eprintfln("mapcheck: %s: scratch %#x game %02x native %02x", label, o, sc_after[o], psx.scratch[o])
+				fmt.eprintfln("mapcheck: %s: scratch %#x game %02x native %02x", label, o, sc_after[o], cpu.scratch[o])
 			}
 			bad += 1
 		}
 	}
-	if result && psx.cpu.r[2] != cpu_after.r[2] {
+	if result && cpu.state.r[2] != cpu_after.r[2] {
 		if map_geometry.mismatches < 40 {
-			fmt.eprintfln("mapcheck: %s: v0 game %#x native %#x", label, cpu_after.r[2], psx.cpu.r[2])
+			fmt.eprintfln("mapcheck: %s: v0 game %#x native %#x", label, cpu_after.r[2], cpu.state.r[2])
 		}
 		bad += 1
 	}
-	if result && psx.gte_save() != gte_after {
+	if result && gte.gte_save() != gte_after {
 		if map_geometry.mismatches < 40 {
 			fmt.eprintfln("mapcheck: %s: GTE state differs", label)
 		}
@@ -1692,11 +1697,11 @@ map_check_draw :: proc(game: psx.Func_Proc, native: proc(), interface: []u32, la
 			map_geometry.checked, map_geometry.mismatches, map_geometry.timed, map_geometry.cycle_misses, label, bad, sc_u16(SC_COUNT))
 	}
 	// Keep the game's own result so the run plays on as without the check.
-	psx.ram_touch(0, psx.RAM_SIZE)
-	psx.ram = after
-	psx.scratch = sc_after
-	psx.gte_load(gte_after)
-	psx.cpu = cpu_after
+	cpu.ram_touch(0, cpu.RAM_SIZE)
+	cpu.ram = after
+	cpu.scratch = sc_after
+	gte.gte_load(gte_after)
+	cpu.state = cpu_after
 }
 
 // A triangle of map geometry, corners in view units of its layer's frame.
@@ -1721,8 +1726,8 @@ layer_tris :: proc(layer: u32, shift: [3]f32, lo, hi: [2]f32, out: []Map_Tri) ->
 	if desc == 0 {
 		return 0
 	}
-	block := psx.r32(MAP_BLOCK)
-	header := block + psx.r32(block + 4 + 4 * u32(psx.r8(desc)))
+	block := cpu.r32(MAP_BLOCK)
+	header := block + cpu.r32(block + 4 + 4 * u32(cpu.r8(desc)))
 	if !in_ram(header) {
 		return 0
 	}
@@ -1766,7 +1771,7 @@ layer_tris :: proc(layer: u32, shift: [3]f32, lo, hi: [2]f32, out: []Map_Tri) ->
 		}
 	}
 	at := desc + 4
-	for _ in 0 ..< u32(psx.r8(desc + 2)) {
+	for _ in 0 ..< u32(cpu.r8(desc + 2)) {
 		m := (^Placed_Model)(ram_ptr(at))^
 		at += size_of(Placed_Model)
 		base := [3]f32{f32(m.x) * 16 - 64, f32(m.y) * 16, f32(m.z) * 16 - 64}
@@ -1779,7 +1784,7 @@ layer_tris :: proc(layer: u32, shift: [3]f32, lo, hi: [2]f32, out: []Map_Tri) ->
 			continue
 		}
 		poly := group + 8
-		for _ in 0 ..< u32(psx.r16(group)) {
+		for _ in 0 ..< u32(cpu.r16(group)) {
 			p := (^Model_Poly)(ram_ptr(poly))^
 			poly += size_of(Model_Poly)
 			v: [4][3]f32
@@ -1796,11 +1801,11 @@ layer_tris :: proc(layer: u32, shift: [3]f32, lo, hi: [2]f32, out: []Map_Tri) ->
 // block_entry without the game's timing.
 @(private = "file")
 block_entry_of :: proc(count_at, table, i: u32) -> u32 {
-	block := psx.r32(MAP_BLOCK)
-	if u32(psx.r8(block + count_at)) <= i {
+	block := cpu.r32(MAP_BLOCK)
+	if u32(cpu.r8(block + count_at)) <= i {
 		return 0
 	}
-	return block + psx.r32(block + table + 4 * i)
+	return block + cpu.r32(block + table + 4 * i)
 }
 
 // Where the segment from `a` to `b` first meets one of `tris` (from either

@@ -15,13 +15,14 @@
 // click picks the row pointed at. Battle menus draw their own cursors and do
 // not follow the pointer.
 //
-// The pointer comes from psx.pointer_take (display pixels, the game's screen
+// The pointer comes from host.pointer_take (display pixels, the game's screen
 // coordinates; recorded and replayed like pad input). Steps are counted in
 // vblanks and wait for the bar to move, so they keep pace with the game at
 // any frame rate.
 package qol
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 import "ps:core"
 
@@ -48,7 +49,7 @@ STEP_WAIT :: 12
 @(private = "file")
 STEP_REST :: 2
 @(private = "file")
-SEEK_BUTTONS :: psx.PAD_UP | psx.PAD_DOWN | psx.PAD_LEFT | psx.PAD_RIGHT | psx.PAD_CIRCLE | psx.PAD_TRIANGLE | psx.PAD_SQUARE | psx.PAD_START | psx.PAD_SELECT | psx.PAD_L1 | psx.PAD_R1 | psx.PAD_L2 | psx.PAD_R2
+SEEK_BUTTONS :: host.PAD_UP | host.PAD_DOWN | host.PAD_LEFT | host.PAD_RIGHT | host.PAD_CIRCLE | host.PAD_TRIANGLE | host.PAD_SQUARE | host.PAD_START | host.PAD_SELECT | host.PAD_L1 | host.PAD_R1 | host.PAD_L2 | host.PAD_R2
 
 @(private = "file")
 Bar :: struct {
@@ -64,7 +65,7 @@ Bar_Set :: struct {
 
 @(private = "file")
 mouse_menus: struct {
-	cursor_draw: psx.Func_Proc,
+	cursor_draw: cpu.Func_Proc,
 	next_pad:    proc(held: u16) -> u16,
 	// Active bars of the frame being drawn and of the one before.
 	drawing:     Bar_Set,
@@ -84,22 +85,22 @@ mouse_menus: struct {
 
 @(private)
 mouse_menus_init :: proc() -> bool {
-	mouse_menus.cursor_draw = psx.hook(CURSOR_DRAW_ADDR, cursor_draw) or_return
-	mouse_menus.next_pad = psx.pad_hook
-	psx.pad_hook = mouse_menus_pad
+	mouse_menus.cursor_draw = cpu.hook(CURSOR_DRAW_ADDR, cursor_draw) or_return
+	mouse_menus.next_pad = host.pad_hook
+	host.pad_hook = mouse_menus_pad
 	return true
 }
 
 @(private = "file")
 cursor_draw :: proc() {
-	c := &psx.cpu
-	now := psx.vblanks()
+	c := &cpu.state
+	now := cpu.vblanks()
 	d := &mouse_menus.drawing
 	if d.at != now {
 		mouse_menus.shown = d^
 		d^ = {at = now}
 	}
-	if psx.lw(c.r[29] + 16) == 0 && d.n < BARS {
+	if cpu.lw(c.r[29] + 16) == 0 && d.n < BARS {
 		d.bars[d.n] = {i32(i16(c.r[4])), i32(i16(c.r[5])), i32(i16(c.r[6])), i32(i16(c.r[7]))}
 		d.n += 1
 	}
@@ -109,7 +110,7 @@ cursor_draw :: proc() {
 // The bars of the last whole frame drawn, none when no menu is up.
 @(private = "file")
 last_bars :: proc() -> Bar_Set {
-	now := psx.vblanks()
+	now := cpu.vblanks()
 	m := &mouse_menus
 	set := m.drawing.at < now ? m.drawing : m.shown
 	if now - set.at > BAR_STALE {
@@ -141,12 +142,12 @@ seek_end :: proc() {
 		core.tracef(.Game, "mouse menus: seek to %v ends (confirm %v)", m.pointer, m.confirm)
 	}
 	if m.confirm {
-		psx.press_for(psx.PAD_CROSS, psx.TAP_HOLD)
+		host.press_for(host.PAD_CROSS, host.TAP_HOLD)
 	}
 	m.seeking, m.step, m.confirm = false, 0, false
 }
 
-// psx.pad_hook: start a seek when the pointer moves, then step the bar
+// host.pad_hook: start a seek when the pointer moves, then step the bar
 // toward it.
 @(private = "file")
 mouse_menus_pad :: proc(held: u16) -> u16 {
@@ -158,7 +159,7 @@ mouse_menus_pad :: proc(held: u16) -> u16 {
 @(private = "file")
 mouse_menus_step :: proc(held: u16) -> u16 {
 	m := &mouse_menus
-	pos, moved := psx.pointer_take()
+	pos, moved := host.pointer_take()
 	if !config.mouse_menus {
 		m.seeking = false
 		return held
@@ -183,11 +184,11 @@ mouse_menus_step :: proc(held: u16) -> u16 {
 		return held
 	}
 	held := held
-	if held & psx.PAD_CROSS != 0 {
+	if held & host.PAD_CROSS != 0 {
 		m.confirm = true
-		held &~= psx.PAD_CROSS
+		held &~= host.PAD_CROSS
 	}
-	now := psx.vblanks()
+	now := cpu.vblanks()
 	if m.step != 0 {
 		if bar == m.from {
 			if now - m.step_at < STEP_HOLD {
@@ -201,7 +202,7 @@ mouse_menus_step :: proc(held: u16) -> u16 {
 		// The bar moved: on to the next step unless it went the wrong way or
 		// past the pointer.
 		went_down := bar.y > m.from.y
-		if went_down != (m.step == psx.PAD_DOWN) {
+		if went_down != (m.step == host.PAD_DOWN) {
 			seek_end()
 			return held
 		}
@@ -210,9 +211,9 @@ mouse_menus_step :: proc(held: u16) -> u16 {
 	dir: u16
 	switch y := m.pointer.y; {
 	case y < f32(bar.y):
-		dir = psx.PAD_UP
+		dir = host.PAD_UP
 	case y >= f32(bar.y + bar.h):
-		dir = psx.PAD_DOWN
+		dir = host.PAD_DOWN
 	}
 	// Arrived, or passed the pointer (it sits between two rows).
 	if dir == 0 || (m.dir != 0 && dir != m.dir) {
@@ -223,7 +224,7 @@ mouse_menus_step :: proc(held: u16) -> u16 {
 		return held
 	}
 	if .Game in core.trace.active {
-		core.tracef(.Game, "mouse menus: bar %v, pointer %v, step %s", bar, m.pointer, dir == psx.PAD_UP ? "up" : "down")
+		core.tracef(.Game, "mouse menus: bar %v, pointer %v, step %s", bar, m.pointer, dir == host.PAD_UP ? "up" : "down")
 	}
 	m.dir, m.step, m.from, m.step_at = dir, dir, bar, now
 	return held | dir

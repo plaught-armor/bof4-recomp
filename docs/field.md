@@ -132,7 +132,7 @@ screen.
 | Function | Address | What |
 |---|---|---|
 | `SPAWN` | FLD 0x801dfdbc | fills the NPC pool for the current section |
-| `NPC_UPDATE` | FLD 0x801da4b0 | runs every NPC slot's script and movement once (only the 32-slot loop) ; scripts draw random numbers from the BIOS rand() (A0:2F, stub exe 0x8016f384), whose seed the port keeps host-side (`psx.rand_seed`) |
+| `NPC_UPDATE` | FLD 0x801da4b0 | runs every NPC slot's script and movement once (only the 32-slot loop) ; scripts draw random numbers from the BIOS rand() (A0:2F, stub exe 0x8016f384), whose seed the port keeps host-side (`bios.rand_seed`) |
 | `ANIM_STEP` | exe 0x80152bb4 | a0 = sprite record (obj+84): one animation step |
 | `COLLECT` | exe 0x80141f1c | project an object for drawing |
 | `PASSABLE` | FLD 0x801d60f8 | object-collision probe for a step |
@@ -267,7 +267,7 @@ added, message 0x0fff:
   frame (NPC init runs after the spawn list and rewrites it).
 - **VRAM is stale at spawn.** The town's load writes its sheets after the
   spawn script, so `field_tick` puts the sheet, CLUT and portrait back each
-  field frame they differ (through `psx.vram_put`).
+  field frame they differ (through `render.vram_put`).
 - **Portrait.** AREAM006 face 2 (the brown dog) goes into face cell 24 of the
   face sheet at 960,256 (VRAM 962,448), past every town's faces, with its
   CLUT at 240,255 (CLUT byte 0x1f), a row the towns leave free: text code
@@ -418,7 +418,7 @@ crosses between them without a fade (`qol/sections.odin`):
 - The black blocks round a stairwell share a placed model (and tiles) with
   the stair's top steps, so they cannot be hidden by model. While a floor is
   drawn whole, the port leaves black polygons out of its packets instead:
-  `psx/blacks.odin` keeps packet address runs, and a polygon in a run whose
+  `psx/render/blacks.odin` keeps packet address runs, and a polygon in a run whose
   colour (or texels at the middle and toward each corner) is black is not
   drawn. Runs cover the open floor's tiles and models, and this section's own
   layers while any neighbour is open (020b s4's other layers model blacks
@@ -444,9 +444,9 @@ been inside and show it in the doorway.
 - Black faces in rooms: a room's lens can hang outside its front wall, and
   from the third-person camera the black polygons round the room then cover
   the floor and the leader (Sarai 0204.2). With see-through up in a non-town
-  map (`psx.see_through_set(..., room)`, room = map id & 0x1000 == 0), a
+  map (`render.see_through_set(..., room)`, room = map id & 0x1000 == 0), a
   polygon that see-through would ghost, not a sprite, not semi-transparent,
-  black (`polygon_black`, psx/blacks.odin) and not a thin strip (both
+  black (`polygon_black`, psx/render/blacks.odin) and not a thin strip (both
   screen extents over `SEE_BLACK_THIN` 40 px, `see_thin`) is not drawn.
   Towns draw all their black faces: clotheslines are black strips seen edge
   on.
@@ -455,7 +455,7 @@ How the picture lines up with the doorway:
 - The room map models a black curtain past its own door, standing in for
   the town. It is a vertical plane about 126 view units toward the town's
   lens, with a lid. The room pass leaves out every black polygon
-  (`psx.blacks_all_begin`/`blacks_all_end`). It also measures how far across
+  (`render.blacks_all_begin`/`blacks_all_end`). It also measures how far across
   the door's opening the left-out curtain reached.
 - The exit cells need not sit square on the modelled doorway. In Sarai 0204
   the town's doorway back spans -0.17..0.83 of the exit opening's width,
@@ -482,7 +482,7 @@ How the picture lines up with the doorway:
   plane, `back_off` looks for an upright polygon parallel to it, at most
   `BACK_BEFORE` (256) before it, inside its sides and spanning its height
   but no higher. The wall beside a doorway reaches about 1.5 openings up
-  and is rejected. `psx.picture_off` reports the nearest one, and the door
+  and is rejected. `render.picture_off` reports the nearest one, and the door
   moves its picture's opening and front out by that much (`inset`, set
   once per door load).
 - Depths come from projections filed by screen position (last write wins).
@@ -512,7 +512,7 @@ How the picture lines up with the doorway:
   600 presents at most, cut to `ENTER_HOLD` at field enter) and the held
   picture fades out over the room (HOLD_FADE). Leaving a room into the town
   works the same. Nothing fades to black, on a first visit too.
-  - While a picture is held, psx/platform.odin `fast_forward` runs the
+  - While a picture is held, psx/host/platform.odin `fast_forward` runs the
     emulation unpaced (nothing live is seen), so the load passes in a few
     hundred ms rather than ~3 s.
   - The third-person yaw (CAM_YAW 0x8013818e) carries into the room, turned
@@ -521,7 +521,7 @@ How the picture lines up with the doorway:
     faces the leader the same way through the door, so the camera keeps its
     angle to the leader.
 - Rooms not yet visited load in the background (`preload_step`). Once the
-  town's world is noted, the port forks the process (psx/preload.odin). The
+  town's world is noted, the port forks the process (psx/host/preload.odin). The
   child calls the map request (`0x801cf598`, a0 map, a1 section, a2/a3 the
   exit's arrival x/z at record +6/+8, facing byte +11 at sp+16, ra
   `0x801d5c38` as the field's exit check does) from the field draw. It then
@@ -586,7 +586,7 @@ What a load does that the switch redoes by hand:
   stops the town's and starts the world's again (`SOUND_PLAY` 0x8013f268, a0
   id, a1 byte +6, a2 object), keeping the voice tables global. Only the
   slots whose sound loops are started again (`World.lasting`, taken at note
-  time with `psx.voice_loops`: the slot's first voice is keyed on and its
+  time with `spu.voice_loops`: the slot's first voice is keyed on and its
   sample's end block has the repeat flag). One-shots still sounding when
   the world was noted (id 0x301, a periodic overlay call; 0x20e, slot flag
   1) were replayed at every door, more of them each switch; the original
@@ -596,7 +596,7 @@ What a load does that the switch redoes by hand:
   splashes (about 25 vblanks), in the original too.
 - Sound effects bank: each map load DMAs its bank from staging 0x80054000
   into SPU RAM from 0x53c10 (town to 0x62610, 0201 to 0x76290, 0204.1 to
-  0x5c090) about 100 presents after entry. `psx.dma_spu_hook` reports SPU
+  0x5c090) about 100 presents after entry. `spu.dma_spu_hook` reports SPU
   uploads; a world keeps its bank range of SPU RAM and the switch writes it
   back. Music is not re-uploaded and plays on through doors.
 - Sound library state stays global: the library BSS from 0x8017c6a0 to
@@ -614,15 +614,15 @@ What a load does that the switch redoes by hand:
   switch put the music back to where it was when the world was noted:
   notes came late, bunched or were lost.
 - SPU timing: the SPU event is rescheduled from its due cycle
-  (`psx.schedule_period`), not from when it was handled. Counting from
+  (`io.schedule_period`), not from when it was handled. Counting from
   the handling time lost each overshoot, so the SPU mixed about 0.9% slow
   (about 43,700 Hz), beyond the host's 0.5% rate correction, and the host
   queue ran dry every 5 s or so. The `.Perf` report lists the rate mixed,
   the queue's lowest level and dry runs.
 - A world keeps the GPU draw state and display start it had when noted
   (`World.gpu`, `World.disp`). The switch copies the picture on show into
-  both buffers of the world (`psx.move_image`), writes the world's VRAM back
-  around that rectangle (`psx.vram_replace` with a keep rectangle), and
+  both buffers of the world (`render.move_image`), writes the world's VRAM back
+  around that rectangle (`render.vram_replace` with a keep rectangle), and
   restores the draw state and display start. `MAP_LOCAL` includes
   0x80114a04..0x80116b00: the byte saying which of the two frame buffers is
   drawn (the main loop flips it after `DrawOTagEnv` returns at 0x8013971c),
@@ -735,7 +735,7 @@ What a load does that the switch redoes by hand:
   cell off where walking in had come from.
 - Walking into a room from its town, the town is drawn once more every frame
   from the room's lens, its building included (`door_pass` with `cover`), and
-  laid over the room (`psx.cover_add`, tag `DOOR_COVER`): the room and its
+  laid over the room (`render.cover_add`, tag `DOOR_COVER`): the room and its
   people show only through its doorway, so the first room frame matches the
   last town frame. The town's black sky is laid too. The cover is
   full for `COVER_VBLANKS` (30) and eases out over `COVER_TAIL` (10). With
@@ -762,7 +762,7 @@ What a load does that the switch redoes by hand:
   0204.2 to 1000: the town comes in over ~20 frames, no hard cut.
 - The first room frame has no town pass of its own yet (it runs before the
   send of the frame after). The switch grabs the picture on show
-  (`psx.picture_take`, `first_cover`) and `doors_find` lays it as that
+  (`render.picture_take`, `first_cover`) and `doors_find` lays it as that
   frame's cover, so the room never shows a frame of bare void. It keeps
   the town's view moved by the door's shift (`first_cover_view`): the
   room's first view is exactly that (checked on 1000 to 0201.0), and the
@@ -774,16 +774,16 @@ What a load does that the switch redoes by hand:
   juddered back and forth through the door.
 - The cover's opening, where the room shows through, is the outline on the
   picture of the doorway's dark back as the town pass drew it
-  (`psx.curtain_hole`, a `psx.Cover_Hole`: the convex hull of the corners of
+  (`render.curtain_hole`, a `psx.Cover_Hole`: the convex hull of the corners of
   the black polygons left out, in picture coordinates). For the doorway of
   the door walked in through (`interiors.enter_quad`/`enter_front`, set by
   `door_enter` with `enter_ok`), the pass also lays a blank picture
-  (`psx.picture_blank_add`): its back drawn black, its corners noted with
+  (`render.picture_blank_add`): its back drawn black, its corners noted with
   the curtain's, so the opening is there even where the town drew no
   curtain. The walk tests each pixel against the opening after reading the
   cover, in picture coordinates; a warped cover clamps to the picture's
   edges. The GL path does the same (`pic_blank` uniform).
-- `psx.cover_add` takes the opening by pointer (`&d.cover_hole`) and
+- `render.cover_add` takes the opening by pointer (`&d.cover_hole`) and
   `picture_flush` copies it as it lays the cover: the frame's own cover pass
   runs after `cover_add` and overwrites the pixels and the opening, and a
   copy taken at `cover_add` paired the new pixels with the old opening (on
@@ -792,7 +792,7 @@ What a load does that the switch redoes by hand:
 - The room's own curtain at its doorway (its black polygons there) would
   hide the room in the opening. While a cover is due (`cover_due`), the
   frame leaves out black polygons about the cover's doorway (`cover_door`,
-  `curtain_at` in psx/blacks.odin) as it does in a curtain run.
+  `curtain_at` in psx/render/blacks.odin) as it does in a curtain run.
 - Party members stay over the cover the whole time it is laid, walking in
   or out (qol/third_person.odin `sprite_draw`), seen through the town's
   walls. Hiding those past the doorway (`door_cover_front`, removed) lost
@@ -855,7 +855,7 @@ picture; round the room stays the game's black.
   the doorway and hide the street. `floor_open_box` (qol/floors.odin) gives
   the box of the section's cells that are not walls; widened by
   `AROUND_WALL` (6) cells, it becomes an x/z box in the town's world space.
-  While the pass draws (`psx.cut_begin`), a polygon with known depths (not a
+  While the pass draws (`render.cut_begin`), a polygon with known depths (not a
   sprite) whose corners overlap the box and reach more than `AROUND_ABOVE`
   (48 view units) over the door's ground is left out.
 - Walking in, the cover (the town with the building) is laid over the room.
@@ -894,14 +894,14 @@ byte for byte).
   path (spans of its instruction addresses at `CYCLES_PER_INSN` each, with
   interrupts run at the same loop edges), but charges them only under
   `BOF4_MAPCHECK` and when replaying a record from before 2026-10-22
-  (`psx.charge_native`). Otherwise it is free: charged, it was about two of
+  (`host.charge_native`). Otherwise it is free: charged, it was about two of
   the three vblanks a Sarai frame took, the cause of the town's 20 fps
   walking. Free, vblanks and CD reads land elsewhere in the frame than on a
   PS1.
 - `BOF4_MAPCHECK=1` runs the game's drawing and the native one on every frame
   and logs RAM differences and cycle mismatches (drawings an interrupt falls
   inside are skipped, their timing differs by nature). Drawings made in 3D
-  (the third-person camera, `psx.world_on`) are not compared: the native
+  (the third-person camera, `render.world_on`) are not compared: the native
   passes cull and sort by view space corners there, the game's code by
   screen corners. Expected: `0 differ`, `0 in cycles`.
 

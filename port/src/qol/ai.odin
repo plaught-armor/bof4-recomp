@@ -53,7 +53,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -272,8 +272,8 @@ SMART_OF :: 3
 
 @(private = "file")
 ai: struct {
-	random_member: psx.Func_Proc,
-	decide:        psx.Func_Proc,
+	random_member: cpu.Func_Proc,
+	decide:        cpu.Func_Proc,
 	// Tactical: the member the enemies focus on.
 	focus:         u32,
 	// Per combatant id, a bit per skill id the enemies buffed or hindered it
@@ -295,13 +295,13 @@ ai: struct {
 
 @(private)
 ai_init :: proc() -> bool {
-	original, ok := psx.hook_overlay(RANDOM_MEMBER, SLOT_ENGINE, ROUND_ID, random_member)
+	original, ok := cpu.hook_overlay(RANDOM_MEMBER, SLOT_ENGINE, ROUND_ID, random_member)
 	if !ok {
 		fmt.eprintf("qol: battle function %08x not found\n", RANDOM_MEMBER)
 		return false
 	}
 	ai.random_member = original
-	original, ok = psx.hook_overlay(DECIDE, SLOT_ENGINE, ROUND_ID, decide)
+	original, ok = cpu.hook_overlay(DECIDE, SLOT_ENGINE, ROUND_ID, decide)
 	if !ok {
 		fmt.eprintf("qol: battle function %08x not found\n", DECIDE)
 		return false
@@ -327,19 +327,19 @@ tier_of :: proc(slot: u32) -> Enemy_AI {
 	sum, count: u64
 	for member in u32(0) ..< FRONT_COUNT {
 		if targetable(member) {
-			sum += u64(psx.lw(party_combatant(member) + COMBATANT_HP_MAX))
+			sum += u64(cpu.lw(party_combatant(member) + COMBATANT_HP_MAX))
 			count += 1
 		}
 	}
 	// Twice the enemy's max HP over the party's average, in whole steps.
-	halves := u64(psx.lw(enemy_combatant(slot) + COMBATANT_HP_MAX)) * 2 * count / max(sum, 1)
+	halves := u64(cpu.lw(enemy_combatant(slot) + COMBATANT_HP_MAX)) * 2 * count / max(sum, 1)
 	tier := int(Enemy_AI.Aware)
 	for ; halves != 0 && tier < int(Enemy_AI.Mastermind); halves >>= 1 {
 		tier += 1
 	}
 	ai.tiers[slot] = Enemy_AI(min(tier, int(top)))
 	if .Game in core.trace.active {
-		core.tracef(.Game, "ai: enemy slot %d max HP %d, party average %d: %v", slot, psx.lw(enemy_combatant(slot) + COMBATANT_HP_MAX), sum / max(count, 1), ai.tiers[slot])
+		core.tracef(.Game, "ai: enemy slot %d max HP %d, party average %d: %v", slot, cpu.lw(enemy_combatant(slot) + COMBATANT_HP_MAX), sum / max(count, 1), ai.tiers[slot])
 	}
 	return ai.tiers[slot]
 }
@@ -373,7 +373,7 @@ plan_of :: proc(slot: u32) -> Plan {
 // Each frame: out of battle, forget the battle's marks and focus.
 @(private)
 ai_tick :: proc() {
-	if psx.lhu(GAME_MODE) != GAME_MODE_BATTLE {
+	if cpu.lhu(GAME_MODE) != GAME_MODE_BATTLE {
 		ai.marks = {}
 		ai.focus = NOBODY
 		ai.tiers = {}
@@ -383,16 +383,16 @@ ai_tick :: proc() {
 
 @(private = "file")
 decide :: proc() {
-	index := psx.cpu.r[4] & 0xff
+	index := cpu.state.r[4] & 0xff
 	ai.decide()
 	enemy := enemy_combatant(index)
 	ai.tier = tier_of(index)
 	defer mood_turn(index)
-	if ai.tier == .Original || psx.lhu(enemy + STATUS) & CONFUSED != 0 || psx.lhu(enemy + ENEMY_FLAGS) & SKILL_USER == 0 {
+	if ai.tier == .Original || cpu.lhu(enemy + STATUS) & CONFUSED != 0 || cpu.lhu(enemy + ENEMY_FLAGS) & SKILL_USER == 0 {
 		return
 	}
 	for member in u32(0) ..< FRONT_COUNT {
-		if form := u8(psx.lbu(party_combatant(member) + COMBATANT_CHAR)); form != ai.forms[member] {
+		if form := u8(cpu.lbu(party_combatant(member) + COMBATANT_CHAR)); form != ai.forms[member] {
 			ai.marks[member] = {}
 			ai.forms[member] = form
 		}
@@ -400,17 +400,17 @@ decide :: proc() {
 	think(enemy, plan_of(index))
 	mark_cast()
 	if .Game in core.trace.active {
-		core.tracef(.Game, "ai: enemy %d %v decides kind %d skill %d on %d, AP %d", psx.lbu(ACTION), ai.mood, psx.lbu(ACTION + 1), psx.lhu(ACTION + 2), psx.lbu(TARGET), psx.lw(enemy + COMBATANT_AP))
+		core.tracef(.Game, "ai: enemy %d %v decides kind %d skill %d on %d, AP %d", cpu.lbu(ACTION), ai.mood, cpu.lbu(ACTION + 1), cpu.lhu(ACTION + 2), cpu.lbu(TARGET), cpu.lw(enemy + COMBATANT_AP))
 	}
 }
 
 @(private = "file")
 think :: proc(enemy: u32, plan: Plan) {
-	kind := psx.lbu(ACTION + 1)
+	kind := cpu.lbu(ACTION + 1)
 	if kind != KIND_ATTACK && kind != KIND_SKILL {
 		return
 	}
-	rolled := u8(psx.lhu(ACTION + 2)) if kind == KIND_SKILL else 0
+	rolled := u8(cpu.lhu(ACTION + 2)) if kind == KIND_SKILL else 0
 	if rolled != 0 && !castable(enemy, rolled) {
 		// Short of AP the cast would only waste the turn.
 		attack(enemy)
@@ -458,7 +458,7 @@ think :: proc(enemy: u32, plan: Plan) {
 	if rolled == 0 && plan.all_out && kind == KIND_ATTACK {
 		if skill := list_skill(enemy, .Damage); skill != 0 {
 			// Aimed below like a rolled one.
-			use_skill(enemy, skill, u32(psx.lbu(TARGET)))
+			use_skill(enemy, skill, u32(cpu.lbu(TARGET)))
 			rolled = skill
 		}
 	}
@@ -487,12 +487,12 @@ Skill_Use :: enum u8 {
 @(private = "file")
 skill_is :: proc(skill: u8, use: Skill_Use) -> bool {
 	data := SKILL_DATA + u32(skill) * SKILL_DATA_SIZE
-	flags, effect := psx.lbu(data + SKILL_FLAGS), psx.lbu(data + SKILL_EFFECT)
+	flags, effect := cpu.lbu(data + SKILL_FLAGS), cpu.lbu(data + SKILL_EFFECT)
 	switch use {
 	case .Heal:
 		return flags & SKILL_HEALS != 0
 	case .Damage:
-		return flags != 0 && flags & (SKILL_HEALS | SKILL_SIDE) == 0 && psx.lbu(data + SKILL_POWER) != 0
+		return flags != 0 && flags & (SKILL_HEALS | SKILL_SIDE) == 0 && cpu.lbu(data + SKILL_POWER) != 0
 	case .Buff:
 		return flags & SKILL_HEALS == 0 && effect & (EFFECT_BUFF | EFFECT_BARRIER) != 0
 	case .Hinder:
@@ -505,7 +505,7 @@ skill_is :: proc(skill: u8, use: Skill_Use) -> bool {
 
 @(private = "file")
 skill_power :: proc(skill: u8) -> i32 {
-	return i32(psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_POWER))
+	return i32(cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_POWER))
 }
 
 // A list skill the enemy has the AP for. The round's cast (0x801cdf04)
@@ -516,15 +516,15 @@ castable :: proc(enemy: u32, skill: u8) -> bool {
 	if skill == 0 {
 		return false
 	}
-	cost := u32(psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_COST))
-	return cost <= psx.lw(enemy + COMBATANT_AP) + psx.lhu(enemy + COMBATANT_AP_EXTRA)
+	cost := u32(cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_COST))
+	return cost <= cpu.lw(enemy + COMBATANT_AP) + cpu.lhu(enemy + COMBATANT_AP_EXTRA)
 }
 
 // The enemy's first castable skill of that use, 0 for none.
 @(private = "file")
 list_skill :: proc(enemy: u32, use: Skill_Use) -> u8 {
 	for k in u32(0) ..< SKILL_COUNT {
-		skill := u8(psx.lbu(enemy + ENEMY_SKILLS + k))
+		skill := u8(cpu.lbu(enemy + ENEMY_SKILLS + k))
 		if castable(enemy, skill) && skill_is(skill, use) {
 			return skill
 		}
@@ -534,29 +534,29 @@ list_skill :: proc(enemy: u32, use: Skill_Use) -> u8 {
 
 @(private = "file")
 learnable_unknown :: proc(skill: u8) -> bool {
-	return psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_LEARN) & 0xf != 0 && !skill_known(skill)
+	return cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_LEARN) & 0xf != 0 && !skill_known(skill)
 }
 
 @(private = "file")
 chance :: proc(in_six: u32) -> bool {
-	psx.call(RAND)
-	return psx.cpu.r[2] % CHANCE_OF < in_six
+	cpu.call(RAND)
+	return cpu.state.r[2] % CHANCE_OF < in_six
 }
 
 // The percent of a skill's damage that reaches `id`, as the game's element
 // rate: 100 without an element, 0 immune, negative absorbed.
 @(private = "file")
 element_rate :: proc(id: u32, skill: u8) -> i32 {
-	bits := psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_ELEMENT)
+	bits := cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_ELEMENT)
 	levels := combatant(id) + COMBATANT_ELEMENTS
 	sum, count: i32
 	for k in u32(0) ..< ELEMENT_COUNT {
 		if bits & (1 << k) == 0 {
 			continue
 		}
-		level := min(psx.lbu(levels + k), ELEMENT_LEVELS - 1)
+		level := min(cpu.lbu(levels + k), ELEMENT_LEVELS - 1)
 		table := u32(ELEMENT_RATES + (ELEMENT_LEVELS * 2 if k == HOLY else 0))
-		sum += i32(i16(psx.lhu(table + level * 2)))
+		sum += i32(i16(cpu.lhu(table + level * 2)))
 		count += 1
 	}
 	return sum / count if count != 0 else FULL_RATE
@@ -566,7 +566,7 @@ element_rate :: proc(id: u32, skill: u8) -> i32 {
 // game gave it.
 @(private = "file")
 aim_damage :: proc(enemy: u32, rolled: u8, plan: Plan) {
-	target := psx.lbu(TARGET)
+	target := cpu.lbu(TARGET)
 	if target >= ENEMY_IDS {
 		return
 	}
@@ -576,7 +576,7 @@ aim_damage :: proc(enemy: u32, rolled: u8, plan: Plan) {
 	case .Weakness:
 		best := element_rate(target, skill) if castable(enemy, skill) else min(i32)
 		for k in u32(0) ..< SKILL_COUNT {
-			s := u8(psx.lbu(enemy + ENEMY_SKILLS + k))
+			s := u8(cpu.lbu(enemy + ENEMY_SKILLS + k))
 			if !castable(enemy, s) || !skill_is(s, .Damage) {
 				continue
 			}
@@ -587,7 +587,7 @@ aim_damage :: proc(enemy: u32, rolled: u8, plan: Plan) {
 	case .Strongest:
 		best := skill_power(skill) * element_rate(target, skill) if castable(enemy, skill) else min(i32)
 		for k in u32(0) ..< SKILL_COUNT {
-			s := u8(psx.lbu(enemy + ENEMY_SKILLS + k))
+			s := u8(cpu.lbu(enemy + ENEMY_SKILLS + k))
 			if !castable(enemy, s) || !skill_is(s, .Damage) {
 				continue
 			}
@@ -605,7 +605,7 @@ aim_damage :: proc(enemy: u32, rolled: u8, plan: Plan) {
 	if element_rate(member, skill) <= 0 {
 		// Nobody it can hurt: another damage skill that hurts the target.
 		for k in u32(0) ..< SKILL_COUNT {
-			s := u8(psx.lbu(enemy + ENEMY_SKILLS + k))
+			s := u8(cpu.lbu(enemy + ENEMY_SKILLS + k))
 			if castable(enemy, s) && skill_is(s, .Damage) && element_rate(target, s) > 0 {
 				skill, member = s, target
 				break
@@ -646,7 +646,7 @@ softest_member :: proc(skill: u8, keep: u32) -> u32 {
 		if rate <= 0 {
 			continue
 		}
-		hp := i64(psx.lw(party_combatant(member) + COMBATANT_HP))
+		hp := i64(cpu.lw(party_combatant(member) + COMBATANT_HP))
 		// hp / rate < best_hp / best_rate, without division.
 		if best_rate == 0 || hp * best_rate < best_hp * rate {
 			pick, best_hp, best_rate = member, hp, rate
@@ -661,7 +661,7 @@ softest_member :: proc(skill: u8, keep: u32) -> u32 {
 @(private = "file")
 unmarked :: proc(enemy: u32, use: Skill_Use) -> (u8, u32) {
 	for k in u32(0) ..< SKILL_COUNT {
-		skill := u8(psx.lbu(enemy + ENEMY_SKILLS + k))
+		skill := u8(cpu.lbu(enemy + ENEMY_SKILLS + k))
 		if !castable(enemy, skill) || !skill_is(skill, use) || learnable_unknown(skill) {
 			continue
 		}
@@ -675,7 +675,7 @@ unmarked :: proc(enemy: u32, use: Skill_Use) -> (u8, u32) {
 @(private = "file")
 unmarked_for :: proc(skill: u8, use: Skill_Use) -> u32 {
 	if use == .Buff {
-		actor := psx.lbu(ACTION)
+		actor := cpu.lbu(ACTION)
 		if !marked(actor, skill) {
 			return actor
 		}
@@ -706,12 +706,12 @@ hinder_target :: proc(skill: u8) -> (u32, i32) {
 		p := party_combatant(member)
 		worth: i32
 		if lowers {
-			worth = max(i32(psx.lbu(p + PARTY_BUFFS + slot)) - FULL_RATE, 0)
+			worth = max(i32(cpu.lbu(p + PARTY_BUFFS + slot)) - FULL_RATE, 0)
 		}
-		if psx.lbu(p + COMBATANT_CHAR) >= DRAGON_CHAR {
+		if cpu.lbu(p + COMBATANT_CHAR) >= DRAGON_CHAR {
 			worth += DRAGON_WORTH
 		}
-		hp := psx.lw(p + COMBATANT_HP)
+		hp := cpu.lw(p + COMBATANT_HP)
 		if pick == NOBODY || worth > best_worth || worth == best_worth && hp > best_hp {
 			pick, best_worth, best_hp = member, worth, hp
 		}
@@ -726,7 +726,7 @@ answer :: proc(enemy: u32) -> (u8, u32) {
 	skill, member := u8(0), u32(NOBODY)
 	best: i32
 	for k in u32(0) ..< SKILL_COUNT {
-		s := u8(psx.lbu(enemy + ENEMY_SKILLS + k))
+		s := u8(cpu.lbu(enemy + ENEMY_SKILLS + k))
 		if !castable(enemy, s) || !skill_is(s, .Hinder) || learnable_unknown(s) {
 			continue
 		}
@@ -740,7 +740,7 @@ answer :: proc(enemy: u32) -> (u8, u32) {
 // The buff slot a debuff lowers.
 @(private = "file")
 debuff_slot :: proc(skill: u8) -> (u32, bool) {
-	id := psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_EFFECT_ID)
+	id := cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_EFFECT_ID)
 	return id - DEBUFF_FIRST, id >= DEBUFF_FIRST && id < DEBUFF_FIRST + DEBUFF_SLOTS
 }
 
@@ -749,7 +749,7 @@ debuff_slot :: proc(skill: u8) -> (u32, bool) {
 // becomes a plain attack otherwise.
 @(private = "file")
 aim_unmarked :: proc(enemy: u32, rolled: u8, use: Skill_Use) {
-	target := psx.lbu(TARGET)
+	target := cpu.lbu(TARGET)
 	if target >= COMBATANTS || !marked(target, rolled) {
 		return
 	}
@@ -770,20 +770,20 @@ aim_unmarked :: proc(enemy: u32, rolled: u8, use: Skill_Use) {
 // stores one.
 @(private = "file")
 attack :: proc(enemy: u32) {
-	psx.call(RANDOM_MEMBER)
-	target := psx.cpu.r[2] & 0xff
+	cpu.call(RANDOM_MEMBER)
+	target := cpu.state.r[2] & 0xff
 	if target == NO_TARGET {
 		return
 	}
 	if .Game in core.trace.active {
-		core.tracef(.Game, "ai: enemy %d %v attacks %d (rolled skill %d)", psx.lbu(ACTION), ai.tier, target, psx.lhu(ACTION + 2))
+		core.tracef(.Game, "ai: enemy %d %v attacks %d (rolled skill %d)", cpu.lbu(ACTION), ai.tier, target, cpu.lhu(ACTION + 2))
 	}
-	psx.sb(ACTION + 1, KIND_ATTACK)
-	psx.sh(ACTION + 2, 0)
-	psx.sb(enemy + ENEMY_KIND, KIND_ATTACK)
-	psx.sh(enemy + ENEMY_SKILL, 0)
-	psx.sb(enemy + ENEMY_TARGET, target)
-	psx.sb(TARGET, target)
+	cpu.sb(ACTION + 1, KIND_ATTACK)
+	cpu.sh(ACTION + 2, 0)
+	cpu.sb(enemy + ENEMY_KIND, KIND_ATTACK)
+	cpu.sh(enemy + ENEMY_SKILL, 0)
+	cpu.sb(enemy + ENEMY_TARGET, target)
+	cpu.sb(TARGET, target)
 }
 
 // Whether the enemies gave `id` the skill this battle; a status skill only
@@ -794,26 +794,26 @@ marked :: proc(id: u32, skill: u8) -> bool {
 	if ai.marks[id][skill >> 6] & (1 << (skill & 63)) == 0 {
 		return false
 	}
-	if slot, lowers := debuff_slot(skill); lowers && id < ENEMY_IDS && psx.lbu(combatant(id) + PARTY_BUFFS + slot) > FULL_RATE {
+	if slot, lowers := debuff_slot(skill); lowers && id < ENEMY_IDS && cpu.lbu(combatant(id) + PARTY_BUFFS + slot) > FULL_RATE {
 		return false
 	}
-	effect := psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_EFFECT)
-	return effect & EFFECT_STATUS == 0 || psx.lhu(combatant(id) + STATUS) != 0
+	effect := cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_EFFECT)
+	return effect & EFFECT_STATUS == 0 || cpu.lhu(combatant(id) + STATUS) != 0
 }
 
 // Mark whom the acting enemy's buff or hindrance goes to: its target, or the
 // whole side for a group target.
 @(private = "file")
 mark_cast :: proc() {
-	if psx.lbu(ACTION + 1) != KIND_SKILL {
+	if cpu.lbu(ACTION + 1) != KIND_SKILL {
 		return
 	}
-	skill := u8(psx.lhu(ACTION + 2))
+	skill := u8(cpu.lhu(ACTION + 2))
 	buff := skill_is(skill, .Buff)
 	if !buff && !skill_is(skill, .Hinder) {
 		return
 	}
-	target := psx.lbu(TARGET)
+	target := cpu.lbu(TARGET)
 	first, last := target, target + 1
 	if target >= COMBATANTS {
 		first, last = 0, ENEMY_IDS
@@ -838,7 +838,7 @@ hurt_enemy :: proc(low: u32) -> u32 {
 			continue
 		}
 		e := enemy_combatant(slot)
-		hp, hp_max := psx.lw(e + COMBATANT_HP), max(psx.lw(e + COMBATANT_HP_MAX), 1)
+		hp, hp_max := cpu.lw(e + COMBATANT_HP), max(cpu.lw(e + COMBATANT_HP_MAX), 1)
 		if u64(hp) * HEAL_DEN >= u64(hp_max) * u64(low) {
 			continue
 		}
@@ -853,9 +853,9 @@ hurt_enemy :: proc(low: u32) -> u32 {
 // it; a single target becomes `aim` when given and on the same side.
 @(private = "file")
 use_skill :: proc(enemy: u32, skill: u8, aim: u32) {
-	psx.cpu.r[4] = u32(skill)
-	psx.call(SKILL_TARGET)
-	target := psx.cpu.r[2] & 0xff
+	cpu.state.r[4] = u32(skill)
+	cpu.call(SKILL_TARGET)
+	target := cpu.state.r[2] & 0xff
 	if target == NO_TARGET {
 		return
 	}
@@ -869,30 +869,30 @@ use_skill :: proc(enemy: u32, skill: u8, aim: u32) {
 @(private = "file")
 set_action :: proc(enemy: u32, skill: u8, target: u32) {
 	if .Game in core.trace.active {
-		core.tracef(.Game, "ai: enemy %d %v uses skill %d (rolled kind %d skill %d) on %d", psx.lbu(ACTION), ai.tier, skill, psx.lbu(ACTION + 1), psx.lhu(ACTION + 2), target)
+		core.tracef(.Game, "ai: enemy %d %v uses skill %d (rolled kind %d skill %d) on %d", cpu.lbu(ACTION), ai.tier, skill, cpu.lbu(ACTION + 1), cpu.lhu(ACTION + 2), target)
 	}
-	psx.sb(ACTION + 1, KIND_SKILL)
-	psx.sh(ACTION + 2, u32(skill))
-	psx.sb(enemy + ENEMY_KIND, KIND_SKILL)
-	psx.sh(enemy + ENEMY_SKILL, u32(skill))
-	psx.sb(enemy + ENEMY_TARGET, target)
-	psx.sb(TARGET, target)
+	cpu.sb(ACTION + 1, KIND_SKILL)
+	cpu.sh(ACTION + 2, u32(skill))
+	cpu.sb(enemy + ENEMY_KIND, KIND_SKILL)
+	cpu.sh(enemy + ENEMY_SKILL, u32(skill))
+	cpu.sb(enemy + ENEMY_TARGET, target)
+	cpu.sb(TARGET, target)
 }
 
 @(private = "file")
 random_member :: proc() {
-	actor := psx.lbu(ACTION)
+	actor := cpu.lbu(ACTION)
 	if actor < ENEMY_IDS {
 		ai.random_member()
 		return
 	}
 	ai.tier = tier_of(actor - ENEMY_IDS)
 	plan := plan_of(actor - ENEMY_IDS)
-	if ai.tier == .Original || psx.lhu(combatant(actor) + STATUS) & CONFUSED != 0 {
+	if ai.tier == .Original || cpu.lhu(combatant(actor) + STATUS) & CONFUSED != 0 {
 		ai.random_member()
 		return
 	}
-	c := &psx.cpu
+	c := &cpu.state
 	if ai.mood == .Enraged && targetable(ai.culprit) {
 		c.r[2] = ai.culprit
 		return
@@ -905,7 +905,7 @@ random_member :: proc() {
 	switch plan.pick {
 	case .Random:
 	case .Mostly:
-		psx.call(RAND)
+		cpu.call(RAND)
 		if c.r[2] % SMART_OF < SMART_PICKS {
 			pick = weakest_member(false, false)
 		}
@@ -942,7 +942,7 @@ weakest_member :: proc(absolute, threats: bool) -> u32 {
 			continue
 		}
 		p := party_combatant(member)
-		hp, hp_max, ap := psx.lw(p + COMBATANT_HP), max(psx.lw(p + COMBATANT_HP_MAX), 1), psx.lw(p + COMBATANT_AP)
+		hp, hp_max, ap := cpu.lw(p + COMBATANT_HP), max(cpu.lw(p + COMBATANT_HP_MAX), 1), cpu.lw(p + COMBATANT_AP)
 		r := role(p) if threats else .Other
 		better: bool
 		switch {
@@ -972,10 +972,10 @@ Role :: enum u8 {
 @(private = "file")
 role :: proc(p: u32) -> Role {
 	r := Role.Other
-	ap := psx.lw(p + COMBATANT_AP)
+	ap := cpu.lw(p + COMBATANT_AP)
 	for k in u32(0) ..< KNOWN_SKILLS {
-		skill := u8(psx.lbu(p + COMBATANT_SKILLS + k))
-		if skill == 0 || u32(psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_COST)) > ap {
+		skill := u8(cpu.lbu(p + COMBATANT_SKILLS + k))
+		if skill == 0 || u32(cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_COST)) > ap {
 			continue
 		}
 		if skill_is(skill, .Heal) {
@@ -990,7 +990,7 @@ role :: proc(p: u32) -> Role {
 
 @(private = "file")
 targetable :: proc(member: u32) -> bool {
-	psx.cpu.r[4] = member
-	psx.call(TARGETABLE)
-	return psx.cpu.r[2] & 0xff != 0
+	cpu.state.r[4] = member
+	cpu.call(TARGETABLE)
+	return cpu.state.r[2] & 0xff != 0
 }

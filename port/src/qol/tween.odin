@@ -20,6 +20,9 @@ package qol
 import "core:slice"
 
 import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
+import render "ps:psx/render"
 
 import "ps:core"
 
@@ -42,7 +45,7 @@ LOOKAHEAD :: 8
 TWEEN_CUT :: 64
 @(private = "file")
 MAX_PERIOD :: 4
-#assert(MAX_PERIOD - 1 <= psx.EXTRA_FRAMES)
+#assert(MAX_PERIOD - 1 <= render.EXTRA_FRAMES)
 // Most parts in a run of prims treated as one sprite (see tween_sprites);
 // longer runs (background tiles sharing a texture page) are never moved as
 // one piece.
@@ -125,13 +128,13 @@ tween_record :: proc(ot: u32) {
 	l := &tween.lists[tween.cur]
 	l.count = 0
 	l.overflow = false
-	l.vblank = psx.vblanks()
+	l.vblank = cpu.vblanks()
 	node := ot & 0xffffff
 	for _ in 0 ..< MAX_PACKETS {
 		if node == OT_END {
 			break
 		}
-		header := psx.lw(0x80000000 | node)
+		header := cpu.lw(0x80000000 | node)
 		packet_record(l, 0x80000000 | (node + 4), header >> 24)
 		node = header & 0xffffff
 	}
@@ -171,7 +174,7 @@ order_by_address :: proc(l: ^Prim_List) #no_bounds_check {
 // area and keep it as the extra frame. `send` is the original DrawOTagEnv;
 // the CPU must hold its arguments.
 @(private)
-tween_draw :: proc(send: psx.Func_Proc, cp: ^psx.Checkpoint) {
+tween_draw :: proc(send: cpu.Func_Proc, cp: ^psx.Checkpoint) {
 	cur, prev := &tween.lists[tween.cur], &tween.lists[tween.cur ~ 1]
 	period := cur.vblank - prev.vblank
 	if prev.vblank == 0 || period < 2 || period > MAX_PERIOD || cur.overflow || prev.overflow {
@@ -195,9 +198,9 @@ tween_draw :: proc(send: psx.Func_Proc, cp: ^psx.Checkpoint) {
 // Draw the paired prims `back` of the way from the sent frame toward the
 // previous one, as extra picture `step`. False when the GPU is busy.
 @(private = "file")
-tween_pass :: proc(send: psx.Func_Proc, cp: ^psx.Checkpoint, back: f64, step: int) -> bool {
+tween_pass :: proc(send: cpu.Func_Proc, cp: ^psx.Checkpoint, back: f64, step: int) -> bool {
 	cur, prev := &tween.lists[tween.cur], &tween.lists[tween.cur ~ 1]
-	main := psx.cpu
+	main := cpu.state
 	if !psx.checkpoint_save(cp) {
 		if .Game in core.trace.active {
 			core.tracef(.Game, "tween: GPU busy, frame skipped")
@@ -214,7 +217,7 @@ tween_pass :: proc(send: psx.Func_Proc, cp: ^psx.Checkpoint, back: f64, step: in
 	}
 	send()
 	env := main.r[5]
-	psx.capture_extra_frame(i32(i16(psx.lh(env))), i32(i16(psx.lh(env + 2))), step)
+	host.capture_extra_frame(i32(i16(cpu.lh(env))), i32(i16(cpu.lh(env + 2))), step)
 	return true
 }
 
@@ -572,18 +575,18 @@ prim_blend :: proc(cur: ^Prim_List, a: int, prev: ^Prim_List, b: int, back: f64)
 	perm := &tween.perm[a]
 	for v in 0 ..< lay.verts {
 		p := blend2(cur.xy[a][v], prev.xy[b][perm[v]], back)
-		psx.sw(cur.addr[a] + u32(lay.vert[v]) * 4, u32(u16(i16(p.x))) | u32(u16(i16(p.y))) << 16)
+		cpu.sw(cur.addr[a] + u32(lay.vert[v]) * 4, u32(u16(i16(p.x))) | u32(u16(i16(p.y))) << 16)
 	}
 	for c in 0 ..< lay.colors {
 		at := cur.addr[a] + u32(lay.color[c]) * 4
-		word := psx.lw(at) & 0xff000000
+		word := cpu.lw(at) & 0xff000000
 		for ch in 0 ..< 3 {
 			n := cur.rgb[a][c][ch]
 			from := lay.colors == lay.verts ? perm[c] : u8(c)
 			v := n - i32(f64(n - prev.rgb[b][from][ch]) * back)
 			word |= u32(clamp(v, 0, 0xff)) << (u32(ch) * 8)
 		}
-		psx.sw(at, word)
+		cpu.sw(at, word)
 	}
 }
 
@@ -594,7 +597,7 @@ prim_shift :: proc(cur: ^Prim_List, a: int, d: [2]i32, back: f64) {
 	lay := &cur.layout[a]
 	for v in 0 ..< lay.verts {
 		p := cur.xy[a][v] - {i32(f64(d.x) * back / 2), i32(f64(d.y) * back / 2)}
-		psx.sw(cur.addr[a] + u32(lay.vert[v]) * 4, u32(u16(i16(p.x))) | u32(u16(i16(p.y))) << 16)
+		cpu.sw(cur.addr[a] + u32(lay.vert[v]) * 4, u32(u16(i16(p.x))) | u32(u16(i16(p.y))) << 16)
 	}
 }
 
@@ -623,7 +626,7 @@ packet_record :: proc(l: ^Prim_List, addr: u32, words: u32) {
 // or has no fixed length (polylines, which end the packet's walk).
 @(private = "file")
 command_record :: proc(l: ^Prim_List, addr: u32, room: u32) -> u32 {
-	op := psx.lw(addr) >> 24
+	op := cpu.lw(addr) >> 24
 	lay := command_layout(op)
 	size := u32(lay.size)
 	if size == 0 || size > room || lay.verts == 0 {
@@ -640,7 +643,7 @@ command_record :: proc(l: ^Prim_List, addr: u32, room: u32) -> u32 {
 	key := u64(14695981039346656037) ~ u64(op)
 	loose := key
 	for w in 1 ..< size {
-		word := psx.lw(addr + w * 4)
+		word := cpu.lw(addr + w * 4)
 		if lay.keyed & (1 << w) != 0 {
 			key = (key ~ u64(word)) * 1099511628211
 		}
@@ -650,11 +653,11 @@ command_record :: proc(l: ^Prim_List, addr: u32, room: u32) -> u32 {
 	}
 	l.key[i], l.loose[i] = key, loose
 	for v in 0 ..< lay.verts {
-		word := psx.lw(addr + u32(lay.vert[v]) * 4)
+		word := cpu.lw(addr + u32(lay.vert[v]) * 4)
 		l.xy[i][v] = {i32(i16(word)), i32(i16(word >> 16))}
 	}
 	for c in 0 ..< lay.colors {
-		word := psx.lw(addr + u32(lay.color[c]) * 4)
+		word := cpu.lw(addr + u32(lay.color[c]) * 4)
 		l.rgb[i][c] = {i32(word & 0xff), i32(word >> 8 & 0xff), i32(word >> 16 & 0xff)}
 	}
 	return size

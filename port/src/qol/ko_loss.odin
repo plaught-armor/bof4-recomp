@@ -18,7 +18,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -55,12 +55,12 @@ MARK_SHARE :: 10 // a mark takes BASE_HP_MAX / MARK_SHARE
 
 @(private = "file")
 ko_loss: struct {
-	recompute: psx.Func_Proc,
+	recompute: cpu.Func_Proc,
 }
 
 @(private)
 ko_loss_init :: proc() -> bool {
-	original, ok := psx.hook_overlay(RECOMPUTE, SLOT_GAME, RECOMPUTE_ID, recompute)
+	original, ok := cpu.hook_overlay(RECOMPUTE, SLOT_GAME, RECOMPUTE_ID, recompute)
 	if !ok {
 		fmt.eprintf("qol: stats function %08x not found\n", RECOMPUTE)
 		return false
@@ -90,21 +90,21 @@ ko_loss_camp :: proc() {
 @(private = "file")
 clear_marks :: proc(give_back: bool) {
 	for k in u32(0) ..< PARTY_SLOT_COUNT {
-		index := psx.lbu(PARTY_SLOTS + k)
+		index := cpu.lbu(PARTY_SLOTS + k)
 		if index == EMPTY_SLOT {
 			continue
 		}
 		record := char_record(index)
-		marks := psx.lbu(record + KO_MARKS)
+		marks := cpu.lbu(record + KO_MARKS)
 		if marks == 0 {
 			continue
 		}
-		psx.sb(record + KO_MARKS, 0)
+		cpu.sb(record + KO_MARKS, 0)
 		if give_back {
-			psx.sw(record + RECORD_HP_MAX, psx.lw(record + RECORD_HP_MAX) + psx.lw(record + BASE_HP_MAX) / MARK_SHARE * marks)
+			cpu.sw(record + RECORD_HP_MAX, cpu.lw(record + RECORD_HP_MAX) + cpu.lw(record + BASE_HP_MAX) / MARK_SHARE * marks)
 		}
 		if .Game in core.trace.active {
-			core.tracef(.Game, "ko_loss: character %d marks %d cleared, max HP %d", index, marks, psx.lw(record + RECORD_HP_MAX))
+			core.tracef(.Game, "ko_loss: character %d marks %d cleared, max HP %d", index, marks, cpu.lw(record + RECORD_HP_MAX))
 		}
 	}
 }

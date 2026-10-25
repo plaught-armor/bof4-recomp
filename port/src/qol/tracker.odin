@@ -20,7 +20,8 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 // The region holding the event flag arrays, the per-area flag words and the
 // global flags (save offsets 0xdf4..0x10cc).
@@ -117,7 +118,7 @@ tracker_vblank :: proc() {
 	}
 }
 
-// psx.pad_hook's part, for the field's Menu button (Start opens the camp
+// host.pad_hook's part, for the field's Menu button (Start opens the camp
 // menu instead). A press while the player has control opens the objective
 // box; while it is up the game sees no buttons, and Confirm, Cancel or Menu
 // closes it. The game sees nothing more until every button is released, so
@@ -130,7 +131,7 @@ tracker_buttons :: proc(held, menu: u16) -> u16 {
 		tracker.swallow = held != 0
 		return 0
 	}
-	in_field := psx.lhu(GAME_MODE) == GAME_MODE_FIELD
+	in_field := cpu.lhu(GAME_MODE) == GAME_MODE_FIELD
 	if tracker.shown {
 		closing := menu | action_mask(.Confirm) | action_mask(.Cancel)
 		if !in_field || down & closing != 0 {
@@ -142,7 +143,7 @@ tracker_buttons :: proc(held, menu: u16) -> u16 {
 	if !in_field {
 		return held
 	}
-	if down & menu != 0 && psx.lbu(leader_obj() + OBJ_STATE) == STATE_PLAYER_CONTROL {
+	if down & menu != 0 && cpu.lbu(leader_obj() + OBJ_STATE) == STATE_PLAYER_CONTROL {
 		tracker.shown = true
 	}
 	return held &~ menu
@@ -150,7 +151,7 @@ tracker_buttons :: proc(held, menu: u16) -> u16 {
 
 @(private)
 tracker_draws :: proc() -> bool {
-	return tracker.shown && psx.lhu(GAME_MODE) == GAME_MODE_FIELD
+	return tracker.shown && cpu.lhu(GAME_MODE) == GAME_MODE_FIELD
 }
 
 // The objective box, word-wrapped to the box's width.
@@ -183,7 +184,7 @@ objective_now :: proc() -> string {
 @(private = "file")
 objective_next :: proc() -> (next: int) {
 	for o, i in OBJECTIVES {
-		if psx.lw(AREA_WORDS + o.area * 4) & (1 << o.bit) != 0 {
+		if cpu.lw(AREA_WORDS + o.area * 4) & (1 << o.bit) != 0 {
 			next = i + 1
 		}
 	}
@@ -235,7 +236,7 @@ journal: struct {
 
 @(private)
 journal_draws :: proc() -> bool {
-	return psx.osd_panel_shown && psx.osd_panel_page == PANEL_JOURNAL
+	return host.osd_panel_shown && host.osd_panel_page == PANEL_JOURNAL
 }
 
 // Up and Down scroll the journal a line.
@@ -244,10 +245,10 @@ journal_select :: proc(pressed: u16) {
 	if !journal_draws() {
 		return
 	}
-	if pressed & psx.PAD_UP != 0 {
+	if pressed & host.PAD_UP != 0 {
 		journal.top = max(journal.top - 1, 0)
 	}
-	if pressed & psx.PAD_DOWN != 0 {
+	if pressed & host.PAD_DOWN != 0 {
 		journal.top += 1 // journal_draw clamps it to the last screenful
 	}
 }
@@ -314,17 +315,17 @@ flag_log_vblank :: proc() {
 
 @(private = "file")
 flag_log_byte :: proc(at: u32, old: ^u8, first: bool) {
-	now := u8(psx.lbu(at))
+	now := u8(cpu.lbu(at))
 	if now == old^ {
 		return
 	}
 	if !first {
 		fmt.printfln(
 			"flag %d map %04x.%d area %d %08x %02x->%02x \"%s\"",
-			psx.vblanks(),
-			psx.lhu(FIELD_MAP),
-			psx.lbu(MAP_SECTION),
-			psx.lbu(POSITION_LO),
+			cpu.vblanks(),
+			cpu.lhu(FIELD_MAP),
+			cpu.lbu(MAP_SECTION),
+			cpu.lbu(POSITION_LO),
 			at,
 			old^,
 			now,
@@ -337,18 +338,18 @@ flag_log_byte :: proc(at: u32, old: ^u8, first: bool) {
 // Keep the start of the latest message shown, printable characters only.
 @(private = "file")
 message_follow :: proc() {
-	box := psx.lw(TEXT_BOX)
+	box := cpu.lw(TEXT_BOX)
 	if box < 0x80000000 || box >= 0x80200000 {
 		return
 	}
-	src := psx.lw(box + MESSAGE_TEXT)
+	src := cpu.lw(box + MESSAGE_TEXT)
 	if src < 0x80000000 || src >= 0x80200000 {
 		return
 	}
 	buf: [MESSAGE_MAX]u8
 	n := 0
 	for i in u32(0) ..< 400 {
-		ch := u8(psx.lbu(src + i))
+		ch := u8(cpu.lbu(src + i))
 		if ch == 0 || n == MESSAGE_MAX {
 			break
 		}

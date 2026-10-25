@@ -16,14 +16,14 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 @(private = "file")
 NPC_INIT :: 0x801e0598
 
 @(private = "file")
 npc_swap: struct {
-	init:     psx.Func_Proc,
+	init:     cpu.Func_Proc,
 	from, to: u16,
 	x, z:     u8,
 	moved:    bool,
@@ -59,15 +59,15 @@ npc_swap_init :: proc() -> bool {
 
 @(private = "file")
 npc_init :: proc() {
-	record := psx.cpu.r[5]
-	fmt.printfln("npc sprite %x at %d,%d script %d", psx.lbu(record + 1) | psx.lbu(record + 2) << 8,
-		psx.lbu(record + 3), psx.lbu(record + 4), psx.lbu(record + 12))
-	if psx.lbu(record + 1) | psx.lbu(record + 2) << 8 == u32(npc_swap.from) {
-		psx.sb(record + 1, u32(npc_swap.to) & 0xff)
-		psx.sb(record + 2, u32(npc_swap.to) >> 8)
+	record := cpu.state.r[5]
+	fmt.printfln("npc sprite %x at %d,%d script %d", cpu.lbu(record + 1) | cpu.lbu(record + 2) << 8,
+		cpu.lbu(record + 3), cpu.lbu(record + 4), cpu.lbu(record + 12))
+	if cpu.lbu(record + 1) | cpu.lbu(record + 2) << 8 == u32(npc_swap.from) {
+		cpu.sb(record + 1, u32(npc_swap.to) & 0xff)
+		cpu.sb(record + 2, u32(npc_swap.to) >> 8)
 		if npc_swap.moved {
-			psx.sb(record + 3, u32(npc_swap.x))
-			psx.sb(record + 4, u32(npc_swap.z))
+			cpu.sb(record + 3, u32(npc_swap.x))
+			cpu.sb(record + 4, u32(npc_swap.z))
 		}
 	}
 	npc_swap.init()

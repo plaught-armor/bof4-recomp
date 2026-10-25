@@ -38,7 +38,7 @@
 // his size on screen; past BOOM_MAX it rises no further and stays where it
 // is, inside the building behind him if need be. What is
 // still in the way, the GPU fades per
-// pixel, by real depth (psx.see_through, see psx/see_through.odin):
+// pixel, by real depth (render.see_through, see psx/see_through.odin):
 // set_see_through hands it the leader's middle for each view built. What the
 // camera sits in is cut away near the lens; a face whose plane has the
 // leader behind it as seen from the lens (a wall turned to the camera in
@@ -68,7 +68,11 @@ import "core:math"
 import "core:math/linalg"
 import "core:slice"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import gte "ps:psx/gte"
+import host "ps:psx/host"
+import io "ps:psx/io"
+import render "ps:psx/render"
 
 // Maps of area M (1xxx) are towns; any other map is a room or a field.
 @(private = "file")
@@ -269,7 +273,7 @@ Kept :: struct {
 
 @(private = "file")
 tp: struct {
-	view, trigger, sprite, model_shown, model_in_view, face: psx.Func_Proc,
+	view, trigger, sprite, model_shown, model_in_view, face: cpu.Func_Proc,
 	// 0 the game's camera, 1 this one.
 	t:             f64,
 	last:          u64,
@@ -296,7 +300,7 @@ tp: struct {
 	// Where that object stands in view space, for the depth buffer (always
 	// filed under the close camera, the party too).
 	copy_at:       [3]f32,
-	// Its anchor's sub-pixel part (psx.anchor_sub), for the copy too.
+	// Its anchor's sub-pixel part (gte.anchor_sub), for the copy too.
 	copy_sub:      [2]i8,
 	// The share of that object faded out (fade_solid), or -1 for none, and
 	// its sprite's flags and colour before: the copy's are the same (not
@@ -333,13 +337,13 @@ Tp_Blend :: struct {
 // The state the view was last built with.
 @(private)
 third_person_state :: proc() -> Tp_Blend {
-	return {tp.t, tp.arm, tp.zoom, yaw_exact() - f64(psx.lhu(CAMERA_YAW))}
+	return {tp.t, tp.arm, tp.zoom, yaw_exact() - f64(cpu.lhu(CAMERA_YAW))}
 }
 
 // The camera's yaw, unrounded (0x1000 a turn).
 @(private)
 yaw_exact :: proc() -> f64 {
-	y := u32(psx.lhu(CAMERA_YAW))
+	y := u32(cpu.lhu(CAMERA_YAW))
 	return f64(y) + (y == tp.yaw_wrote ? tp.yaw_frac : 0)
 }
 
@@ -350,7 +354,7 @@ yaw_turn :: proc(by: f64) -> u32 {
 	f := yaw_exact() + by
 	whole := math.round(f)
 	y := u32(i32(whole)) & 0xfff
-	psx.sh(CAMERA_YAW, y)
+	cpu.sh(CAMERA_YAW, y)
 	tp.yaw_frac, tp.yaw_wrote = f - whole, y
 	return y
 }
@@ -359,7 +363,7 @@ yaw_turn :: proc(by: f64) -> u32 {
 third_person_init :: proc() -> bool {
 	tp.zoom, tp.arm = 1, 1
 	ok: bool
-	tp.view, ok = psx.hook(VIEW_BUILD, third_person_view)
+	tp.view, ok = cpu.hook(VIEW_BUILD, third_person_view)
 	if !ok {
 		return false
 	}
@@ -367,30 +371,30 @@ third_person_init :: proc() -> bool {
 	if !ok {
 		return false
 	}
-	tp.sprite, ok = psx.hook(SPRITE_DRAW, sprite_draw)
+	tp.sprite, ok = cpu.hook(SPRITE_DRAW, sprite_draw)
 	if !ok {
 		return false
 	}
-	tp.model_shown, ok = psx.hook(MODEL_SHOWN, model_shown)
+	tp.model_shown, ok = cpu.hook(MODEL_SHOWN, model_shown)
 	if !ok {
 		return false
 	}
-	tp.model_in_view, ok = psx.hook(MODEL_IN_VIEW, model_in_view)
+	tp.model_in_view, ok = cpu.hook(MODEL_IN_VIEW, model_in_view)
 	if !ok {
 		return false
 	}
-	tp.face, ok = psx.hook(FACE_DRAW, face_draw)
+	tp.face, ok = cpu.hook(FACE_DRAW, face_draw)
 	return ok
 }
 
 // A portrait is drawn flat on the screen: keep any depth off its quad
-// (psx.screen_add), or it can take a sprite's from frames before and hide
+// (render.screen_add), or it can take a sprite's from frames before and hide
 // behind the scenery.
 @(private = "file")
 face_draw :: proc() {
-	lo := psx.lw(SPRITE_PACKETS)
+	lo := cpu.lw(SPRITE_PACKETS)
 	tp.face()
-	psx.screen_add(lo, psx.lw(SPRITE_PACKETS))
+	render.screen_add(lo, cpu.lw(SPRITE_PACKETS))
 }
 
 // This camera turns freely and looks through what stands before the leader
@@ -407,7 +411,7 @@ model_shown :: proc() {
 		tp.model_shown()
 		return
 	}
-	psx.cpu.r[2] = 1
+	cpu.state.r[2] = 1
 }
 
 // The same for the fixed view's sight test: every placed model is in view.
@@ -417,7 +421,7 @@ model_in_view :: proc() {
 		tp.model_in_view()
 		return
 	}
-	psx.cpu.r[2] = 1
+	cpu.state.r[2] = 1
 }
 
 // Swing the camera's yaw toward the way the leader walks, `ticks` vblanks
@@ -425,7 +429,7 @@ model_in_view :: proc() {
 @(private)
 third_person_follow :: proc(ticks: u64, turned: bool) {
 	pos := u32(leader_obj() + OBJ_POS)
-	feet := [2]i32{i32(psx.lw(pos)), i32(psx.lw(pos + 8))}
+	feet := [2]i32{i32(cpu.lw(pos)), i32(cpu.lw(pos + 8))}
 	step := feet - tp.feet
 	tp.feet = feet
 	// Through a doorway to a neighbour the leader's position jumps into the
@@ -456,7 +460,7 @@ third_person_follow :: proc(ticks: u64, turned: bool) {
 @(private = "file")
 rotate_trigger :: proc() {
 	if config.camera_third_person {
-		psx.cpu.r[2] = 0
+		cpu.state.r[2] = 0
 		return
 	}
 	tp.trigger()
@@ -476,12 +480,12 @@ third_person_view :: proc() {
 	// frame is still drawing (a frame's drawing can span vblanks): the state
 	// steps once a game frame, so all of a frame's drawing has one view, the
 	// one its in-between pictures blend.
-	if !psx.events_frozen {
-		frame := psx.lw(GAME_FRAME)
+	if !io.events_frozen {
+		frame := cpu.lw(GAME_FRAME)
 		step := frame != tp.frame
 		if step {
 			tp.frame = frame
-			blend(psx.lw(SLOT_ENGINE) == FLD_MAIN_ID)
+			blend(cpu.lw(SLOT_ENGINE) == FLD_MAIN_ID)
 		}
 		build_view(third_person_state().yaw, {}, step)
 		return
@@ -508,18 +512,18 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 		kept_write(&tp.h, CAM_H, h)
 		kept_write(&tp.near, CAM_NEAR, near)
 		kept_write(&tp.radii, CAM_TILE_RADII, radii)
-		psx.world_3d = false
+		cpu.world_3d = false
 		tp.view()
-		psx.see_through.on = false
-		psx.exact_view.stamp = 0
+		render.see_through.on = false
+		gte.exact_view.stamp = 0
 		return
 	}
-	pitch, distance := psx.lhu(CAM_PITCH), psx.lw(CAM_DISTANCE)
-	height := psx.lhu(CAM_TARGET + 2)
-	yaw := f64(psx.lhu(CAMERA_YAW)) * (2 * math.PI / 4096)
+	pitch, distance := cpu.lhu(CAM_PITCH), cpu.lw(CAM_DISTANCE)
+	height := cpu.lhu(CAM_TARGET + 2)
+	yaw := f64(cpu.lhu(CAMERA_YAW)) * (2 * math.PI / 4096)
 	reach := f64(i32(distance)) * zoom()
 	tilt := u32(pitch)
-	if !psx.events_frozen {
+	if !io.events_frozen {
 		want := 1.0
 		if step {
 			// The yaw's turn since the last step, per second.
@@ -538,34 +542,34 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 		}
 		spring(want, tilt, step)
 	}
-	psx.sh(CAM_PITCH, boom(tilt))
-	psx.sh(CAM_TARGET + 2, height)
+	cpu.sh(CAM_PITCH, boom(tilt))
+	cpu.sh(CAM_TARGET + 2, height)
 	kept_write(&tp.radii, CAM_TILE_RADII, max(radii & 0xffff, TP_TILE_RADIUS) | max(radii >> 16, TP_TILE_RADIUS) << 16)
-	psx.world_3d = true
-	a0 := psx.cpu.r[4]
+	cpu.world_3d = true
+	a0 := cpu.state.r[4]
 	view_at(u32(i32(math.round(reach))), distance, h, near)
 	exact_set(a0, yaw_frac, frac, h, pitch, distance, height)
-	psx.sh(CAM_PITCH, pitch)
-	psx.sw(CAM_DISTANCE, distance)
-	psx.sh(CAM_TARGET + 2, height)
+	cpu.sh(CAM_PITCH, pitch)
+	cpu.sw(CAM_DISTANCE, distance)
+	cpu.sh(CAM_TARGET + 2, height)
 	set_see_through()
 }
 
 // Hand the GTE the way from the view just built to the one unrounded values
-// give (psx.exact_view). `yaw_frac` and `frac` are what the yaw and the camera
+// give (gte.exact_view). `yaw_frac` and `frac` are what the yaw and the camera
 // fields hold past their whole values (build_view); pitch, distance and
 // height the game's, h its lens; a0 VIEW_BUILD's offset vector. The rest of
 // what build_view rounds (boom, view_at) is taken here unrounded;
 // CAM_MATRIX and CAM_TR hold the view built.
 @(private = "file")
 exact_set :: proc(a0: u32, yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, h, pitch, distance, height: u32) {
-	e := &psx.exact_view
+	e := &gte.exact_view
 	e.stamp = 0
-	if psx.lhu(CAM_ROLL) != 0 {
+	if cpu.lhu(CAM_ROLL) != 0 {
 		return
 	}
 	for i in u32(0) ..< 3 {
-		if psx.lw(CAM_SCALE + i * 4) != 0x1000 {
+		if cpu.lw(CAM_SCALE + i * 4) != 0x1000 {
 			return
 		}
 	}
@@ -578,19 +582,19 @@ exact_set :: proc(a0: u32, yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, h, pitch,
 	reach := game_d * zoom()
 	scale := f64(i32(h)) / max(f64(i32(distance)), 1)
 	lens := max(scale * reach, f64(min(H_MIN, i32(h))), 1)
-	k := lens / f64(i32(psx.lw(CAM_H)))
+	k := lens / f64(i32(cpu.lw(CAM_H)))
 	target := [3]f64 {
-		f64(i16(psx.lhu(CAM_TARGET))) + frac[TARGET],
+		f64(i16(cpu.lhu(CAM_TARGET))) + frac[TARGET],
 		f64(i16(height)) + frac[TARGET + 1],
-		f64(i16(psx.lhu(CAM_TARGET + 4))) + frac[TARGET + 2],
+		f64(i16(cpu.lhu(CAM_TARGET + 4))) + frac[TARGET + 2],
 	}
 	for i in u32(0) ..< 3 {
-		target[i] = target[i] / 2 - f64(i16(psx.lhu(a0 + i * 2)))
+		target[i] = target[i] / 2 - f64(i16(cpu.lhu(a0 + i * 2)))
 	}
-	pos := [3]f64{f64(i32(psx.lw(CAM_POS))) + frac[POS], f64(i32(psx.lw(CAM_POS + 4))) + frac[POS + 1], reach}
+	pos := [3]f64{f64(i32(cpu.lw(CAM_POS))) + frac[POS], f64(i32(cpu.lw(CAM_POS + 4))) + frac[POS + 1], reach}
 	// RotMatrix: the x turn (pitch) of the y turn (yaw); roll is 0.
 	sp, cp := math.sincos(lift(tp.arm, tilt) * turn)
-	sy, cy := math.sincos((f64(psx.lhu(CAMERA_YAW)) + frac[YAW] + yaw_frac) * turn)
+	sy, cy := math.sincos((f64(cpu.lhu(CAMERA_YAW)) + frac[YAW] + yaw_frac) * turn)
 	rx := matrix[3, 3]f64{1, 0, 0, 0, cp, -sp, 0, sp, cp}
 	ry := matrix[3, 3]f64{cy, 0, sy, 0, 1, 0, -sy, 0, cy}
 	r := rx * ry
@@ -598,9 +602,9 @@ exact_set :: proc(a0: u32, yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, h, pitch,
 	tq: [3]f64
 	for i in u32(0) ..< 3 {
 		for j in u32(0) ..< 3 {
-			q[i, j] = f64(i16(psx.lhu(CAM_MATRIX + (i * 3 + j) * 2))) / 0x1000
+			q[i, j] = f64(i16(cpu.lhu(CAM_MATRIX + (i * 3 + j) * 2))) / 0x1000
 		}
-		tq[i] = f64(i32(psx.lw(CAM_TR + i * 4)))
+		tq[i] = f64(i32(cpu.lw(CAM_TR + i * 4)))
 	}
 	lens_k := matrix[3, 3]f64{k, 0, 0, 0, k, 0, 0, 0, 1}
 	m := lens_k * r * linalg.inverse(q)
@@ -611,7 +615,7 @@ exact_set :: proc(a0: u32, yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, h, pitch,
 		}
 		e.t[i] = t[i]
 	}
-	e.stamp = psx.vblanks()
+	e.stamp = cpu.vblanks()
 }
 
 // The share of an arm of `reach` view units (the camera looking along `yaw`
@@ -624,12 +628,12 @@ exact_set :: proc(a0: u32, yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, h, pitch,
 @(private = "file")
 arm_reach :: proc(reach, yaw, pitch: f64) -> f64 {
 	pos := u32(leader_obj() + OBJ_POS)
-	g, ok := grid_of(psx.lbu(pos + 12))
+	g, ok := grid_of(cpu.lbu(pos + 12))
 	if !ok {
 		return 1
 	}
-	x := f64(i32(psx.lw(pos))) / 0x10000
-	z := f64(i32(psx.lw(pos + 8))) / 0x10000
+	x := f64(i32(cpu.lw(pos))) / 0x10000
+	z := f64(i32(cpu.lw(pos + 8))) / 0x10000
 	// In cells, back along the ground: direction a points at (sin a, -cos a)
 	// in (x, z), and back is yaw + 180.
 	length := reach * math.cos((pitch - 0x800) * (2 * math.PI / 4096)) / VIEW_PER_CELL
@@ -639,9 +643,9 @@ arm_reach :: proc(reach, yaw, pitch: f64) -> f64 {
 	steps := max(int(math.ceil(length * ARM_SAMPLES)), 1)
 	// Map y is up.
 	elevation := (pitch - 0x800) * (2 * math.PI / 4096)
-	from := [3]f32{f32(x * VIEW_PER_CELL), f32(f64(i32(psx.lw(pos + 4))) / 0x10000 * VIEW_PER_CELL + LEADER_MIDDLE), f32(z * VIEW_PER_CELL)}
+	from := [3]f32{f32(x * VIEW_PER_CELL), f32(f64(i32(cpu.lw(pos + 4))) / 0x10000 * VIEW_PER_CELL + LEADER_MIDDLE), f32(z * VIEW_PER_CELL)}
 	rise := f32(reach * math.sin(elevation))
-	section := u32(psx.lbu(MAP_SECTION))
+	section := u32(cpu.lbu(MAP_SECTION))
 	// The layer's polygons round the arm, gathered once for both walks: out
 	// to ARM_FAN cells past it and a cell more, for the cells the fan's
 	// samples land in.
@@ -854,7 +858,7 @@ spring :: proc(want: f64, tilt: u32, step: bool) {
 @(private = "file")
 view_at :: proc(d, game_distance, h, near: u32) {
 	scale := f64(i32(h)) / max(f64(i32(game_distance)), 1)
-	psx.sw(CAM_DISTANCE, d)
+	cpu.sw(CAM_DISTANCE, d)
 	lens := max(i32(math.round(scale * f64(d))), min(H_MIN, i32(h)), 1)
 	kept_write(&tp.h, CAM_H, u32(lens))
 	kept_write(&tp.near, CAM_NEAR, u32(max(0, i32(near) + i32(d) - i32(game_distance))))
@@ -865,76 +869,76 @@ view_at :: proc(d, game_distance, h, near: u32) {
 // camera; its own fields are put back after.
 @(private = "file")
 sprite_draw :: proc() {
-	sprite := psx.cpu.r[4]
-	if tp.t == 0 || psx.cpu.r[31] != SPRITE_LIST_RA {
-		lo := psx.lw(SPRITE_PACKETS)
-		flags, color := psx.lbu(sprite + SPRITE_FLAGS), psx.lw(sprite + SPRITE_COLOR)
+	sprite := cpu.state.r[4]
+	if tp.t == 0 || cpu.state.r[31] != SPRITE_LIST_RA {
+		lo := cpu.lw(SPRITE_PACKETS)
+		flags, color := cpu.lbu(sprite + SPRITE_FLAGS), cpu.lw(sprite + SPRITE_COLOR)
 		same := flags == tp.copy_flags && color == tp.copy_color
 		clear := tp.copy_depth > 0 && same && tp.copy_clear >= 0 ? fade_solid(sprite) : -1
-		scaled := psx.lbu(sprite + SPRITE_SCALED)
-		sx, sy := psx.lw(sprite + SPRITE_SCALE_X), psx.lw(sprite + SPRITE_SCALE_Y)
+		scaled := cpu.lbu(sprite + SPRITE_SCALED)
+		sx, sy := cpu.lw(sprite + SPRITE_SCALE_X), cpu.lw(sprite + SPRITE_SCALE_Y)
 		shadow := tp.t > 0 && tp.copy_scale.x != 0 && sprite >= SHADOWS && sprite < SHADOWS_END
 		if shadow {
-			psx.sb(sprite + SPRITE_SCALED, 1)
-			psx.sw(sprite + SPRITE_SCALE_X, tp.copy_scale.x)
-			psx.sw(sprite + SPRITE_SCALE_Y, tp.copy_scale.y)
+			cpu.sb(sprite + SPRITE_SCALED, 1)
+			cpu.sw(sprite + SPRITE_SCALE_X, tp.copy_scale.x)
+			cpu.sw(sprite + SPRITE_SCALE_Y, tp.copy_scale.y)
 		}
 		tp.sprite()
-		psx.sb(sprite + SPRITE_FLAGS, flags)
-		psx.sw(sprite + SPRITE_COLOR, color)
+		cpu.sb(sprite + SPRITE_FLAGS, flags)
+		cpu.sw(sprite + SPRITE_COLOR, color)
 		if shadow {
-			psx.sb(sprite + SPRITE_SCALED, scaled)
-			psx.sw(sprite + SPRITE_SCALE_X, sx)
-			psx.sw(sprite + SPRITE_SCALE_Y, sy)
+			cpu.sb(sprite + SPRITE_SCALED, scaled)
+			cpu.sw(sprite + SPRITE_SCALE_X, sx)
+			cpu.sw(sprite + SPRITE_SCALE_Y, sy)
 		}
-		psx.see_flat_add(lo, psx.lw(SPRITE_PACKETS), tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_party, max(clear, 0))
+		render.see_flat_add(lo, cpu.lw(SPRITE_PACKETS), tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_party, max(clear, 0))
 		tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_clear, tp.copy_scale = 0, {}, {}, -1, {}
 		return
 	}
 	full := view_full(sprite - SPRITE_OBJ + OBJ_POS)
 	depth := full[2] >> 12
-	scaled := psx.lbu(sprite + SPRITE_SCALED)
-	sx, sy := psx.lw(sprite + SPRITE_SCALE_X), psx.lw(sprite + SPRITE_SCALE_Y)
+	scaled := cpu.lbu(sprite + SPRITE_SCALED)
+	sx, sy := cpu.lw(sprite + SPRITE_SCALE_X), cpu.lw(sprite + SPRITE_SCALE_Y)
 	base := [2]f64{SCALE_ONE, SCALE_ONE}
 	if scaled != 0 {
 		base = {f64(i32(sx)), f64(i32(sy))}
 	}
 	// On screen size per unit, against the game's framing at its distance.
-	h_game, d_game := f64(i32(tp.h.game)), f64(i32(psx.lw(CAM_DISTANCE)))
-	target := SCALE_ONE * f64(i32(psx.lw(CAM_H))) * d_game / max(f64(depth) * h_game, 1)
-	psx.sb(sprite + SPRITE_SCALED, 1)
+	h_game, d_game := f64(i32(tp.h.game)), f64(i32(cpu.lw(CAM_DISTANCE)))
+	target := SCALE_ONE * f64(i32(cpu.lw(CAM_H))) * d_game / max(f64(depth) * h_game, 1)
+	cpu.sb(sprite + SPRITE_SCALED, 1)
 	for b, i in base {
 		v := clamp(b + (target - b) * tp.t, 0, SCALE_MAX)
 		tp.copy_scale[i] = u32(i32(math.round(v)))
-		psx.sw(sprite + SPRITE_SCALE_X + 4 * u32(i), tp.copy_scale[i])
+		cpu.sw(sprite + SPRITE_SCALE_X + 4 * u32(i), tp.copy_scale[i])
 	}
 	obj := sprite - SPRITE_OBJ
 	party := obj >= PARTY_OBJ && obj < PARTY_OBJ + PARTY_OBJ_SIZE * PARTY_COUNT
-	flags, color := psx.lbu(sprite + SPRITE_FLAGS), psx.lw(sprite + SPRITE_COLOR)
+	flags, color := cpu.lbu(sprite + SPRITE_FLAGS), cpu.lw(sprite + SPRITE_COLOR)
 	clear := party && obj != leader_obj() ? fade_solid(sprite) : -1
-	lo := psx.lw(SPRITE_PACKETS)
+	lo := cpu.lw(SPRITE_PACKETS)
 	tp.sprite()
-	psx.sb(sprite + SPRITE_FLAGS, flags)
-	psx.sw(sprite + SPRITE_COLOR, color)
-	// People between the lens and the leader fade (psx.see_through); the
+	cpu.sb(sprite + SPRITE_FLAGS, flags)
+	cpu.sw(sprite + SPRITE_COLOR, color)
+	// People between the lens and the leader fade (render.see_through); the
 	// party never does, but a follower fading in (fade_solid). While a
 	// door's cover is laid over the room, walking in (the lens still over
 	// the town's roof) or out (door_out), the party stays over it, seen
 	// through the town's walls. Every sprite takes its anchor's sub-pixel
 	// part: the geometry has the exact view's, and a sprite snapped to
 	// whole pixels would swim against it.
-	anchor := [2]i32{i32(i16(psx.lhu(sprite + SPRITE_AT))), i32(i16(psx.lhu(sprite + SPRITE_AT + 2)))}
+	anchor := [2]i32{i32(i16(cpu.lhu(sprite + SPRITE_AT))), i32(i16(cpu.lhu(sprite + SPRITE_AT + 2)))}
 	tp.copy_depth, tp.copy_party, tp.copy_clear = 0, false, clear
-	tp.copy_sub = psx.anchor_sub({f64(full[0]), f64(full[1]), f64(full[2])}, anchor)
+	tp.copy_sub = gte.anchor_sub({f64(full[0]), f64(full[1]), f64(full[2])}, anchor)
 	tp.copy_at = {f32(full[0]), f32(full[1]), f32(full[2])} / 4096
 	tp.copy_flags, tp.copy_color = flags, color
 	if !party || clear >= 0 || door_out() > 0 || door_cover() > 0 {
 		tp.copy_depth, tp.copy_party = f32(depth), party
 	}
-	psx.see_flat_add(lo, psx.lw(SPRITE_PACKETS), tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_party, max(clear, 0))
-	psx.sb(sprite + SPRITE_SCALED, scaled)
-	psx.sw(sprite + SPRITE_SCALE_X, sx)
-	psx.sw(sprite + SPRITE_SCALE_Y, sy)
+	render.see_flat_add(lo, cpu.lw(SPRITE_PACKETS), tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_party, max(clear, 0))
+	cpu.sb(sprite + SPRITE_SCALED, scaled)
+	cpu.sw(sprite + SPRITE_SCALE_X, sx)
+	cpu.sw(sprite + SPRITE_SCALE_Y, sy)
 }
 
 // The game fades a follower in as it steps off the leader (interiors.odin's
@@ -947,15 +951,15 @@ sprite_draw :: proc() {
 // and colour back after the draw.
 @(private = "file")
 fade_solid :: proc(sprite: u32) -> f32 {
-	flags := psx.lbu(sprite + SPRITE_FLAGS)
-	full := psx.lw(leader_obj() + SPRITE_OBJ + SPRITE_COLOR)
+	flags := cpu.lbu(sprite + SPRITE_FLAGS)
+	full := cpu.lw(leader_obj() + SPRITE_OBJ + SPRITE_COLOR)
 	half := f32(full & 0xff) / 2
-	if !psx.see_through.on || flags & SPRITE_SEMI == 0 || half <= 0 {
+	if !render.see_through.on || flags & SPRITE_SEMI == 0 || half <= 0 {
 		return -1
 	}
-	risen := min(f32(psx.lbu(sprite + SPRITE_COLOR)) / half, 1)
-	psx.sb(sprite + SPRITE_FLAGS, flags &~ SPRITE_SEMI)
-	psx.sw(sprite + SPRITE_COLOR, full)
+	risen := min(f32(cpu.lbu(sprite + SPRITE_COLOR)) / half, 1)
+	cpu.sb(sprite + SPRITE_FLAGS, flags &~ SPRITE_SEMI)
+	cpu.sw(sprite + SPRITE_COLOR, full)
 	return 1 - risen
 }
 
@@ -966,10 +970,10 @@ view_full :: proc(pos: u32) -> (v: [3]i64) {
 	for r in u32(0) ..< 3 {
 		dot: i64
 		for i in u32(0) ..< 3 {
-			p := i64(i32(psx.lw(pos + 4 * i)) >> 9)
-			dot += i64(i16(psx.lhu(CAM_MATRIX + 6 * r + 2 * i))) * p
+			p := i64(i32(cpu.lw(pos + 4 * i)) >> 9)
+			dot += i64(i16(cpu.lhu(CAM_MATRIX + 6 * r + 2 * i))) * p
 		}
-		v[r] = dot + i64(i32(psx.lw(CAM_TR + 4 * r))) << 12
+		v[r] = dot + i64(i32(cpu.lw(CAM_TR + 4 * r))) << 12
 	}
 	return
 }
@@ -987,25 +991,25 @@ view_depth :: proc(pos: u32) -> i64 {
 }
 
 // See through what stands between the camera and the leader
-// (psx.see_through) for the view just built, once the camera has mostly
+// (render.see_through) for the view just built, once the camera has mostly
 // blended in.
 @(private = "file")
 set_see_through :: proc() {
 	feet := view_pos(leader_obj() + OBJ_POS)
 	tp.leader_depth = f32(feet.z)
 	if tp.t < SEE_FROM {
-		psx.see_through.on = false
+		render.see_through.on = false
 		return
 	}
 	// World down in view space: the matrix's column 1 (world y) comes out
 	// pointing up the screen and toward the lens under the field's camera.
 	down: [3]f32
 	for r in u32(0) ..< 3 {
-		down[r] = -f32(i16(psx.lhu(CAM_MATRIX + 6 * r + 2))) / 4096
+		down[r] = -f32(i16(cpu.lhu(CAM_MATRIX + 6 * r + 2))) / 4096
 	}
 	down = linalg.normalize0(down)
 	f := [3]f32{f32(feet.x), f32(feet.y), f32(feet.z)}
-	psx.see_through_set(f - down * LEADER_MIDDLE, -down, f.z, LEADER_MIDDLE, psx.lhu(MAP_ID) & TOWN_MAPS == 0)
+	render.see_through_set(f - down * LEADER_MIDDLE, -down, f.z, LEADER_MIDDLE, cpu.lhu(MAP_ID) & TOWN_MAPS == 0)
 	grade_update()
 }
 
@@ -1016,12 +1020,12 @@ set_see_through :: proc() {
 // the game's camera, which it moves.
 @(private)
 third_person_keeps :: proc() -> bool {
-	switch psx.lhu(GAME_MODE) {
+	switch cpu.lhu(GAME_MODE) {
 	case MODE_FIELD_ID, MODE_EVENT, MODE_SHOP:
 	case:
 		return false
 	}
-	switch psx.lbu(leader_obj() + OBJ_STATE) {
+	switch cpu.lbu(leader_obj() + OBJ_STATE) {
 	case STATE_PLAYER_CONTROL, STATE_IDLE, STATE_TALK, STATE_MENU:
 		return true
 	}
@@ -1032,7 +1036,7 @@ third_person_keeps :: proc() -> bool {
 // zoom with L1/R1 while the player has the leader.
 @(private = "file")
 blend :: proc(field: bool) {
-	now := psx.vblanks()
+	now := cpu.vblanks()
 	dt := min(f64(now - tp.last) / VBLANK_HZ, MAX_DT)
 	tp.last = now
 	tp.dt = dt
@@ -1040,10 +1044,10 @@ blend :: proc(field: bool) {
 		tp.t = 0
 		return
 	}
-	state := psx.lbu(leader_obj() + OBJ_STATE)
+	state := cpu.lbu(leader_obj() + OBJ_STATE)
 	active := config.camera_third_person && third_person_keeps()
 	control :=
-		active && psx.lhu(GAME_MODE) == MODE_FIELD_ID && (state == STATE_PLAYER_CONTROL || state == STATE_IDLE)
+		active && cpu.lhu(GAME_MODE) == MODE_FIELD_ID && (state == STATE_PLAYER_CONTROL || state == STATE_IDLE)
 	// Through a doorway to a neighbour section the camera stays as it is.
 	held := config.camera_third_person && crossing_walk()
 	step := dt / BLEND_S
@@ -1052,11 +1056,11 @@ blend :: proc(field: bool) {
 		tp.arm = 1
 	}
 	if control {
-		pad := psx.lhu(leader_obj() + OBJ_PAD)
-		if pad & psx.PAD_L1 != 0 {
+		pad := cpu.lhu(leader_obj() + OBJ_PAD)
+		if pad & host.PAD_L1 != 0 {
 			tp.zoom /= math.pow(ZOOM_PER_S, dt)
 		}
-		if pad & psx.PAD_R1 != 0 {
+		if pad & host.PAD_R1 != 0 {
 			tp.zoom *= math.pow(ZOOM_PER_S, dt)
 		}
 		tp.zoom = clamp(tp.zoom, ZOOM_MIN, ZOOM_MAX)
@@ -1091,7 +1095,7 @@ third_person_leader_depth :: proc() -> f32 {
 third_person_game_fields :: proc() -> (v: [THIRD_PERSON_FIELDS]u32) {
 	kept := [THIRD_PERSON_FIELDS]^Kept{&tp.h, &tp.near, &tp.radii}
 	for addr, i in KEPT_FIELDS {
-		ram := psx.lw(addr)
+		ram := cpu.lw(addr)
 		v[i] = ram != kept[i].wrote ? ram : kept[i].game
 	}
 	return
@@ -1101,14 +1105,14 @@ third_person_game_fields :: proc() -> (v: [THIRD_PERSON_FIELDS]u32) {
 @(private)
 third_person_game_fields_put :: proc(v: [THIRD_PERSON_FIELDS]u32) {
 	for addr, i in KEPT_FIELDS {
-		psx.sw(addr, v[i])
+		cpu.sw(addr, v[i])
 	}
 }
 
 // The game's current value of a kept field.
 @(private = "file")
 kept_game :: proc(k: ^Kept, addr: u32) -> u32 {
-	if v := psx.lw(addr); v != k.wrote && !psx.events_frozen {
+	if v := cpu.lw(addr); v != k.wrote && !io.events_frozen {
 		k.game = v
 	}
 	return k.game
@@ -1116,9 +1120,9 @@ kept_game :: proc(k: ^Kept, addr: u32) -> u32 {
 
 @(private = "file")
 kept_write :: proc(k: ^Kept, addr, v: u32) {
-	if !psx.events_frozen {
+	if !io.events_frozen {
 		k.wrote = v
 	}
-	psx.sw(addr, v)
+	cpu.sw(addr, v)
 }
 

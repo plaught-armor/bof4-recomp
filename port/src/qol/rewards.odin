@@ -14,7 +14,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -38,12 +38,12 @@ REWARD_MAX :: 9_999_999
 
 @(private = "file")
 rewards: struct {
-	init: psx.Func_Proc,
+	init: cpu.Func_Proc,
 }
 
 @(private)
 rewards_init :: proc() -> bool {
-	original, ok := psx.hook_overlay(BTLEND_INIT, SLOT_ENGINE, BTLEND_ID, btlend_init)
+	original, ok := cpu.hook_overlay(BTLEND_INIT, SLOT_ENGINE, BTLEND_ID, btlend_init)
 	if !ok {
 		fmt.eprintf("qol: battle function %08x not found\n", BTLEND_INIT)
 		return false
@@ -54,7 +54,7 @@ rewards_init :: proc() -> bool {
 
 @(private = "file")
 btlend_init :: proc() {
-	if psx.lbu(SCREEN_STATE) == SCREEN_IDLE {
+	if cpu.lbu(SCREEN_STATE) == SCREEN_IDLE {
 		scale_reward(EXP_TOTAL, config.battle_exp_rate)
 		scale_reward(ZENNY_TOTAL, config.battle_zenny_rate)
 	}
@@ -66,9 +66,9 @@ scale_reward :: proc(addr: u32, rate: f64) {
 	if rate == 1 {
 		return
 	}
-	total := psx.lw(addr)
+	total := cpu.lw(addr)
 	scaled := u32(min(f64(total) * rate + 0.5, REWARD_MAX))
-	psx.sw(addr, scaled)
+	cpu.sw(addr, scaled)
 	if .Game in core.trace.active {
 		core.tracef(.Game, "rewards: %08x %d -> %d", addr, total, scaled)
 	}

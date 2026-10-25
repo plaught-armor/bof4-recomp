@@ -15,7 +15,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -57,12 +57,12 @@ BALANCE_HIT_MAX :: 9999
 
 @(private = "file")
 damage: struct {
-	apply: psx.Func_Proc,
+	apply: cpu.Func_Proc,
 }
 
 @(private)
 damage_init :: proc() -> bool {
-	original, ok := psx.hook_overlay(HP_APPLY, SLOT_ENGINE, ROUND_ID, hp_apply)
+	original, ok := cpu.hook_overlay(HP_APPLY, SLOT_ENGINE, ROUND_ID, hp_apply)
 	if !ok {
 		fmt.eprintf("qol: battle function %08x not found\n", HP_APPLY)
 		return false
@@ -73,14 +73,14 @@ damage_init :: proc() -> bool {
 
 @(private = "file")
 hp_apply :: proc() {
-	target := psx.lbu(HIT + HIT_TARGET_ID)
+	target := cpu.lbu(HIT + HIT_TARGET_ID)
 	rate := config.battle_damage_taken if target < ENEMY_IDS else config.battle_damage_dealt
 	if target < ENEMY_IDS && autoplay_party_unhurt() {
 		rate = 0
 	}
-	record := psx.lw(HIT + HIT_RECORD)
-	dealt := i32(psx.lw(record + HIT_DAMAGE))
-	mood_hit(psx.lbu(ACTION), target, dealt)
+	record := cpu.lw(HIT + HIT_RECORD)
+	dealt := i32(cpu.lw(record + HIT_DAMAGE))
+	mood_hit(cpu.lbu(ACTION), target, dealt)
 	if dealt > 0 {
 		rate *= timed_rate(target)
 		limit := f64(DAMAGE_MAX)
@@ -92,11 +92,11 @@ hp_apply :: proc() {
 			damage.apply()
 			return
 		}
-		psx.sw(record + HIT_DAMAGE, u32(scaled))
+		cpu.sw(record + HIT_DAMAGE, u32(scaled))
 		for k in u32(0) ..< POPUP_COUNT {
 			p := POPUPS + k * POPUP_SIZE
-			if psx.lbu(p) & POPUP_IN_USE != 0 && psx.lbu(p + POPUP_STEP) == 0 && psx.lbu(p + POPUP_TARGET) == target && i32(psx.lw(p + POPUP_VALUE)) == dealt {
-				psx.sw(p + POPUP_VALUE, u32(scaled))
+			if cpu.lbu(p) & POPUP_IN_USE != 0 && cpu.lbu(p + POPUP_STEP) == 0 && cpu.lbu(p + POPUP_TARGET) == target && i32(cpu.lw(p + POPUP_VALUE)) == dealt {
+				cpu.sw(p + POPUP_VALUE, u32(scaled))
 			}
 		}
 		if .Game in core.trace.active {

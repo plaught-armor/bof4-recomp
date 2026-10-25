@@ -11,7 +11,8 @@ package qol
 
 import "core:strconv"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 import "ps:core"
 
@@ -101,16 +102,16 @@ combos: struct {
 // Note a party action that became a combo or special.
 @(private)
 combos_vblank :: proc() {
-	if psx.lhu(GAME_MODE) != MODE_BATTLE {
+	if cpu.lhu(GAME_MODE) != MODE_BATTLE {
 		combos.last = 0
 		return
 	}
-	skill := u16(psx.lhu(ACTION_SKILL))
+	skill := u16(cpu.lhu(ACTION_SKILL))
 	if skill == combos.last {
 		return
 	}
 	combos.last = skill
-	if psx.lbu(ACTION) >= 6 {
+	if cpu.lbu(ACTION) >= 6 {
 		return
 	}
 	bit := 0
@@ -142,7 +143,7 @@ combos_add :: proc(bits: int) {
 
 @(private)
 combos_draws :: proc() -> bool {
-	return psx.osd_panel_shown && psx.osd_panel_page == PANEL_COMBOS
+	return host.osd_panel_shown && host.osd_panel_page == PANEL_COMBOS
 }
 
 // Up and Down scroll the page a line.
@@ -151,10 +152,10 @@ combos_select :: proc(pressed: u16) {
 	if !combos_draws() {
 		return
 	}
-	if pressed & psx.PAD_UP != 0 {
+	if pressed & host.PAD_UP != 0 {
 		combos.top = max(combos.top - 1, 0)
 	}
-	if pressed & psx.PAD_DOWN != 0 {
+	if pressed & host.PAD_DOWN != 0 {
 		combos.top += 1 // combos_draw clamps it to the last screenful
 	}
 }
@@ -199,7 +200,7 @@ combos_draw :: proc() {
 		menu_text(x + line.indent, y + row * MENU_LINE_H, line.text, line.colour)
 	}
 	foot := "Up/Down  Left/Right: Journal"
-	if psx.osd_panel_pages > PANEL_MASTERS {
+	if host.osd_panel_pages > PANEL_MASTERS {
 		foot = "Up/Down  Left/Right: Journal, Masters"
 	}
 	menu_text(x, y + COMBOS_ROWS * MENU_LINE_H, foot, MENU_GREY)

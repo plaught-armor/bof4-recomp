@@ -2,7 +2,7 @@
 // (a GP0 02 fill of the draw buffer) and, from its high camera, never shows
 // past the map's edge. The low third-person camera does, and there the
 // black shows as a void. For outdoor maps the clear is instead, in the
-// hi-res target only (psx.backdrop_hook), a sky above the horizon and the
+// hi-res target only (render.backdrop_hook), a sky above the horizon and the
 // map's ground fading into haze below it.
 //
 // Each target row's colour goes with its ray's elevation: the ray through
@@ -12,14 +12,15 @@
 // frame's own: the real frame's, or an in-between pass's. Roll is taken to
 // be none.
 //
-// Such a map also gets distance fog (psx.fog): what stands far off mixes
+// Such a map also gets distance fog (render.fog): what stands far off mixes
 // toward the horizon haze, up to `fog_most` (256ths) at `fog_far` past the
 // leader's view depth, about where the game stops drawing the map round
 // him, so its edge melts into the backdrop instead of cutting off.
 package qol
 
 import "core:math"
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import render "ps:psx/render"
 
 @(private = "file")
 MODE_EVENT :: 4
@@ -74,7 +75,7 @@ SKIES := [?]struct {
 
 @(private)
 backdrop_init :: proc() {
-	psx.backdrop_hook = backdrop
+	render.backdrop_hook = backdrop
 }
 
 @(private = "file")
@@ -82,14 +83,14 @@ backdrop :: proc(x, y, w, h: i32, shift: u32, rows: []u32) -> bool {
 	if interior_pass || w < 256 || third_person_state().t == 0 {
 		return false
 	}
-	psx.fog.on = false
-	switch psx.lhu(GAME_MODE) {
+	render.fog.on = false
+	switch cpu.lhu(GAME_MODE) {
 	case GAME_MODE_FIELD, MODE_EVENT, MODE_SHOP:
 	case:
 		return false
 	}
 	sky: ^Sky
-	id := u16(psx.lhu(MAP_ID))
+	id := u16(cpu.lhu(MAP_ID))
 	for &s in SKIES {
 		if s.map_id == id {
 			sky = &s.sky
@@ -98,9 +99,9 @@ backdrop :: proc(x, y, w, h: i32, shift: u32, rows: []u32) -> bool {
 	if sky == nil {
 		return false
 	}
-	lens, of := psx.gte_projection()
-	m1 := f32(i16(psx.lhu(CAM_MATRIX + 2 * 4))) / 4096 // row 1, column 1
-	m2 := f32(i16(psx.lhu(CAM_MATRIX + 2 * 7))) / 4096 // row 2, column 1
+	lens, of := render.gte_projection()
+	m1 := f32(i16(cpu.lhu(CAM_MATRIX + 2 * 4))) / 4096 // row 1, column 1
+	m2 := f32(i16(cpu.lhu(CAM_MATRIX + 2 * 7))) / 4096 // row 2, column 1
 	hz := f32(lens)
 	step := 1 / f32(i32(1) << shift)
 	for &c, r in rows {
@@ -117,13 +118,13 @@ backdrop :: proc(x, y, w, h: i32, shift: u32, rows: []u32) -> bool {
 		c = u32(col.r) << 16 | u32(col.g) << 8 | u32(col.b)
 	}
 	h := sky.horizon
-	psx.fog = {
+	render.fog = {
 		on    = true,
 		near  = third_person_leader_depth() + sky.fog_near,
 		inv   = 1 / (sky.fog_far - sky.fog_near),
 		most  = sky.fog_most,
 		color = u32(h.r) << 16 | u32(h.g) << 8 | u32(h.b),
-		stamp = psx.vblanks(),
+		stamp = cpu.vblanks(),
 	}
 	return true
 }

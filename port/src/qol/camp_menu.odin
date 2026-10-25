@@ -27,7 +27,8 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 @(private)
 CAMP_ID :: 0x11
@@ -251,29 +252,29 @@ JOURNAL_ICON_PIXELS :: [ICON_SIZE]string {
 
 @(private = "file")
 camp: struct {
-	tick:         psx.Func_Proc,
-	command_draw: psx.Func_Proc,
-	time_draw:    psx.Func_Proc,
-	zenny_draw:   psx.Func_Proc,
+	tick:         cpu.Func_Proc,
+	command_draw: cpu.Func_Proc,
+	time_draw:    cpu.Func_Proc,
+	zenny_draw:   cpu.Func_Proc,
 }
 
 @(private)
 camp_menu_init :: proc() -> bool {
-	psx.pad_hook = start_as_square
+	host.pad_hook = start_as_square
 	ok: bool
-	if camp.tick, ok = psx.hook_overlay(CAMP_TICK, SLOT_MENU, CAMP_ID, camp_tick); !ok {
+	if camp.tick, ok = cpu.hook_overlay(CAMP_TICK, SLOT_MENU, CAMP_ID, camp_tick); !ok {
 		fmt.eprintf("qol: camp menu function %08x not found\n", CAMP_TICK)
 		return false
 	}
-	if camp.command_draw, ok = psx.hook_overlay(COMMAND_DRAW, SLOT_MENU, CAMP_ID, command_draw); !ok {
+	if camp.command_draw, ok = cpu.hook_overlay(COMMAND_DRAW, SLOT_MENU, CAMP_ID, command_draw); !ok {
 		fmt.eprintf("qol: camp menu function %08x not found\n", COMMAND_DRAW)
 		return false
 	}
-	if camp.time_draw, ok = psx.hook_overlay(TIME_DRAW, SLOT_MENU, CAMP_ID, time_draw); !ok {
+	if camp.time_draw, ok = cpu.hook_overlay(TIME_DRAW, SLOT_MENU, CAMP_ID, time_draw); !ok {
 		fmt.eprintf("qol: camp menu function %08x not found\n", TIME_DRAW)
 		return false
 	}
-	if camp.zenny_draw, ok = psx.hook_overlay(ZENNY_DRAW, SLOT_MENU, CAMP_ID, zenny_draw); !ok {
+	if camp.zenny_draw, ok = cpu.hook_overlay(ZENNY_DRAW, SLOT_MENU, CAMP_ID, zenny_draw); !ok {
 		fmt.eprintf("qol: camp menu function %08x not found\n", ZENNY_DRAW)
 		return false
 	}
@@ -285,13 +286,13 @@ camp_menu_init :: proc() -> bool {
 @(private = "file")
 camp_tick :: proc() {
 	ko_loss_camp()
-	menu := psx.cpu.r[4]
-	psx.sh(menu + 8, 0)
-	if psx.lbu(MENU_LOCK) == 0 {
-		if psx.lhu(PAD_PRESSED) & psx.PAD_SELECT != 0 {
-			psx.sb(SELECT_STATE, 0)
+	menu := cpu.state.r[4]
+	cpu.sh(menu + 8, 0)
+	if cpu.lbu(MENU_LOCK) == 0 {
+		if cpu.lhu(PAD_PRESSED) & host.PAD_SELECT != 0 {
+			cpu.sb(SELECT_STATE, 0)
 			game_routine(SHOW_MESSAGE, {SELECT_MESSAGE, 0, 0, 0, 0})
-		} else if psx.lbu(COMMAND_WIN + WIN_WIDTH) == WIN_OPEN_W {
+		} else if cpu.lbu(COMMAND_WIN + WIN_WIDTH) == WIN_OPEN_W {
 			party_swap()
 			command_tick(menu)
 		}
@@ -302,46 +303,46 @@ camp_tick :: proc() {
 // With four or more members, Left or Right swaps the front and back rows.
 @(private = "file")
 party_swap :: proc() {
-	if psx.lbu(PARTY_FOURTH) == 0xff {
+	if cpu.lbu(PARTY_FOURTH) == 0xff {
 		return
 	}
-	psx.sb(PARTY_WIN + 0xd, 1)
-	if psx.lhu(PAD_PRESSED) & (psx.PAD_LEFT | psx.PAD_RIGHT) != 0 {
+	cpu.sb(PARTY_WIN + 0xd, 1)
+	if cpu.lhu(PAD_PRESSED) & (host.PAD_LEFT | host.PAD_RIGHT) != 0 {
 		game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
-		psx.sb(PARTY_WIN + 0xf, 0)
-		psx.sb(PARTY_WIN + 0xe, 0)
-		psx.sb(PARTY_WIN + 0xc, psx.lbu(PARTY_WIN + 0xc) ~ 1)
+		cpu.sb(PARTY_WIN + 0xf, 0)
+		cpu.sb(PARTY_WIN + 0xe, 0)
+		cpu.sb(PARTY_WIN + 0xc, cpu.lbu(PARTY_WIN + 0xc) ~ 1)
 	}
 }
 
 @(private = "file")
 command_tick :: proc(menu: u32) {
-	repeat := psx.lhu(PAD_REPEAT)
+	repeat := cpu.lhu(PAD_REPEAT)
 	if repeat != 0 {
 		game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
 	}
-	cursor := i32(i8(psx.lbu(COMMAND_WIN + WIN_CURSOR)))
-	if repeat & psx.PAD_DOWN != 0 {
+	cursor := i32(i8(cpu.lbu(COMMAND_WIN + WIN_CURSOR)))
+	if repeat & host.PAD_DOWN != 0 {
 		cursor += 1
-	} else if repeat & psx.PAD_UP != 0 {
+	} else if repeat & host.PAD_UP != 0 {
 		cursor -= 1
 	}
 	rows, n := command_rows()
 	cursor %%= i32(n)
-	psx.sb(COMMAND_WIN + WIN_CURSOR, u32(cursor))
+	cpu.sb(COMMAND_WIN + WIN_CURSOR, u32(cursor))
 	command := rows[cursor]
-	psx.sh(INFO_TEXT, command > .Save ? INFO_NONE : INFO_COMMAND + u32(command))
-	pressed := psx.lhu(PAD_PRESSED)
+	cpu.sh(INFO_TEXT, command > .Save ? INFO_NONE : INFO_COMMAND + u32(command))
+	pressed := cpu.lhu(PAD_PRESSED)
 	switch {
-	case pressed & psx.lhu(CONFIRM_MASK) != 0:
+	case pressed & cpu.lhu(CONFIRM_MASK) != 0:
 		command_confirm(menu, command)
-	case pressed & psx.lhu(CANCEL_MASK) != 0:
+	case pressed & cpu.lhu(CANCEL_MASK) != 0:
 		game_routine(SOUND, {SOUND_CANCEL, 0, 0, 0, 0})
-		psx.sb(menu, PAGE_LEAVE)
+		cpu.sb(menu, PAGE_LEAVE)
 		game_routine(MENU_FADE, {2, 0, 0, 0, 0})
-	case pressed & psx.PAD_CIRCLE != 0:
+	case pressed & host.PAD_CIRCLE != 0:
 		game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
-		psx.sh(PARTY_WIN + 0x10, psx.lhu(PARTY_WIN + 0x10) ~ 1)
+		cpu.sh(PARTY_WIN + 0x10, cpu.lhu(PARTY_WIN + 0x10) ~ 1)
 	}
 }
 
@@ -357,23 +358,23 @@ command_confirm :: proc(menu: u32, command: Command) {
 		game_routine(SOUND, {SOUND_REFUSE, 0, 0, 0, 0})
 		return
 	}
-	psx.sb(SCREEN_STATE, 0)
+	cpu.sb(SCREEN_STATE, 0)
 	for i in 0 ..< u32(SCREEN_SLOT_COUNT) {
-		psx.sb(SCREEN_SLOTS + i * SCREEN_SLOT_STRIDE, 0)
+		cpu.sb(SCREEN_SLOTS + i * SCREEN_SLOT_STRIDE, 0)
 	}
 	game_routine(SOUND, {SOUND_CONFIRM, 0, 0, 0, 0})
-	psx.sb(menu, psx.lbu(menu) + 1)
+	cpu.sb(menu, cpu.lbu(menu) + 1)
 	if command != .Save {
-		psx.sb(menu + 6, 1)
+		cpu.sb(menu + 6, 1)
 	}
-	psx.sh(menu + 8, u32(command))
-	psx.sh(INFO_TEXT, INFO_NONE)
-	psx.sb(COMMAND_WIN + 0xd, 0)
+	cpu.sh(menu + 8, u32(command))
+	cpu.sh(INFO_TEXT, INFO_NONE)
+	cpu.sb(COMMAND_WIN + 0xd, 0)
 	if command == .Status {
-		psx.sb(COMMAND_WIN + 0xe, 0xff)
+		cpu.sb(COMMAND_WIN + 0xe, 0xff)
 	}
 	if command == .Change {
-		psx.sb(PARTY_WIN + 0xf, 1)
+		cpu.sb(PARTY_WIN + 0xf, 1)
 	}
 }
 
@@ -381,21 +382,21 @@ command_confirm :: proc(menu: u32, command: Command) {
 // address, which this port's calls do not have, so it is applied here.
 @(private = "file")
 save_allowed :: proc() -> bool {
-	return config.save_anywhere || game_routine(AREA_KIND, {psx.lhu(FIELD_MAP), 0, 0, 0, 0}) & 0xff == 1
+	return config.save_anywhere || game_routine(AREA_KIND, {cpu.lhu(FIELD_MAP), 0, 0, 0, 0}) & 0xff == 1
 }
 
 // The Command window (a0 its record). Opening and closing run as the game's.
 @(private = "file")
 command_draw :: proc() {
-	win := psx.cpu.r[4]
-	if psx.lbu(win + WIN_OPEN) == 0 || psx.lbu(COMMAND_SCREEN) != 0 {
+	win := cpu.state.r[4]
+	if cpu.lbu(win + WIN_OPEN) == 0 || cpu.lbu(COMMAND_SCREEN) != 0 {
 		camp.command_draw()
 		return
 	}
 	rows, n := command_rows()
 	frame := FRAME
 	game_routine(WINDOW_DRAW, {frame.x, frame.y, frame.z + WIDEN, frame.w + u32(rows_added_dy()), 0})
-	psx.sb(MENU_DRAWN, 1)
+	cpu.sb(MENU_DRAWN, 1)
 	save := save_allowed()
 	for command, row in rows[:n] {
 		x, y := row_at(row)
@@ -417,7 +418,7 @@ command_draw :: proc() {
 	for command, row in rows[:n] {
 		command_icon(command, row)
 	}
-	cursor := clamp(int(i8(psx.lbu(win + WIN_CURSOR))), 0, n - 1)
+	cursor := clamp(int(i8(cpu.lbu(win + WIN_CURSOR))), 0, n - 1)
 	info := INFO_AT
 	#partial switch rows[cursor] {
 	case .Masters:
@@ -427,8 +428,8 @@ command_draw :: proc() {
 	}
 	x, y := row_at(cursor)
 	game_routine(CURSOR_DRAW, {u32(x - 20), u32(y - 2), CURSOR_W, CURSOR_H, 0})
-	if draws := psx.lhu(win + WIN_DRAWS); draws != 2 {
-		psx.sh(win + WIN_DRAWS, draws + 1)
+	if draws := cpu.lhu(win + WIN_DRAWS); draws != 2 {
+		cpu.sh(win + WIN_DRAWS, draws + 1)
 	}
 }
 
@@ -471,12 +472,12 @@ command_icon :: proc(command: Command, row: int) {
 			u, v = ICON_U + ICON_SIZE * int(icon.fallback), ICON_V
 		}
 	}
-	prim := psx.lw(SPRITE_PACKETS)
-	psx.sw(prim, ICON_PRIM_TAG)
-	psx.sw(prim + 4, ICON_PRIM_RECT)
-	psx.sw(prim + 8, u32(x - 15) & 0xffff | u32(y) << 16)
-	psx.sw(prim + 12, ICON_PRIM_CLUT | u32(v) << 8 | u32(u))
-	psx.sw(prim + 16, ICON_PRIM_SIZE)
+	prim := cpu.lw(SPRITE_PACKETS)
+	cpu.sw(prim, ICON_PRIM_TAG)
+	cpu.sw(prim + 4, ICON_PRIM_RECT)
+	cpu.sw(prim + 8, u32(x - 15) & 0xffff | u32(y) << 16)
+	cpu.sw(prim + 12, ICON_PRIM_CLUT | u32(v) << 8 | u32(u))
+	cpu.sw(prim + 16, ICON_PRIM_SIZE)
 	game_routine(PRIM_COMMIT, {1, ICON_PRIM_BYTES, 0, 0, 0})
 }
 
@@ -525,24 +526,24 @@ time_draw :: proc() {
 	if !side_window(TIME_Y + dy) {
 		return
 	}
-	rec := psx.lw(SIDE_RECORD)
-	blink := (psx.lbu(rec + 0xf) - 1) & 0xff
-	psx.sb(rec + 0xf, blink)
+	rec := cpu.lw(SIDE_RECORD)
+	blink := (cpu.lbu(rec + 0xf) - 1) & 0xff
+	cpu.sb(rec + 0xf, blink)
 	if blink == 0 {
-		psx.sb(rec + 0xe, psx.lbu(rec + 0xe) ~ 1)
-		psx.sb(rec + 0xf, 15)
+		cpu.sb(rec + 0xe, cpu.lbu(rec + 0xe) ~ 1)
+		cpu.sb(rec + 0xf, 15)
 	}
 	game_routine(SIDE_TITLE_DRAW, {20, u32(166 + dy), 9, 1, 0})
-	game_routine(NUMBER_DRAW, {22, u32(174 + dy), 64, HOURS_FORMAT, psx.lw(PLAY_HOURS)})
-	game_routine(NUMBER_DRAW, {62, u32(174 + dy), 64, MINUTES_FORMAT, psx.lbu(PLAY_MINUTES)})
-	if psx.lbu(rec + 0xe) != 0 {
+	game_routine(NUMBER_DRAW, {22, u32(174 + dy), 64, HOURS_FORMAT, cpu.lw(PLAY_HOURS)})
+	game_routine(NUMBER_DRAW, {62, u32(174 + dy), 64, MINUTES_FORMAT, cpu.lbu(PLAY_MINUTES)})
+	if cpu.lbu(rec + 0xe) != 0 {
 		colon := COLON_AT
-		prim := psx.lw(SPRITE_PACKETS)
-		psx.sw(prim, ICON_PRIM_TAG)
-		psx.sw(prim + 4, ICON_PRIM_RECT)
-		psx.sw(prim + 8, u32(colon.x) | u32(colon.y + dy) << 16)
-		psx.sw(prim + 12, COLON_PRIM_UV)
-		psx.sw(prim + 16, COLON_PRIM_SIZE)
+		prim := cpu.lw(SPRITE_PACKETS)
+		cpu.sw(prim, ICON_PRIM_TAG)
+		cpu.sw(prim + 4, ICON_PRIM_RECT)
+		cpu.sw(prim + 8, u32(colon.x) | u32(colon.y + dy) << 16)
+		cpu.sw(prim + 12, COLON_PRIM_UV)
+		cpu.sw(prim + 16, COLON_PRIM_SIZE)
 		game_routine(PRIM_COMMIT, {1, ICON_PRIM_BYTES, 0, 0, 0})
 	}
 }
@@ -558,7 +559,7 @@ zenny_draw :: proc() {
 		return
 	}
 	game_routine(SIDE_TITLE_DRAW, {20, u32(189 + dy), 10, 1, 0})
-	game_routine(NUMBER_DRAW, {20, u32(197 + dy), 48, ZENNY_FORMAT, psx.lw(ZENNY)})
+	game_routine(NUMBER_DRAW, {20, u32(197 + dy), 48, ZENNY_FORMAT, cpu.lw(ZENNY)})
 	game_routine(ZENNY_MARK_DRAW, {76, u32(197 + dy), 0x3c00, 5, 0})
 }
 
@@ -566,49 +567,49 @@ zenny_draw :: proc() {
 // window and shrinking shut. Returns whether it is open to draw in.
 @(private = "file")
 side_window :: proc(y: int) -> bool {
-	rec := psx.lw(SIDE_RECORD)
-	screen := psx.lbu(COMMAND_SCREEN) != 0
-	if psx.lbu(rec + 3) != 0 {
-		if !screen && psx.lbu(COMMAND_WIN + WIN_WIDTH) == 0 {
-			psx.sb(rec + 3, 0)
+	rec := cpu.lw(SIDE_RECORD)
+	screen := cpu.lbu(COMMAND_SCREEN) != 0
+	if cpu.lbu(rec + 3) != 0 {
+		if !screen && cpu.lbu(COMMAND_WIN + WIN_WIDTH) == 0 {
+			cpu.sb(rec + 3, 0)
 		}
 		return false
 	}
 	if !screen {
-		psx.sb(rec + 6, psx.lbu(COMMAND_WIN + WIN_WIDTH))
+		cpu.sb(rec + 6, cpu.lbu(COMMAND_WIN + WIN_WIDTH))
 	}
-	w := psx.lbu(rec + 6)
+	w := cpu.lbu(rec + 6)
 	if w >= 16 {
 		game_routine(SIDE_WINDOW_DRAW, {16, u32(y), w, 0, 0})
 	}
 	if screen {
 		switch w {
 		case WIN_OPEN_W:
-			psx.sb(rec + 6, w - 12)
+			cpu.sb(rec + 6, w - 12)
 		case 0:
-			psx.sb(rec + 3, psx.lbu(rec + 3) + 1)
+			cpu.sb(rec + 3, cpu.lbu(rec + 3) + 1)
 		case:
-			psx.sb(rec + 6, w - 16)
+			cpu.sb(rec + 6, w - 16)
 		}
 		return false
 	}
 	return w == WIN_OPEN_W
 }
 
-// psx.pad_hook: on the field, Select toggles the minimap, Start is the camp
+// host.pad_hook: on the field, Select toggles the minimap, Start is the camp
 // menu button (the Menu action's, Square in the game's layouts), and the Menu
 // button itself shows the quest objective.
 @(private = "file")
 start_as_square :: proc(held: u16) -> u16 {
-	if psx.lw(SLOT_ENGINE) != FLD_MAIN_ID {
+	if cpu.lw(SLOT_ENGINE) != FLD_MAIN_ID {
 		return combo_menu_buttons(held)
 	}
 	menu := action_mask(.Menu)
 	held := held
-	if menu & psx.PAD_START == 0 {
+	if menu & host.PAD_START == 0 {
 		held = tracker_buttons(held, menu)
-		if held & psx.PAD_START != 0 {
-			held = held &~ psx.PAD_START | menu
+		if held & host.PAD_START != 0 {
+			held = held &~ host.PAD_START | menu
 		}
 	}
 	return minimap_buttons(held)

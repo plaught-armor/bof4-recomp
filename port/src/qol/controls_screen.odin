@@ -24,7 +24,8 @@ package qol
 import "core:fmt"
 import "core:strings"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 // a0 the menu record; and the window kind's draw (no arguments, the window
 // in WIN_CURRENT).
@@ -82,10 +83,10 @@ Layout :: [Action]u16
 // order.
 @(private = "file")
 GAME_LAYOUTS := [4][len(Action)]u16 {
-	{psx.PAD_CROSS, psx.PAD_TRIANGLE, psx.PAD_TRIANGLE, psx.PAD_SQUARE, psx.PAD_CIRCLE, psx.PAD_R1, psx.PAD_L1, psx.PAD_R2, psx.PAD_L2},
-	{psx.PAD_CROSS, psx.PAD_TRIANGLE, psx.PAD_TRIANGLE, psx.PAD_SQUARE, psx.PAD_CIRCLE, psx.PAD_R2, psx.PAD_L2, psx.PAD_R1, psx.PAD_L1},
-	{psx.PAD_CROSS, psx.PAD_TRIANGLE, psx.PAD_CIRCLE, psx.PAD_SQUARE, psx.PAD_TRIANGLE, psx.PAD_R1, psx.PAD_L1, psx.PAD_R2, psx.PAD_L2},
-	{psx.PAD_CROSS, psx.PAD_TRIANGLE, psx.PAD_CIRCLE, psx.PAD_SQUARE, psx.PAD_TRIANGLE, psx.PAD_R2, psx.PAD_L2, psx.PAD_R1, psx.PAD_L1},
+	{host.PAD_CROSS, host.PAD_TRIANGLE, host.PAD_TRIANGLE, host.PAD_SQUARE, host.PAD_CIRCLE, host.PAD_R1, host.PAD_L1, host.PAD_R2, host.PAD_L2},
+	{host.PAD_CROSS, host.PAD_TRIANGLE, host.PAD_TRIANGLE, host.PAD_SQUARE, host.PAD_CIRCLE, host.PAD_R2, host.PAD_L2, host.PAD_R1, host.PAD_L1},
+	{host.PAD_CROSS, host.PAD_TRIANGLE, host.PAD_CIRCLE, host.PAD_SQUARE, host.PAD_TRIANGLE, host.PAD_R1, host.PAD_L1, host.PAD_R2, host.PAD_L2},
+	{host.PAD_CROSS, host.PAD_TRIANGLE, host.PAD_CIRCLE, host.PAD_SQUARE, host.PAD_TRIANGLE, host.PAD_R2, host.PAD_L2, host.PAD_R1, host.PAD_L1},
 }
 @(private = "file")
 ACTION_LABELS := [Action]string {
@@ -101,7 +102,7 @@ ACTION_LABELS := [Action]string {
 }
 // Buttons an action may take: not the d-pad.
 @(private = "file")
-ACTION_BUTTONS :: ~u16(psx.PAD_UP | psx.PAD_DOWN | psx.PAD_LEFT | psx.PAD_RIGHT)
+ACTION_BUTTONS :: ~u16(host.PAD_UP | host.PAD_DOWN | host.PAD_LEFT | host.PAD_RIGHT)
 
 // The Keyboard device's rows: console button, label, what it does beyond
 // the action table.
@@ -113,20 +114,20 @@ Key_Row :: struct {
 }
 @(private = "file")
 KEY_ROWS := [?]Key_Row {
-	{psx.PAD_UP, "Up", "Move"},
-	{psx.PAD_DOWN, "Down", "Move"},
-	{psx.PAD_LEFT, "Left", "Move"},
-	{psx.PAD_RIGHT, "Right", "Move"},
-	{psx.PAD_CROSS, "Cross", ""},
-	{psx.PAD_CIRCLE, "Circle", ""},
-	{psx.PAD_SQUARE, "Square", ""},
-	{psx.PAD_TRIANGLE, "Triangle", ""},
-	{psx.PAD_L1, "L1", ""},
-	{psx.PAD_R1, "R1", ""},
-	{psx.PAD_L2, "L2", ""},
-	{psx.PAD_R2, "R2", ""},
-	{psx.PAD_START, "Start", "Menu"},
-	{psx.PAD_SELECT, "Select", "Help"},
+	{host.PAD_UP, "Up", "Move"},
+	{host.PAD_DOWN, "Down", "Move"},
+	{host.PAD_LEFT, "Left", "Move"},
+	{host.PAD_RIGHT, "Right", "Move"},
+	{host.PAD_CROSS, "Cross", ""},
+	{host.PAD_CIRCLE, "Circle", ""},
+	{host.PAD_SQUARE, "Square", ""},
+	{host.PAD_TRIANGLE, "Triangle", ""},
+	{host.PAD_L1, "L1", ""},
+	{host.PAD_R1, "R1", ""},
+	{host.PAD_L2, "L2", ""},
+	{host.PAD_R2, "R2", ""},
+	{host.PAD_START, "Start", "Menu"},
+	{host.PAD_SELECT, "Select", "Help"},
 }
 // Short names of sources whose config names do not fit a row.
 @(private = "file")
@@ -190,7 +191,7 @@ INFO_LINE :: 14
 
 @(private = "file")
 controls: struct {
-	ticks:       [Setting_Overlay]psx.Func_Proc,
+	ticks:       [Setting_Overlay]cpu.Func_Proc,
 	device:      Device,
 	// Cursor: 0 device, 1 scheme, then the list; the list's first row shown.
 	row:         int,
@@ -201,7 +202,7 @@ controls: struct {
 	custom:      Layout,
 	custom_on:   bool,
 	// The keyboard's custom layout put aside by choosing Default.
-	keys_custom: psx.Key_Binds,
+	keys_custom: host.Key_Binds,
 	keys_kept:   bool,
 	keys_dirty:  bool,
 	pad_dirty:   bool,
@@ -230,7 +231,7 @@ parse_controller_custom :: proc(value: string) -> bool {
 		return false
 	}
 	for n, i in names {
-		controls.custom[Action(i)] = psx.pad_bit_from_name(strings.trim_space(n)) or_return
+		controls.custom[Action(i)] = host.pad_bit_from_name(strings.trim_space(n)) or_return
 	}
 	controls.custom_on = true
 	return true
@@ -251,7 +252,7 @@ controls_vblank :: proc() {
 
 @(private)
 action_mask :: proc(a: Action) -> u16 {
-	return u16(psx.lhu(ACTION_TABLE + 2 * u32(a)))
+	return u16(cpu.lhu(ACTION_TABLE + 2 * u32(a)))
 }
 
 @(private = "file")
@@ -265,14 +266,14 @@ table_get :: proc() -> (l: Layout) {
 @(private = "file")
 table_set :: proc(l: Layout) {
 	for a in Action {
-		psx.sh(ACTION_TABLE + 2 * u32(a), u32(l[a]))
+		cpu.sh(ACTION_TABLE + 2 * u32(a), u32(l[a]))
 	}
 }
 
 // The saved type's layout.
 @(private = "file")
 game_layout :: proc() -> Layout {
-	return transmute(Layout)GAME_LAYOUTS[psx.lbu(GAME_TYPE) & 3]
+	return transmute(Layout)GAME_LAYOUTS[cpu.lbu(GAME_TYPE) & 3]
 }
 
 // The layout in force: Custom, or the saved type's.
@@ -290,9 +291,9 @@ list_len :: proc() -> int {
 // window slides, the port's once it has settled.
 @(private = "file")
 controls_tick :: proc() {
-	menu := psx.cpu.r[4]
-	step := psx.lbu(menu + STEP)
-	settled := i16(psx.lhu(BUTTONS_WIN + WIN_X)) == SETTLED_X
+	menu := cpu.state.r[4]
+	step := cpu.lbu(menu + STEP)
+	settled := i16(cpu.lhu(BUTTONS_WIN + WIN_X)) == SETTLED_X
 	if step != STEP_OPEN || !settled {
 		if step == 0 {
 			controls.row = 0
@@ -300,36 +301,36 @@ controls_tick :: proc() {
 			controls.catching = false
 		}
 		controls.ticks[setting_overlay]()
-		psx.sh(INFO_TEXT, INFO_NONE)
+		cpu.sh(INFO_TEXT, INFO_NONE)
 		return
 	}
-	psx.sh(INFO_TEXT, INFO_NONE)
+	cpu.sh(INFO_TEXT, INFO_NONE)
 	if controls.catching {
 		catch_tick()
 		return
 	}
-	pressed := u16(psx.lhu(PAD_PRESSED))
-	repeat := u16(psx.lhu(PAD_REPEAT))
-	confirm := pressed & u16(psx.lhu(CONFIRM_MASK)) != 0
+	pressed := u16(cpu.lhu(PAD_PRESSED))
+	repeat := u16(cpu.lhu(PAD_REPEAT))
+	confirm := pressed & u16(cpu.lhu(CONFIRM_MASK)) != 0
 	switch {
-	case pressed & psx.PAD_SELECT != 0:
-		psx.sb(SELECT_STATE, 0)
+	case pressed & host.PAD_SELECT != 0:
+		cpu.sb(SELECT_STATE, 0)
 		game_routine(SHOW_MESSAGE, {SELECT_MESSAGE[setting_overlay], 0, 0, 0, 0})
-	case pressed & u16(psx.lhu(CANCEL_MASK)) != 0:
+	case pressed & u16(cpu.lhu(CANCEL_MASK)) != 0:
 		game_routine(SOUND, {SOUND_CANCEL, 0, 0, 0, 0})
 		table_set(layout_now())
 		controls_save()
-		psx.sb(menu + STEP, STEP_CLOSE)
-	case repeat & (psx.PAD_UP | psx.PAD_DOWN) != 0:
+		cpu.sb(menu + STEP, STEP_CLOSE)
+	case repeat & (host.PAD_UP | host.PAD_DOWN) != 0:
 		game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
 		rows := 2 + list_len()
-		controls.row = (controls.row + (repeat & psx.PAD_DOWN != 0 ? 1 : -1)) %% rows
+		controls.row = (controls.row + (repeat & host.PAD_DOWN != 0 ? 1 : -1)) %% rows
 		if controls.row >= 2 {
 			i := controls.row - 2
 			controls.top = clamp(controls.top, i - VISIBLE + 1, i)
 		}
-	case controls.row < 2 && (repeat & (psx.PAD_LEFT | psx.PAD_RIGHT) != 0 || confirm):
-		dir := repeat & psx.PAD_LEFT != 0 ? -1 : 1
+	case controls.row < 2 && (repeat & (host.PAD_LEFT | host.PAD_RIGHT) != 0 || confirm):
+		dir := repeat & host.PAD_LEFT != 0 ? -1 : 1
 		if controls.row == 0 {
 			game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
 			controls.device = Device((int(controls.device) + 1) %% len(Device))
@@ -341,11 +342,11 @@ controls_tick :: proc() {
 		game_routine(SOUND, {SOUND_CONFIRM, 0, 0, 0, 0})
 		controls.catching = true
 		if controls.device == .Keyboard {
-			psx.key_catch_start()
+			host.key_catch_start()
 		}
-	case controls.row >= 2 && controls.device == .Keyboard && pressed & psx.PAD_SQUARE != 0:
+	case controls.row >= 2 && controls.device == .Keyboard && pressed & host.PAD_SQUARE != 0:
 		game_routine(SOUND, {SOUND_CANCEL, 0, 0, 0, 0})
-		psx.key_bind_clear(KEY_ROWS[controls.row - 2].bit)
+		host.key_bind_clear(KEY_ROWS[controls.row - 2].bit)
 		controls.keys_dirty = true
 	}
 }
@@ -354,17 +355,17 @@ controls_tick :: proc() {
 @(private = "file")
 scheme_step :: proc(dir: int) {
 	if controls.device == .Keyboard {
-		current := psx.key_binds_get()
-		if current == psx.key_binds_default() {
+		current := host.key_binds_get()
+		if current == host.key_binds_default() {
 			if !controls.keys_kept {
 				game_routine(SOUND, {SOUND_REFUSE, 0, 0, 0, 0})
 				return
 			}
-			psx.key_binds_set(controls.keys_custom)
+			host.key_binds_set(controls.keys_custom)
 		} else {
 			controls.keys_custom = current
 			controls.keys_kept = true
-			psx.key_binds_set(psx.key_binds_default())
+			host.key_binds_set(host.key_binds_default())
 		}
 		game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
 		controls.keys_dirty = true
@@ -379,7 +380,7 @@ scheme_step :: proc(dir: int) {
 		controls.custom_on = true
 	} else {
 		controls.custom_on = false
-		psx.sb(GAME_TYPE, u32(scheme))
+		cpu.sb(GAME_TYPE, u32(scheme))
 	}
 	table_set(layout_now())
 	controls.pad_dirty = true
@@ -387,7 +388,7 @@ scheme_step :: proc(dir: int) {
 
 @(private = "file")
 pad_scheme :: proc() -> int {
-	return controls.custom_on ? SCHEME_CUSTOM : int(psx.lbu(GAME_TYPE) & 3)
+	return controls.custom_on ? SCHEME_CUSTOM : int(cpu.lbu(GAME_TYPE) & 3)
 }
 
 // Wait for the press that gives the cursor's row its button or key.
@@ -395,12 +396,12 @@ pad_scheme :: proc() -> int {
 catch_tick :: proc() {
 	i := controls.row - 2
 	if controls.device == .Keyboard {
-		name, caught := psx.key_catch_take()
+		name, caught := host.key_catch_take()
 		if !caught {
 			return
 		}
 		controls.catching = false
-		if !psx.key_bind_move(name, KEY_ROWS[i].bit) {
+		if !host.key_bind_move(name, KEY_ROWS[i].bit) {
 			game_routine(SOUND, {SOUND_REFUSE, 0, 0, 0, 0})
 			return
 		}
@@ -408,7 +409,7 @@ catch_tick :: proc() {
 		controls.keys_dirty = true
 		return
 	}
-	pressed := u16(psx.lhu(PAD_PRESSED)) & ACTION_BUTTONS
+	pressed := u16(cpu.lhu(PAD_PRESSED)) & ACTION_BUTTONS
 	if pressed == 0 {
 		return
 	}
@@ -447,7 +448,7 @@ controls_save :: proc() {
 	if controls.keys_dirty {
 		for r in KEY_ROWS {
 			sources: [32]string
-			n := min(psx.key_sources(r.bit, sources[:]), len(sources))
+			n := min(host.key_sources(r.bit, sources[:]), len(sources))
 			value := strings.join(sources[:n], ", ", context.temp_allocator)
 			append(&entries, Config_Entry{"keys", pad_name(r.bit), value})
 		}
@@ -456,14 +457,14 @@ controls_save :: proc() {
 	controls.keys_dirty = false
 	controls.keys_kept = false
 	if len(entries) > 0 && !config_write(entries[:]) {
-		psx.osd_toast("Controls not saved")
+		host.osd_toast("Controls not saved")
 	}
 }
 
 // The config name of one console button.
 @(private = "file")
 pad_name :: proc(bit: u16) -> string {
-	for p in psx.PAD_NAMES {
+	for p in host.PAD_NAMES {
 		if p.bit == bit {
 			return p.name
 		}
@@ -475,8 +476,8 @@ pad_name :: proc(bit: u16) -> string {
 // it; by the console's name when none is.
 @(private = "file")
 pad_label :: proc(bit: u16) -> string {
-	if c, ok := psx.pad_source(bit); ok {
-		return PAD_CONTROL_NAMES[psx.input_pad_device()][c]
+	if c, ok := host.pad_source(bit); ok {
+		return PAD_CONTROL_NAMES[host.input_pad_device()][c]
 	}
 	for r in KEY_ROWS {
 		if r.bit == bit {
@@ -515,10 +516,10 @@ key_hint :: proc(r: Key_Row) -> string {
 // The Buttons window's draw (kind 9), the window in WIN_CURRENT.
 @(private = "file")
 controls_draw :: proc() {
-	win := psx.lw(WIN_CURRENT)
-	x := int(i16(psx.lhu(win + WIN_X))) - WIN_LEFT
-	y := int(i16(psx.lhu(win + WIN_Y)))
-	settled := int(i16(psx.lhu(win + WIN_X))) == SETTLED_X
+	win := cpu.lw(WIN_CURRENT)
+	x := int(i16(cpu.lhu(win + WIN_X))) - WIN_LEFT
+	y := int(i16(cpu.lhu(win + WIN_Y)))
+	settled := int(i16(cpu.lhu(win + WIN_X))) == SETTLED_X
 	menu_window(x, y, WIN_W, HEAD_H)
 	menu_window(x, y + HEAD_H, WIN_W, LIST_H)
 	game_routine(TITLE_DRAW, {u32(x + 4), u32(y - 4), TITLE_TAB, 0, 0})
@@ -558,7 +559,7 @@ controls_draw :: proc() {
 @(private = "file")
 scheme_label :: proc() -> string {
 	if controls.device == .Keyboard {
-		return psx.key_binds_get() == psx.key_binds_default() ? "Default" : "Custom"
+		return host.key_binds_get() == host.key_binds_default() ? "Default" : "Custom"
 	}
 	s := pad_scheme()
 	return s == SCHEME_CUSTOM ? "Custom" : fmt.tprintf("Type %d", s + 1)
@@ -567,7 +568,7 @@ scheme_label :: proc() -> string {
 @(private = "file")
 keys_text :: proc(bit: u16) -> string {
 	sources: [KEY_SHOWN]string
-	n := psx.key_sources(bit, sources[:])
+	n := host.key_sources(bit, sources[:])
 	if n == 0 {
 		return "-"
 	}

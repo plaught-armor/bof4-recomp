@@ -4,7 +4,7 @@
 // system font (0 Circle, 1 Cross, 2 Triangle, 3 Square) in colour 10. The
 // numbers are fixed in the text, so the prompts are changed where they are
 // drawn from: the four 12x12 icon cells in VRAM. Every vblank the cells are
-// redrawn for the device last used (psx.input_device):
+// redrawn for the device last used (host.input_device):
 //
 // - the Cross icon shows the Confirm action's button and the Triangle icon
 //   the Cancel action's (the text uses them for those), so a custom layout
@@ -20,7 +20,8 @@
 package qol
 
 import "core:strings"
-import "ps:psx"
+import host "ps:psx/host"
+import render "ps:psx/render"
 
 // Icon cells: 12x12 4bpp texels of texture page (960, 0), icon N at texel
 // (168 + 12*N, 184), so VRAM x 1002 + 3*N.
@@ -56,7 +57,7 @@ YELLOW :: 0xe
 
 // Pad bit each icon stands for in the game's text.
 @(private = "file")
-ICON_BITS := [ICON_COUNT]u16{psx.PAD_CIRCLE, psx.PAD_CROSS, psx.PAD_TRIANGLE, psx.PAD_SQUARE}
+ICON_BITS := [ICON_COUNT]u16{host.PAD_CIRCLE, host.PAD_CROSS, host.PAD_TRIANGLE, host.PAD_SQUARE}
 
 // The game's icons are an 11x11 disc with the symbol on it. Its outline
 // (the 0 rows and the first and last two of each row) is the same on all
@@ -268,7 +269,7 @@ Glyph :: struct {
 }
 
 @(private = "file")
-PAD_GLYPHS := [psx.Input_Device][psx.Pad_Control]Glyph {
+PAD_GLYPHS := [host.Input_Device][host.Pad_Control]Glyph {
 	.Keyboard = {},
 	// The face buttons use the game's own icons (PS_FACE_ICON).
 	.PlayStation = {
@@ -303,7 +304,7 @@ PAD_GLYPHS := [psx.Input_Device][psx.Pad_Control]Glyph {
 PS_FACE_ICON := [4]int{1, 0, 3, 2}
 
 // What controller controls are called, for menus, in Pad_Control order.
-PAD_CONTROL_NAMES := [psx.Input_Device][len(psx.Pad_Control)]string {
+PAD_CONTROL_NAMES := [host.Input_Device][len(host.Pad_Control)]string {
 	.Keyboard = {},
 	.PlayStation = {
 		"Cross", "Circle", "Square", "Triangle", "Select", "PS", "Start", "L3", "R3",
@@ -325,16 +326,16 @@ CONSOLE_GLYPHS := [?]struct {
 	bit:   u16,
 	glyph: Glyph,
 } {
-	{psx.PAD_L1, {"L1", 0}},
-	{psx.PAD_R1, {"R1", 0}},
-	{psx.PAD_L2, {"L2", 0}},
-	{psx.PAD_R2, {"R2", 0}},
-	{psx.PAD_START, {"ST", 0}},
-	{psx.PAD_SELECT, {"SL", 0}},
-	{psx.PAD_UP, {SYM_UP, 0}},
-	{psx.PAD_DOWN, {SYM_DOWN, 0}},
-	{psx.PAD_LEFT, {SYM_LEFT, 0}},
-	{psx.PAD_RIGHT, {SYM_RIGHT, 0}},
+	{host.PAD_L1, {"L1", 0}},
+	{host.PAD_R1, {"R1", 0}},
+	{host.PAD_L2, {"L2", 0}},
+	{host.PAD_R2, {"R2", 0}},
+	{host.PAD_START, {"ST", 0}},
+	{host.PAD_SELECT, {"SL", 0}},
+	{host.PAD_UP, {SYM_UP, 0}},
+	{host.PAD_DOWN, {SYM_DOWN, 0}},
+	{host.PAD_LEFT, {SYM_LEFT, 0}},
+	{host.PAD_RIGHT, {SYM_RIGHT, 0}},
 }
 
 // Key names drawn as a symbol or two letters rather than their start.
@@ -382,7 +383,7 @@ icons: struct {
 // Redraw the icon cells for the device in use.
 @(private)
 button_icons_vblank :: proc() {
-	sig := psx.binds_hash()
+	sig := host.binds_hash()
 	tags_vblank(sig)
 	world_legend_vblank()
 	now: [ICON_COUNT]Cell
@@ -438,15 +439,15 @@ shown_bit :: proc(i: int) -> u16 {
 @(private = "file")
 icon_for :: proc(i: int) -> Cell {
 	bit := shown_bit(i)
-	device := psx.input_device()
+	device := host.input_device()
 	if device == .Keyboard {
 		names: [1]string
-		if psx.key_sources(bit, names[:]) > 0 {
+		if host.key_sources(bit, names[:]) > 0 {
 			return key_icon(names[0])
 		}
 		return console_icon(bit)
 	}
-	c, ok := psx.pad_source(bit)
+	c, ok := host.pad_source(bit)
 	if !ok {
 		return console_icon(bit)
 	}
@@ -479,7 +480,7 @@ disc_with :: proc(g: Glyph) -> Cell {
 	return c
 }
 
-// A source from the keyboard or mouse (named as by psx.key_sources).
+// A source from the keyboard or mouse (named as by host.key_sources).
 @(private = "file")
 key_icon :: proc(name: string) -> Cell {
 	if strings.has_prefix(name, "Mouse ") || strings.has_prefix(name, "Wheel ") {
@@ -613,7 +614,7 @@ is_original :: proc(c: Cell) -> bool {
 cell_read :: proc(i: int) -> (c: Cell) {
 	for y in 0 ..< CELL {
 		for h in 0 ..< HALFWORDS {
-			w := psx.vram_at(i32(ICON_VRAM_X + HALFWORDS * i + h), i32(ICON_VRAM_Y + y))^
+			w := render.vram_at(i32(ICON_VRAM_X + HALFWORDS * i + h), i32(ICON_VRAM_Y + y))^
 			for k in 0 ..< 4 {
 				c[y][4 * h + k] = u8(w >> (4 * uint(k))) & 0xf
 			}
@@ -630,7 +631,7 @@ cell_write :: proc(i: int, c: Cell) {
 			for k in 0 ..< 4 {
 				w |= u16(c[y][4 * h + k]) << (4 * uint(k))
 			}
-			psx.vram_at(i32(ICON_VRAM_X + HALFWORDS * i + h), i32(ICON_VRAM_Y + y))^ = w
+			render.vram_at(i32(ICON_VRAM_X + HALFWORDS * i + h), i32(ICON_VRAM_Y + y))^ = w
 		}
 	}
 }
@@ -658,7 +659,7 @@ Tag :: [TAG_H][TAG_W]u8
 @(private = "file")
 TAG_AT := [TAG_COUNT][2]int{{208, 217}, {216, 217}, {240, 210}, {240, 217}}
 @(private = "file")
-TAG_BITS := [TAG_COUNT]u16{psx.PAD_L1, psx.PAD_L2, psx.PAD_R1, psx.PAD_R2}
+TAG_BITS := [TAG_COUNT]u16{host.PAD_L1, host.PAD_L2, host.PAD_R1, host.PAD_R2}
 // The game's tags.
 @(private = "file")
 TAG_ORIGINAL := [TAG_COUNT][TAG_H]string {
@@ -673,7 +674,7 @@ TAG_PAGE_X :: 960
 @(private = "file")
 tags: struct {
 	// The game's tags and the ones to draw, for the bindings that hashed
-	// to sig (psx.binds_hash); fresh once they have been worked out.
+	// to sig (host.binds_hash); fresh once they have been worked out.
 	original: [TAG_COUNT]Tag,
 	want:     [TAG_COUNT]Tag,
 	sig:      u64,
@@ -715,18 +716,18 @@ tags_vblank :: proc(sig: u64) {
 tag_for :: proc(i: int, original: Tag) -> Tag {
 	bit := TAG_BITS[i]
 	text, name: string
-	switch device := psx.input_device(); device {
+	switch device := host.input_device(); device {
 	case .PlayStation:
 		return original
 	case .Keyboard:
 		names: [1]string
-		if psx.key_sources(bit, names[:]) == 0 {
+		if host.key_sources(bit, names[:]) == 0 {
 			return original
 		}
 		name = names[0]
 		text = tag_key_text(name)
 	case .Xbox, .Nintendo:
-		c, ok := psx.pad_source(bit)
+		c, ok := host.pad_source(bit)
 		if !ok {
 			return original
 		}
@@ -829,7 +830,7 @@ tag_from :: proc(rows: [TAG_H]string) -> (t: Tag) {
 tag_read :: proc(i: int) -> (t: Tag) {
 	for y in 0 ..< TAG_H {
 		for h in 0 ..< TAG_W / 4 {
-			w := psx.vram_at(i32(TAG_PAGE_X + TAG_AT[i].x / 4 + h), i32(TAG_AT[i].y + y))^
+			w := render.vram_at(i32(TAG_PAGE_X + TAG_AT[i].x / 4 + h), i32(TAG_AT[i].y + y))^
 			for k in 0 ..< 4 {
 				t[y][4 * h + k] = u8(w >> (4 * uint(k))) & 0xf
 			}
@@ -846,7 +847,7 @@ tag_write :: proc(i: int, t: Tag) {
 			for k in 0 ..< 4 {
 				w |= u16(t[y][4 * h + k]) << (4 * uint(k))
 			}
-			psx.vram_at(i32(TAG_PAGE_X + TAG_AT[i].x / 4 + h), i32(TAG_AT[i].y + y))^ = w
+			render.vram_at(i32(TAG_PAGE_X + TAG_AT[i].x / 4 + h), i32(TAG_AT[i].y + y))^ = w
 		}
 	}
 }

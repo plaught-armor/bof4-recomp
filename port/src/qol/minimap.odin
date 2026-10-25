@@ -15,7 +15,8 @@ package qol
 
 import "core:math"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 @(private = "file")
 BLOCK_GRIDS :: 0x4 // u32 offsets of the grid headers
@@ -45,7 +46,7 @@ HUD_FLAGS :: 0x8011a94a // u8, bit 0: compass slid off screen
 GAME_MODE_TURN :: 6 // the field during an L1/R1 camera turn
 
 @(private = "file")
-SIZE :: psx.OSD_INSET
+SIZE :: host.OSD_INSET
 @(private = "file")
 AT :: [2]int{16, 16} // canvas spot, where the compass was
 @(private = "file")
@@ -88,11 +89,11 @@ minimap: struct {
 	shown:       f32,
 }
 
-// psx.pad_hook's part, for Select on the field: a press while the player has
+// host.pad_hook's part, for Select on the field: a press while the player has
 // control toggles the map, and the game does not see Select there.
 @(private)
 minimap_buttons :: proc(held: u16) -> u16 {
-	pressed := held & psx.PAD_SELECT != 0
+	pressed := held & host.PAD_SELECT != 0
 	down := pressed && !minimap.select_held
 	minimap.select_held = pressed
 	if !player_control() {
@@ -102,7 +103,7 @@ minimap_buttons :: proc(held: u16) -> u16 {
 		config.field_minimap = !config.field_minimap
 		config_write({{"field", "minimap", config.field_minimap ? "true" : "false"}})
 	}
-	return held &~ psx.PAD_SELECT
+	return held &~ host.PAD_SELECT
 }
 
 @(private)
@@ -111,36 +112,36 @@ minimap_vblank :: proc() {
 	step: f32 = visible ? 1.0 / FADE_VBLANKS : -1.0 / FADE_VBLANKS
 	minimap.shown = clamp(minimap.shown + step, 0, 1)
 	t := minimap.shown
-	psx.osd_inset_opacity = t * t * (3 - 2 * t) * (1 - screen_fade())
-	psx.osd_inset_shown = minimap.shown > 0
+	host.osd_inset_opacity = t * t * (3 - 2 * t) * (1 - screen_fade())
+	host.osd_inset_shown = minimap.shown > 0
 	// Fading out keeps the last picture: the grid may be gone by then.
 	if !visible {
 		return
 	}
-	psx.osd_inset_at = AT
+	host.osd_inset_at = AT
 	paint()
-	psx.osd_inset_changed()
+	host.osd_inset_changed()
 }
 
 @(private)
 player_control :: proc() -> bool {
-	if psx.lw(SLOT_ENGINE) != FLD_MAIN_ID || psx.lhu(GAME_MODE) != GAME_MODE_FIELD {
+	if cpu.lw(SLOT_ENGINE) != FLD_MAIN_ID || cpu.lhu(GAME_MODE) != GAME_MODE_FIELD {
 		return false
 	}
-	state := psx.lbu(leader_obj() + OBJ_STATE)
+	state := cpu.lbu(leader_obj() + OBJ_STATE)
 	return state == STATE_CONTROL || state == STATE_IDLE
 }
 
 @(private = "file")
 minimap_visible :: proc() -> bool {
-	if !config.field_minimap || psx.lw(SLOT_ENGINE) != FLD_MAIN_ID {
+	if !config.field_minimap || cpu.lw(SLOT_ENGINE) != FLD_MAIN_ID {
 		return false
 	}
-	mode := psx.lhu(GAME_MODE)
+	mode := cpu.lhu(GAME_MODE)
 	if mode != GAME_MODE_FIELD && mode != GAME_MODE_TURN {
 		return false
 	}
-	if psx.lbu(HUD_SHOWN) == 0 || psx.lbu(HUD_FLAGS) & 1 != 0 {
+	if cpu.lbu(HUD_SHOWN) == 0 || cpu.lbu(HUD_FLAGS) & 1 != 0 {
 		return false
 	}
 	// The world map is a field mode too, with a map of its own; its grid is
@@ -148,31 +149,31 @@ minimap_visible :: proc() -> bool {
 	if on_world_map() {
 		return false
 	}
-	return !tracker_draws() && !psx.osd_panel_shown && !map_editor.on
+	return !tracker_draws() && !host.osd_panel_shown && !map_editor.on
 }
 
 // The leader's layer of the collision grid; ok false when the map block
 // does not look loaded.
 @(private)
 grid_of :: proc(layer: u32) -> (g: Grid, ok: bool) {
-	return map_grid(psx.lbu(MAP_SECTION) + layer)
+	return map_grid(cpu.lbu(MAP_SECTION) + layer)
 }
 
 // The grid of the map's layer `layer`, counted from the map's first, not the
 // section's.
 @(private)
 map_grid :: proc(layer: u32) -> (g: Grid, ok: bool) {
-	blk := psx.lw(MAP_BLOCK)
-	if !in_ram(blk) || layer >= psx.lbu(blk + 3) {
+	blk := cpu.lw(MAP_BLOCK)
+	if !in_ram(blk) || layer >= cpu.lbu(blk + 3) {
 		return {}, false
 	}
-	desc := blk + psx.lw(blk + BLOCK_LAYERS + 4 * layer)
-	header := blk + psx.lw(blk + BLOCK_GRIDS + 4 * psx.lbu(desc))
-	attrs := blk + psx.lw(blk + BLOCK_ATTRS + 4 * psx.lbu(desc + 1))
+	desc := blk + cpu.lw(blk + BLOCK_LAYERS + 4 * layer)
+	header := blk + cpu.lw(blk + BLOCK_GRIDS + 4 * cpu.lbu(desc))
+	attrs := blk + cpu.lw(blk + BLOCK_ATTRS + 4 * cpu.lbu(desc + 1))
 	if !in_ram(desc) || !in_ram(header) || !in_ram(attrs) {
 		return {}, false
 	}
-	g = {i32(psx.lhu(header)) * 2, i32(psx.lhu(header + 2)) * 2, attrs}
+	g = {i32(cpu.lhu(header)) * 2, i32(cpu.lhu(header + 2)) * 2, attrs}
 	return g, in_ram(attrs + u32(g.w * g.h))
 }
 
@@ -186,18 +187,18 @@ section_layers :: proc(section: u32) -> u32 {
 	if desc == 0 {
 		return 1
 	}
-	return min((psx.lbu(desc + 3) & 0xe) >> 1 + 1, psx.lbu(psx.lw(MAP_BLOCK) + 3) - section)
+	return min((cpu.lbu(desc + 3) & 0xe) >> 1 + 1, cpu.lbu(cpu.lw(MAP_BLOCK) + 3) - section)
 }
 
 // The map block's descriptor of `layer` (as 0x80149728 finds it), 0 when
 // there is none.
 @(private)
 layer_desc :: proc(layer: u32) -> u32 {
-	blk := psx.lw(MAP_BLOCK)
-	if !in_ram(blk) || layer >= psx.lbu(blk + 3) {
+	blk := cpu.lw(MAP_BLOCK)
+	if !in_ram(blk) || layer >= cpu.lbu(blk + 3) {
 		return 0
 	}
-	desc := blk + psx.lw(blk + BLOCK_LAYERS + 4 * layer)
+	desc := blk + cpu.lw(blk + BLOCK_LAYERS + 4 * layer)
 	return in_ram(desc) ? desc : 0
 }
 
@@ -212,7 +213,7 @@ attr_at :: proc(g: Grid, x, z: i32) -> u8 {
 	if x < 0 || z < 0 || x >= g.w || z >= g.h || x > 0xff || z > 0xff {
 		return ATTR_OUTSIDE
 	}
-	return u8(psx.lbu(g.attrs + u32(z * g.w + x)))
+	return u8(cpu.lbu(g.attrs + u32(z * g.w + x)))
 }
 
 @(private = "file")
@@ -234,13 +235,13 @@ attr_colour :: proc(attr: u8) -> u32 {
 // NPCs, the leader and north.
 @(private = "file")
 paint :: proc() {
-	pix := psx.osd_inset_pixels[:]
+	pix := host.osd_inset_pixels[:]
 	pos := u32(leader_obj() + OBJ_POS)
-	g, ok := grid_of(psx.lbu(pos + 12))
-	yaw := f64(psx.lhu(CAMERA_YAW)) * (2 * math.PI / 4096)
+	g, ok := grid_of(cpu.lbu(pos + 12))
+	yaw := f64(cpu.lhu(CAMERA_YAW)) * (2 * math.PI / 4096)
 	cos, sin := math.cos(yaw), math.sin(yaw)
-	lx := f64(i32(psx.lw(pos))) / 0x10000
-	lz := f64(i32(psx.lw(pos + 8))) / 0x10000
+	lx := f64(i32(cpu.lw(pos))) / 0x10000
+	lz := f64(i32(cpu.lw(pos + 8))) / 0x10000
 	r := f64(SIZE) / 2
 
 	for v in 0 ..< SIZE {
@@ -268,11 +269,11 @@ paint :: proc() {
 
 	for i in u32(0) ..< NPC_COUNT {
 		npc := NPCS + i * NPC_SIZE
-		if psx.lbu(npc) == 0 {
+		if cpu.lbu(npc) == 0 {
 			continue
 		}
-		nx := f64(i32(psx.lw(npc + OBJ_POS))) / 0x10000 - lx
-		nz := f64(i32(psx.lw(npc + OBJ_POS + 8))) / 0x10000 - lz
+		nx := f64(i32(cpu.lw(npc + OBJ_POS))) / 0x10000 - lx
+		nz := f64(i32(cpu.lw(npc + OBJ_POS + 8))) / 0x10000 - lz
 		// The inverse of the turn above.
 		su := (nx * cos + nz * sin) * PX_PER_CELL
 		sv := (-nx * sin + nz * cos) * PX_PER_CELL
@@ -281,12 +282,12 @@ paint :: proc() {
 		}
 	}
 
-	facing := f64(psx.lbu(leader_obj() + OBJ_DIRECTION) & 7) * (math.PI / 4) - yaw
+	facing := f64(cpu.lbu(leader_obj() + OBJ_DIRECTION) & 7) * (math.PI / 4) - yaw
 	arrow(pix, r, r, facing, COL_LEADER)
 
 	north := -yaw
 	nr := r - RIM - 6
-	psx.osd_put_glyph(pix, SIZE, 'N', int(r + math.sin(north) * nr) - 4, int(r - math.cos(north) * nr) - 4, COL_NORTH)
+	host.osd_put_glyph(pix, SIZE, 'N', int(r + math.sin(north) * nr) - 4, int(r - math.cos(north) * nr) - 4, COL_NORTH)
 }
 
 @(private = "file")

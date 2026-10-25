@@ -1,7 +1,7 @@
 // Battle speed and minigame slow motion.
 //
 // Battles run with emulated time sped up relative to real time, and
-// minigames slowed down (psx.set_speed), so every animation, timer and sound
+// minigames slowed down (host.set_speed), so every animation, timer and sound
 // effect keeps its in-game length in ticks and only passes faster or slower
 // on the wall clock. Nothing assumes a presentation rate: the speed is
 // applied to the console's own vblank clock.
@@ -10,11 +10,12 @@
 // they cut game frames instead, so nothing on screen changes pace.
 //
 // A minigame is recognised by its code overlay being resident: each overlay's
-// first word is its global id (see psx.Ovl_Entry), so reading the slot says
+// first word is its global id (see cpu.Ovl_Entry), so reading the slot says
 // which one is loaded.
 package qol
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 @(private)
 GAME_MODE_FIELD :: 2
@@ -47,19 +48,19 @@ MINIGAMES :: [?]Minigame {
 @(private)
 speed_follow_mode :: proc() {
 	speed := 1.0
-	if psx.lhu(GAME_MODE) == MODE_BATTLE {
+	if cpu.lhu(GAME_MODE) == MODE_BATTLE {
 		speed = config.battle_speed
 	} else if minigame_resident() {
 		speed = config.minigame_speed
 	}
-	psx.set_speed(speed)
+	host.set_speed(speed)
 }
 
 @(private = "file")
 minigame_resident :: proc() -> bool {
 	games := MINIGAMES
 	for g in games {
-		if psx.lw(g.slot) == g.id {
+		if cpu.lw(g.slot) == g.id {
 			return true
 		}
 	}

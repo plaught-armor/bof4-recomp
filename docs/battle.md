@@ -132,7 +132,7 @@ a map has any. `qol/encounter.odin` replaces the check to scale the rate.
 Some skills (the dragon transformations) play a long cinematic loaded from a
 companion file beside the skill's own: `BMAGIC/MAG060_0` to `MAG211_1`, game
 file indices 0x62..0x72. Every skill ends by loading `MAGRET` (file 0xf).
-`qol/cinematics.odin` watches file reads (`psx.read_start_hook`) between the
+`qol/cinematics.odin` watches file reads (`spu.read_start_hook`) between the
 two and, for cinematics already seen (a bitmask in the config's `[battle]`
 section, `seen`), runs the game unpaced with the sound off until MAGRET.
 

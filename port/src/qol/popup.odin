@@ -24,7 +24,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -56,12 +56,12 @@ MAX_POPUP_STEPS :: 64
 
 @(private = "file")
 popup: struct {
-	tick: psx.Func_Proc,
+	tick: cpu.Func_Proc,
 }
 
 @(private)
 popup_init :: proc() -> bool {
-	original, ok := psx.hook_overlay(POPUP_TICK, SLOT_MENU, BATTLE_ID, popup_tick)
+	original, ok := cpu.hook_overlay(POPUP_TICK, SLOT_MENU, BATTLE_ID, popup_tick)
 	if !ok {
 		fmt.eprintf("qol: battle function %08x not found\n", POPUP_TICK)
 		return false
@@ -73,17 +73,17 @@ popup_init :: proc() -> bool {
 // Animate a number popup without drawing it; anything else runs as usual.
 @(private = "file")
 popup_tick :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	p := c.r[4]
-	kind := psx.lbu(p + POPUP_KIND)
+	kind := cpu.lbu(p + POPUP_KIND)
 	number := kind == POPUP_NUMBER || kind == POPUP_NUMBER_MARKED
 	if config.battle_damage_numbers || !number {
 		popup.tick()
 	} else {
-		phase, step := psx.lbu(p + POPUP_PHASE), psx.lbu(p + POPUP_STEP)
+		phase, step := cpu.lbu(p + POPUP_PHASE), cpu.lbu(p + POPUP_STEP)
 		if .Game in core.trace.active && phase == 0 && step == 0 {
 			core.tracef(.Game, "popup: hidden kind %02x target %d value %d",
-				kind, psx.lbu(p + POPUP_TARGET), i32(psx.lw(p + POPUP_VALUE)))
+				kind, cpu.lbu(p + POPUP_TARGET), i32(cpu.lw(p + POPUP_VALUE)))
 		}
 		popup_step(p)
 	}
@@ -95,14 +95,14 @@ popup_tick :: proc() {
 // Run one animation step of popup p without drawing it.
 @(private = "file")
 popup_step :: proc(p: u32) {
-	c := &psx.cpu
-	phase, step := psx.lbu(p + POPUP_PHASE), psx.lbu(p + POPUP_STEP)
+	c := &cpu.state
+	phase, step := cpu.lbu(p + POPUP_PHASE), cpu.lbu(p + POPUP_STEP)
 	if phase >= POPUP_PHASES {
 		return
 	}
 	ra := c.r[31]
 	c.r[4] = p
-	psx.call(psx.lw(POPUP_STATES + (phase * POPUP_PHASES + step) * 4))
+	cpu.call(cpu.lw(POPUP_STATES + (phase * POPUP_PHASES + step) * 4))
 	c.r[31] = ra
 }
 
@@ -110,7 +110,7 @@ popup_step :: proc(p: u32) {
 @(private = "file")
 popup_finish :: proc(p: u32) {
 	for n in 0 ..< MAX_POPUP_STEPS {
-		if psx.lbu(p) & POPUP_ACTIVE == 0 {
+		if cpu.lbu(p) & POPUP_ACTIVE == 0 {
 			if .Game in core.trace.active {
 				core.tracef(.Game, "quick idle: popup %08x finished, %d steps cut", p, n)
 			}

@@ -15,7 +15,7 @@
 // them; scripts wait for a fade to end, so events stay in step.
 package qol
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 @(private = "file")
 FADE_STEP :: 0x8018f524 // a0 = ^s16 counter, a1 = speed, a2 = layer, a3 = blend; v0 1 when done
@@ -37,7 +37,7 @@ FADE_FRESH :: 30
 
 @(private = "file")
 fade: struct {
-	step, draw: psx.Func_Proc,
+	step, draw: cpu.Func_Proc,
 	// The last level drawn (0..1, eased) and the vblank it was drawn at.
 	level:      f32,
 	at:         u64,
@@ -59,7 +59,7 @@ fade_frame :: proc() -> u32 {
 // How far the screen is faded, 0 (clear) to 1, for host drawing over it.
 @(private)
 screen_fade :: proc() -> f32 {
-	if psx.vblanks() - fade.at > FADE_FRESH {
+	if cpu.vblanks() - fade.at > FADE_FRESH {
 		return 0
 	}
 	return fade.level
@@ -74,7 +74,7 @@ fade_init :: proc() -> bool {
 
 @(private = "file")
 fade_step :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	speed := i32(i16(c.r[5]))
 	if c.r[31] == FADE_WAIT_STEP_RET {
 		fade.wait_sp = c.r[29]
@@ -88,10 +88,10 @@ fade_step :: proc() {
 
 @(private = "file")
 fade_draw :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	t := f32(c.r[4] & 0xff) / 0xff
 	fade.level = t * t * (3 - 2 * t)
-	fade.at = psx.vblanks()
+	fade.at = cpu.vblanks()
 	c.r[4] = u32(0xff * fade.level + 0.5)
 	fade.draw()
 }

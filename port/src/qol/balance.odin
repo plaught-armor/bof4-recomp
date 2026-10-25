@@ -49,7 +49,7 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -252,9 +252,9 @@ ZENNY_KEEP :: 500
 
 @(private = "file")
 balance: struct {
-	rebuild:   psx.Func_Proc,
-	setup:     psx.Func_Proc,
-	field:     psx.Func_Proc,
+	rebuild:   cpu.Func_Proc,
+	setup:     cpu.Func_Proc,
+	field:     cpu.Func_Proc,
 	// Tables written since the party's stats were last rebuilt.
 	stale:     bool,
 	clock:     Play_Clock, // at the last field tick
@@ -269,8 +269,8 @@ balance: struct {
 
 @(private)
 balance_init :: proc() -> bool {
-	rebuild, rebuild_ok := psx.hook_overlay(STAT_REBUILD, SLOT_GAME, GAME_ID, stat_rebuild)
-	setup, setup_ok := psx.hook_overlay(ENEMY_SETUP, SLOT_MENU, BATTLE_ID, enemy_setup)
+	rebuild, rebuild_ok := cpu.hook_overlay(STAT_REBUILD, SLOT_GAME, GAME_ID, stat_rebuild)
+	setup, setup_ok := cpu.hook_overlay(ENEMY_SETUP, SLOT_MENU, BATTLE_ID, enemy_setup)
 	if !rebuild_ok || !setup_ok {
 		fmt.eprintf("qol: balance function %08x / %08x not found\n", STAT_REBUILD, ENEMY_SETUP)
 		return false
@@ -304,13 +304,13 @@ stats_knob :: proc() -> bool {
 
 @(private)
 balance_vblank :: proc() {
-	if psx.r32(SLOT_GAME) != GAME_ID {
+	if cpu.r32(SLOT_GAME) != GAME_ID {
 		return
 	}
 	for region in Region {
 		size := REGION_SIZE[region]
 		addr := REGION_ADDR[region]
-		live := psx.ram[addr & (psx.RAM_SIZE - 1):][:size]
+		live := cpu.ram[addr & (cpu.RAM_SIZE - 1):][:size]
 		if !balance.captured[region] {
 			if hash.fnv32a(live) != REGION_HASH[region] {
 				continue
@@ -325,7 +325,7 @@ balance_vblank :: proc() {
 			want, other = other, want
 		}
 		if mem.compare(live, other) == 0 {
-			copy(psx.mem_slice(addr, size), want)
+			copy(cpu.mem_slice(addr, size), want)
 			balance.stale = true
 		}
 	}
@@ -334,7 +334,7 @@ balance_vblank :: proc() {
 @(private = "file")
 field_tick :: proc() {
 	balance.field()
-	if psx.lhu(GAME_MODE) != GAME_MODE_FIELD {
+	if cpu.lhu(GAME_MODE) != GAME_MODE_FIELD {
 		return
 	}
 	if play_time_jumped(&balance.clock) {
@@ -344,9 +344,9 @@ field_tick :: proc() {
 		return
 	}
 	balance.stale = false
-	regs, hi, lo := psx.cpu.r, psx.cpu.hi, psx.cpu.lo
-	psx.call(RECOMPUTE)
-	psx.cpu.r, psx.cpu.hi, psx.cpu.lo = regs, hi, lo
+	regs, hi, lo := cpu.state.r, cpu.state.hi, cpu.state.lo
+	cpu.call(RECOMPUTE)
+	cpu.state.r, cpu.state.hi, cpu.state.lo = regs, hi, lo
 	if .Game in core.trace.active {
 		core.tracef(.Game, "balance: party stats rebuilt (balance %v)", config.battle_balance)
 	}
@@ -441,25 +441,25 @@ patch_growth :: proc(t: []u8) {
 
 @(private = "file")
 stat_rebuild :: proc() {
-	record := psx.cpu.r[4]
+	record := cpu.state.r[4]
 	balance.rebuild()
 	if !config.battle_balance {
 		return
 	}
 	wis := 0
-	if weapon := u32(psx.lbu(record + RECORD_WEAPON)); weapon != 0 {
+	if weapon := u32(cpu.lbu(record + RECORD_WEAPON)); weapon != 0 {
 		data := WEAPONS + weapon * WEAPON_SIZE
-		if psx.lbu(data + EQUIP_TYPE) == TYPE_STAFF {
-			wis += int(psx.lhu(data + WEAPON_ATTACK)) / 2
+		if cpu.lbu(data + EQUIP_TYPE) == TYPE_STAFF {
+			wis += int(cpu.lhu(data + WEAPON_ATTACK)) / 2
 		}
 	}
-	if armor := u32(psx.lbu(record + RECORD_ARMOR)); armor != 0 {
+	if armor := u32(cpu.lbu(record + RECORD_ARMOR)); armor != 0 {
 		data := ARMORS + armor * ARMOR_SIZE
-		if psx.lbu(data + EQUIP_TYPE) == TYPE_ROBE {
-			wis += int(psx.lhu(data + ARMOR_DEFENCE)) / 2
+		if cpu.lbu(data + EQUIP_TYPE) == TYPE_ROBE {
+			wis += int(cpu.lhu(data + ARMOR_DEFENCE)) / 2
 		}
 	}
-	accessory := psx.lbu(record + RECORD_ACCESSORY)
+	accessory := cpu.lbu(record + RECORD_ACCESSORY)
 	if accessory == WISDOM_RING {
 		wis += WISDOM_RING_WIS
 	}
@@ -469,43 +469,43 @@ stat_rebuild :: proc() {
 		}
 	}
 	if wis > 0 {
-		psx.sh(record + RECORD_WIS, u32(min(int(psx.lhu(record + RECORD_WIS)) + wis, STAT_MAX)))
+		cpu.sh(record + RECORD_WIS, u32(min(int(cpu.lhu(record + RECORD_WIS)) + wis, STAT_MAX)))
 	}
 }
 
 @(private = "file")
 enemy_setup :: proc() {
-	slot := psx.cpu.r[4] & 0xff
-	formation := psx.cpu.r[5]
-	index := u32(psx.lbu(formation + slot * FORMATION_SLOT_SIZE))
+	slot := cpu.state.r[4] & 0xff
+	formation := cpu.state.r[5]
+	index := u32(cpu.lbu(formation + slot * FORMATION_SLOT_SIZE))
 	record := ENEMY_RECORDS + index * ENEMY_RECORD_SIZE
 	if balance.stats_on {
-		psx.sw(record + ENEMY_RECORD_HP, balance.stats[0])
-		psx.sh(record + ENEMY_RECORD_EXP, balance.stats[1])
-		psx.sh(record + ENEMY_RECORD_ZENNY, balance.stats[2])
+		cpu.sw(record + ENEMY_RECORD_HP, balance.stats[0])
+		cpu.sh(record + ENEMY_RECORD_EXP, balance.stats[1])
+		cpu.sh(record + ENEMY_RECORD_ZENNY, balance.stats[2])
 	}
 	balance.setup()
 	if !config.battle_balance {
 		return
 	}
 	who := enemy_combatant(slot)
-	hp := psx.lw(record + ENEMY_RECORD_HP)
+	hp := cpu.lw(record + ENEMY_RECORD_HP)
 	if hp > 1 && hp != INVINCIBLE_HP {
 		scaled := hp >= BIG_HP ? u64(hp) * 2 : u64(hp) * 3 / 2
 		hp_max := u32(min(scaled, ENEMY_HP_MAX))
-		psx.sw(who + COMBATANT_HP, hp_max)
-		psx.sw(who + COMBATANT_HP_MAX, hp_max)
-		psx.sw(who + COMBATANT_HP_BASE, hp_max)
+		cpu.sw(who + COMBATANT_HP, hp_max)
+		cpu.sw(who + COMBATANT_HP_MAX, hp_max)
+		cpu.sw(who + COMBATANT_HP_BASE, hp_max)
 	}
-	exp := u32(psx.lhu(record + ENEMY_RECORD_EXP))
+	exp := u32(cpu.lhu(record + ENEMY_RECORD_EXP))
 	if exp >= FARM_EXP && exp > hp {
-		psx.sw(who + COMBATANT_EXP, hp / 2)
+		cpu.sw(who + COMBATANT_EXP, hp / 2)
 	}
-	zenny := u32(psx.lhu(who + COMBATANT_ZENNY))
+	zenny := u32(cpu.lhu(who + COMBATANT_ZENNY))
 	if zenny > ZENNY_KEEP {
-		psx.sh(who + COMBATANT_ZENNY, ZENNY_KEEP + (zenny - ZENNY_KEEP) / 2)
+		cpu.sh(who + COMBATANT_ZENNY, ZENNY_KEEP + (zenny - ZENNY_KEEP) / 2)
 	}
 	if .Game in core.trace.active {
-		core.tracef(.Game, "balance: enemy %d record %d hp %d -> %d exp %d zenny %d", slot, index, hp, psx.lw(who + COMBATANT_HP_MAX), psx.lw(who + COMBATANT_EXP), psx.lhu(who + COMBATANT_ZENNY))
+		core.tracef(.Game, "balance: enemy %d record %d hp %d -> %d exp %d zenny %d", slot, index, hp, cpu.lw(who + COMBATANT_HP_MAX), cpu.lw(who + COMBATANT_EXP), cpu.lhu(who + COMBATANT_ZENNY))
 	}
 }

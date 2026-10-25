@@ -36,7 +36,8 @@ import "core:fmt"
 import "core:strconv"
 import "core:strings"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 import "ps:core"
 
@@ -284,8 +285,8 @@ Combo_Plan :: struct {
 
 @(private = "file")
 combo_menu: struct {
-	main_menu, spell_init, turn_order: psx.Func_Proc,
-	list_step, chain:                  psx.Func_Proc,
+	main_menu, spell_init, turn_order: cpu.Func_Proc,
+	list_step, chain:                  cpu.Func_Proc,
 	shown, swallow:                    bool,
 	last:                              u16,
 	options:                           [OPTIONS_MAX]Combo_Option,
@@ -299,8 +300,8 @@ combo_menu_init :: proc() -> bool {
 	ok: bool
 	hooks := [?]struct {
 		addr, slot, id: u32,
-		fn:             psx.Func_Proc,
-		original:       ^psx.Func_Proc,
+		fn:             cpu.Func_Proc,
+		original:       ^cpu.Func_Proc,
 	} {
 		{MAIN_MENU, SLOT_ENGINE, COMMAND_ID, main_menu, &combo_menu.main_menu},
 		{SPELL_INIT, SLOT_ENGINE, COMMAND_ID, spell_init, &combo_menu.spell_init},
@@ -310,8 +311,8 @@ combo_menu_init :: proc() -> bool {
 		{LIST_STEP, SLOT_ENGINE, COMMAND_ID, list_step, &combo_menu.list_step},
 	}
 	for h in hooks {
-		original: psx.Func_Proc
-		if original, ok = psx.hook_overlay(h.addr, h.slot, h.id, h.fn); !ok {
+		original: cpu.Func_Proc
+		if original, ok = cpu.hook_overlay(h.addr, h.slot, h.id, h.fn); !ok {
 			fmt.eprintf("qol: battle function %08x not found\n", h.addr)
 			return false
 		}
@@ -326,7 +327,7 @@ combo_menu_init :: proc() -> bool {
 // Out of battle nothing carries over.
 @(private)
 combo_menu_vblank :: proc() {
-	if psx.lhu(GAME_MODE) != MODE_BATTLE {
+	if cpu.lhu(GAME_MODE) != MODE_BATTLE {
 		combo_menu.shown = false
 		combo_menu.plan = {auto = -1, armed = -1}
 		return
@@ -396,13 +397,13 @@ mastery_level :: proc(combo: int) -> int {
 
 @(private = "file")
 standing :: proc(p: u32) -> bool {
-	return psx.lbu(p + C_FLAGS) & 1 != 0 && psx.lhu(p + C_STATE) & C_DOWN == 0
+	return cpu.lbu(p + C_FLAGS) & 1 != 0 && cpu.lhu(p + C_STATE) & C_DOWN == 0
 }
 
 // A spell's element 0..3, -1 for none or another.
 @(private = "file")
 skill_element :: proc(skill: u16) -> int {
-	elements := psx.lhu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_ELEMENTS)
+	elements := cpu.lhu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_ELEMENTS)
 	if elements == 0 {
 		return -1
 	}
@@ -428,7 +429,7 @@ skill_level :: proc(skill: u16) -> int {
 		return 2
 	case 161 ..= 172:
 		level := int(skill - 161) % 3
-		if level == 2 && psx.lbu(BATTLE_KIND) == 2 {
+		if level == 2 && cpu.lbu(BATTLE_KIND) == 2 {
 			level = 3
 		}
 		return level
@@ -450,7 +451,7 @@ combo_of :: proc(first, second: u16) -> int {
 // false for spells aimed some other way.
 @(private = "file")
 skill_target :: proc(skill: u16, enemy: int) -> (target: u8, ok: bool) {
-	t := psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_TARGETS)
+	t := cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_TARGETS)
 	switch {
 	case t & (TARGETS_ONE | 1) == TARGETS_ONE:
 		return u8(FIRST_ENEMY + enemy), true
@@ -472,19 +473,19 @@ skill_target :: proc(skill: u16, enemy: int) -> (target: u8, ok: bool) {
 
 @(private = "file")
 single_target :: proc(skill: u16) -> bool {
-	return psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_TARGETS) & (TARGETS_ONE | 1) == TARGETS_ONE
+	return cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_TARGETS) & (TARGETS_ONE | 1) == TARGETS_ONE
 }
 
 @(private = "file")
 affordable :: proc(p: u32, skill: u16) -> bool {
-	return u32(psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_AP)) <= psx.lhu(p + C_AP)
+	return u32(cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_AP)) <= cpu.lhu(p + C_AP)
 }
 
 // The committed slot of a member, -1 while it still chooses.
 @(private = "file")
 committed_slot :: proc(member: u8) -> int {
-	for k in 0 ..< int(psx.lbu(BATTLE_STATE + INPUT_COMMITTED)) {
-		if psx.lbu(BATTLE_STATE + INPUT_ORDER + u32(k)) == u32(member) {
+	for k in 0 ..< int(cpu.lbu(BATTLE_STATE + INPUT_COMMITTED)) {
+		if cpu.lbu(BATTLE_STATE + INPUT_ORDER + u32(k)) == u32(member) {
 			return k
 		}
 	}
@@ -494,7 +495,7 @@ committed_slot :: proc(member: u8) -> int {
 // The round's order puts the higher Agl first, ties in party order.
 @(private = "file")
 acts_before :: proc(a, b: u8) -> bool {
-	agl_a, agl_b := psx.lhu(party_combatant(u32(a)) + C_AGL), psx.lhu(party_combatant(u32(b)) + C_AGL)
+	agl_a, agl_b := cpu.lhu(party_combatant(u32(a)) + C_AGL), cpu.lhu(party_combatant(u32(b)) + C_AGL)
 	return agl_a > agl_b || agl_a == agl_b && a < b
 }
 
@@ -506,15 +507,15 @@ enemy_standing :: proc(e: int) -> bool {
 // The command menu is up for a member, waiting on a button.
 @(private = "file")
 at_command_menu :: proc() -> bool {
-	actor := i8(psx.lbu(BATTLE_STATE + INPUT_ACTOR))
-	return psx.lhu(GAME_MODE) == MODE_BATTLE && psx.lw(SLOT_ENGINE) == COMMAND_ID && psx.lbu(BATTLE_STATE + INPUT_PHASE) == 1 && psx.lbu(BATTLE_STATE + INPUT_STEP) == 0 && psx.lbu(BATTLE_STATE + INPUT_MENU) == MENU_STEP && psx.lbu(MENU_BUSY) == 0 && actor >= 0 && actor < PARTY_COUNT
+	actor := i8(cpu.lbu(BATTLE_STATE + INPUT_ACTOR))
+	return cpu.lhu(GAME_MODE) == MODE_BATTLE && cpu.lw(SLOT_ENGINE) == COMMAND_ID && cpu.lbu(BATTLE_STATE + INPUT_PHASE) == 1 && cpu.lbu(BATTLE_STATE + INPUT_STEP) == 0 && cpu.lbu(BATTLE_STATE + INPUT_MENU) == MENU_STEP && cpu.lbu(MENU_BUSY) == 0 && actor >= 0 && actor < PARTY_COUNT
 }
 
 // Every combo with the choosing member in it, castable now.
 @(private = "file")
 gather :: proc() {
 	combo_menu.count = 0
-	actor := u8(psx.lbu(BATTLE_STATE + INPUT_ACTOR))
+	actor := u8(cpu.lbu(BATTLE_STATE + INPUT_ACTOR))
 	for a in u8(0) ..< PARTY_COUNT {
 		for b in u8(0) ..< PARTY_COUNT {
 			if a == b || a != actor && b != actor || !acts_before(a, b) || !able(a) || !able(b) {
@@ -527,7 +528,7 @@ gather :: proc() {
 					continue
 				}
 				for k in u32(0) ..< C_SKILL_COUNT {
-					second := u16(psx.lbu(pb + C_SKILLS + k))
+					second := u16(cpu.lbu(pb + C_SKILLS + k))
 					combo := combo_of(first, second)
 					if second == 0 || combo < 0 || !affordable(pb, second) {
 						continue
@@ -554,7 +555,7 @@ able :: proc(member: u8) -> bool {
 	if committed_slot(member) < 0 {
 		return true
 	}
-	switch psx.lbu(p + C_TYPE) {
+	switch cpu.lbu(p + C_TYPE) {
 	case TYPE_ATTACK, TYPE_GUARD, TYPE_MAGIC:
 		return true
 	}
@@ -566,14 +567,14 @@ able :: proc(member: u8) -> bool {
 cheapest :: proc(p: u32, element: int) -> u16 {
 	best, best_ap := u16(0), u32(0)
 	for k in u32(0) ..< C_SKILL_COUNT {
-		skill := u16(psx.lbu(p + C_SKILLS + k))
+		skill := u16(cpu.lbu(p + C_SKILLS + k))
 		if skill == 0 || skill_element(skill) != element || skill_level(skill) < 0 || !affordable(p, skill) {
 			continue
 		}
 		if _, ok := skill_target(skill, 0); !ok {
 			continue
 		}
-		ap := psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_AP)
+		ap := cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + SKILL_AP)
 		if best == 0 || ap < best_ap {
 			best, best_ap = skill, ap
 		}
@@ -581,7 +582,7 @@ cheapest :: proc(p: u32, element: int) -> u16 {
 	return best
 }
 
-// psx.pad_hook in battle: Select at the command menu opens the list; the
+// host.pad_hook in battle: Select at the command menu opens the list; the
 // game sees no buttons while it is up, nor the ones closing it.
 @(private)
 combo_menu_buttons :: proc(held: u16) -> u16 {
@@ -592,22 +593,22 @@ combo_menu_buttons :: proc(held: u16) -> u16 {
 		return 0
 	}
 	if !combo_menu.shown {
-		if config.battle_combo_command && down & psx.PAD_SELECT != 0 && at_command_menu() && combo_menu.plan.auto < 0 {
+		if config.battle_combo_command && down & host.PAD_SELECT != 0 && at_command_menu() && combo_menu.plan.auto < 0 {
 			list_open()
 			return 0
 		}
 		return held
 	}
-	close := !at_command_menu() || down & (psx.PAD_SELECT | action_mask(.Cancel)) != 0
+	close := !at_command_menu() || down & (host.PAD_SELECT | action_mask(.Cancel)) != 0
 	if !close && combo_menu.count > 0 {
 		switch {
-		case down & psx.PAD_UP != 0:
+		case down & host.PAD_UP != 0:
 			combo_menu.row = (combo_menu.row + combo_menu.count - 1) % combo_menu.count
-		case down & psx.PAD_DOWN != 0:
+		case down & host.PAD_DOWN != 0:
 			combo_menu.row = (combo_menu.row + 1) % combo_menu.count
-		case down & psx.PAD_LEFT != 0:
+		case down & host.PAD_LEFT != 0:
 			combo_menu.enemy = next_enemy(combo_menu.enemy, -1)
-		case down & psx.PAD_RIGHT != 0:
+		case down & host.PAD_RIGHT != 0:
 			combo_menu.enemy = next_enemy(combo_menu.enemy, 1)
 		case down & action_mask(.Confirm) != 0:
 			plan_combo(combo_menu.options[combo_menu.row])
@@ -675,9 +676,9 @@ plan_aim :: proc(enemy, own: int) {
 			continue
 		}
 		p := party_combatant(u32(plan.members[k]))
-		psx.sb(p + C_TARGET, u32(plan.targets[k]))
-		psx.sb(p + C_TYPE, TYPE_MAGIC)
-		psx.sh(p + C_SKILL, u32(plan.skills[k]))
+		cpu.sb(p + C_TARGET, u32(plan.targets[k]))
+		cpu.sb(p + C_TYPE, TYPE_MAGIC)
+		cpu.sh(p + C_SKILL, u32(plan.skills[k]))
 	}
 }
 
@@ -693,12 +694,12 @@ plan_settle :: proc() {
 	}
 	plan.armed = -1
 	p := party_combatant(u32(plan.members[k]))
-	if psx.lbu(p + C_TYPE) != TYPE_MAGIC || u16(psx.lhu(p + C_SKILL)) != plan.skills[k] {
+	if cpu.lbu(p + C_TYPE) != TYPE_MAGIC || u16(cpu.lhu(p + C_SKILL)) != plan.skills[k] {
 		plan^ = {auto = -1, armed = -1}
 		return
 	}
 	plan.pending[k] = false
-	target := int(psx.lbu(p + C_TARGET))
+	target := int(cpu.lbu(p + C_TARGET))
 	enemy := target - FIRST_ENEMY if target >= FIRST_ENEMY && target < FIRST_ENEMY + ENEMY_COUNT else next_enemy(-1, 1)
 	plan_aim(enemy, k)
 	if .Game in core.trace.active {
@@ -711,7 +712,7 @@ plan_settle :: proc() {
 @(private = "file")
 main_menu :: proc() {
 	plan := &combo_menu.plan
-	actor := u8(psx.lbu(BATTLE_STATE + INPUT_ACTOR))
+	actor := u8(cpu.lbu(BATTLE_STATE + INPUT_ACTOR))
 	// Back out of a combo picked at the Special list before its commit.
 	plan_settle()
 	if plan.armed >= 0 {
@@ -725,13 +726,13 @@ main_menu :: proc() {
 			plan^ = {auto = -1, armed = -1}
 			break
 		}
-		if psx.lbu(MENU_BUSY) != 0 {
+		if cpu.lbu(MENU_BUSY) != 0 {
 			break
 		}
-		psx.sb(BATTLE_STATE + INPUT_MODE, MODE_MENU)
-		psx.sh(BATTLE_STATE + INPUT_FLAGS, psx.lhu(BATTLE_STATE + INPUT_FLAGS) | FLAG_MENU)
-		psx.sb(BATTLE_STATE + INPUT_COMMAND, COMMAND_MAGIC)
-		psx.sb(BATTLE_STATE + INPUT_MENU, MENU_CHOSEN)
+		cpu.sb(BATTLE_STATE + INPUT_MODE, MODE_MENU)
+		cpu.sh(BATTLE_STATE + INPUT_FLAGS, cpu.lhu(BATTLE_STATE + INPUT_FLAGS) | FLAG_MENU)
+		cpu.sb(BATTLE_STATE + INPUT_COMMAND, COMMAND_MAGIC)
+		cpu.sb(BATTLE_STATE + INPUT_MENU, MENU_CHOSEN)
 		plan.auto = k
 		return
 	}
@@ -747,37 +748,37 @@ list_step :: proc() {
 		plan^ = {auto = -1, armed = -1}
 	}
 	line := chosen_line()
-	if line < 0 || u16(psx.lhu(PAD_PRESSED)) & u16(psx.lhu(CONFIRM_MASK)) == 0 {
+	if line < 0 || u16(cpu.lhu(PAD_PRESSED)) & u16(cpu.lhu(CONFIRM_MASK)) == 0 {
 		combo_menu.list_step()
 		return
 	}
 	o := combo_menu.options[line]
-	actor := u8(psx.lbu(BATTLE_STATE + INPUT_ACTOR))
+	actor := u8(cpu.lbu(BATTLE_STATE + INPUT_ACTOR))
 	own := 0 if o.members[0] == actor else 1
 	combo_menu.enemy = next_enemy(-1, 1)
 	plan_combo(o)
 	plan.armed = own
-	psx.sh(psx.lw(ACTION_PTR) + REC_SKILL, u32(o.skills[own]))
+	cpu.sh(cpu.lw(ACTION_PTR) + REC_SKILL, u32(o.skills[own]))
 	game_routine(SOUND, {SOUND_CONFIRM, 0, 0, 0, 0})
-	psx.sb(SPELL_WINDOW + WINDOW_ACTIVE, 0)
-	psx.sb(BATTLE_STATE + INPUT_SUBSTEP, SUB_LIST_PICKED)
-	psx.sw(LIST_CURSOR, psx.lbu(SPELL_WINDOW + WINDOW_PAGE) << 16 | psx.lbu(SPELL_WINDOW + WINDOW_TOP) << 8 | psx.lbu(SPELL_WINDOW + WINDOW_ROW))
+	cpu.sb(SPELL_WINDOW + WINDOW_ACTIVE, 0)
+	cpu.sb(BATTLE_STATE + INPUT_SUBSTEP, SUB_LIST_PICKED)
+	cpu.sw(LIST_CURSOR, cpu.lbu(SPELL_WINDOW + WINDOW_PAGE) << 16 | cpu.lbu(SPELL_WINDOW + WINDOW_TOP) << 8 | cpu.lbu(SPELL_WINDOW + WINDOW_ROW))
 }
 
 // The Special list is up for a member, waiting on a button.
 @(private = "file")
 at_spell_list :: proc() -> bool {
-	actor := i8(psx.lbu(BATTLE_STATE + INPUT_ACTOR))
-	return config.battle_combo_command && psx.lhu(GAME_MODE) == MODE_BATTLE && psx.lw(SLOT_ENGINE) == COMMAND_ID && psx.lbu(BATTLE_STATE + INPUT_PHASE) == 1 && psx.lbu(BATTLE_STATE + INPUT_STEP) == STEP_LIST && psx.lbu(BATTLE_STATE + INPUT_SUB) == SUB_LIST && psx.lbu(BATTLE_STATE + INPUT_MODE) == MODE_SPELL && psx.lbu(MENU_BUSY) == 0 && psx.lbu(SPELL_WINDOW + WINDOW_UP) != 0 && actor >= 0 && actor < PARTY_COUNT
+	actor := i8(cpu.lbu(BATTLE_STATE + INPUT_ACTOR))
+	return config.battle_combo_command && cpu.lhu(GAME_MODE) == MODE_BATTLE && cpu.lw(SLOT_ENGINE) == COMMAND_ID && cpu.lbu(BATTLE_STATE + INPUT_PHASE) == 1 && cpu.lbu(BATTLE_STATE + INPUT_STEP) == STEP_LIST && cpu.lbu(BATTLE_STATE + INPUT_SUB) == SUB_LIST && cpu.lbu(BATTLE_STATE + INPUT_MODE) == MODE_SPELL && cpu.lbu(MENU_BUSY) == 0 && cpu.lbu(SPELL_WINDOW + WINDOW_UP) != 0 && actor >= 0 && actor < PARTY_COUNT
 }
 
 // The first combo's slot on the Magic page: the first empty one, -1 when
 // the member's spells fill the page.
 @(private = "file")
 combos_slot :: proc() -> int {
-	p := party_combatant(u32(psx.lbu(BATTLE_STATE + INPUT_ACTOR)))
+	p := party_combatant(u32(cpu.lbu(BATTLE_STATE + INPUT_ACTOR)))
 	for k in u32(0) ..< C_SKILL_COUNT {
-		if psx.lbu(p + C_SKILLS + k) == 0 {
+		if cpu.lbu(p + C_SKILLS + k) == 0 {
 			return int(k)
 		}
 	}
@@ -794,11 +795,11 @@ combo_lines :: proc() -> int {
 // The combo under the game's cursor (gathered afresh), -1 for none.
 @(private = "file")
 chosen_line :: proc() -> int {
-	if !at_spell_list() || psx.lbu(SPELL_WINDOW + WINDOW_PAGE) != 0 {
+	if !at_spell_list() || cpu.lbu(SPELL_WINDOW + WINDOW_PAGE) != 0 {
 		return -1
 	}
 	gather()
-	line := int(psx.lbu(SPELL_WINDOW + WINDOW_TOP) + psx.lbu(SPELL_WINDOW + WINDOW_ROW)) - combos_slot()
+	line := int(cpu.lbu(SPELL_WINDOW + WINDOW_TOP) + cpu.lbu(SPELL_WINDOW + WINDOW_ROW)) - combos_slot()
 	return line if combos_slot() >= 0 && line >= 0 && line < combo_lines() else -1
 }
 
@@ -808,7 +809,7 @@ chosen_line :: proc() -> int {
 spell_init :: proc() {
 	plan := &combo_menu.plan
 	k := plan.auto
-	if k < 0 || !plan.active || u32(plan.members[k]) != psx.lbu(BATTLE_STATE + INPUT_ACTOR) {
+	if k < 0 || !plan.active || u32(plan.members[k]) != cpu.lbu(BATTLE_STATE + INPUT_ACTOR) {
 		combo_menu.spell_init()
 		return
 	}
@@ -820,17 +821,17 @@ spell_init :: proc() {
 @(private = "file")
 commit_planned :: proc(k: int) {
 	plan := &combo_menu.plan
-	rec := psx.lw(ACTION_PTR)
-	psx.sb(rec + REC_TARGET, u32(plan.targets[k]))
-	psx.sh(rec + REC_SKILL, u32(plan.skills[k]))
-	character := psx.lbu(party_combatant(u32(plan.members[k])) + C_CHAR)
-	cursor := psx.lhu(BATTLE_STATE + INPUT_CURSORS + character * 2)
-	psx.sb(SPELL_WINDOW + 12, cursor & 7)
-	psx.sb(SPELL_WINDOW + 13, cursor >> 8)
-	psx.sb(SPELL_WINDOW + 14, cursor >> 3 & 0x1f)
-	psx.sb(BATTLE_STATE + INPUT_MODE, MODE_SPELL)
-	psx.sb(BATTLE_STATE + INPUT_SUB, SUB_COMMIT)
-	psx.sb(BATTLE_STATE + INPUT_SUBSTEP, 0)
+	rec := cpu.lw(ACTION_PTR)
+	cpu.sb(rec + REC_TARGET, u32(plan.targets[k]))
+	cpu.sh(rec + REC_SKILL, u32(plan.skills[k]))
+	character := cpu.lbu(party_combatant(u32(plan.members[k])) + C_CHAR)
+	cursor := cpu.lhu(BATTLE_STATE + INPUT_CURSORS + character * 2)
+	cpu.sb(SPELL_WINDOW + 12, cursor & 7)
+	cpu.sb(SPELL_WINDOW + 13, cursor >> 8)
+	cpu.sb(SPELL_WINDOW + 14, cursor >> 3 & 0x1f)
+	cpu.sb(BATTLE_STATE + INPUT_MODE, MODE_SPELL)
+	cpu.sb(BATTLE_STATE + INPUT_SUB, SUB_COMMIT)
+	cpu.sb(BATTLE_STATE + INPUT_SUBSTEP, 0)
 	plan.pending[k] = false
 	plan.auto = -1
 }
@@ -848,15 +849,15 @@ turn_order :: proc() {
 	}
 	for k in 0 ..< 2 {
 		p := party_combatant(u32(plan.members[k]))
-		if psx.lbu(p + C_TYPE) != TYPE_MAGIC || psx.lhu(p + C_SKILL) != u32(plan.skills[k]) {
+		if cpu.lbu(p + C_TYPE) != TYPE_MAGIC || cpu.lhu(p + C_SKILL) != u32(plan.skills[k]) {
 			return
 		}
 	}
-	count := min(int(psx.lbu(ORDER_COUNT)), 16)
+	count := min(int(cpu.lbu(ORDER_COUNT)), 16)
 	order: [16]u8
 	at := [2]int{-1, -1}
 	for i in 0 ..< count {
-		order[i] = u8(psx.lbu(ORDER + u32(i)))
+		order[i] = u8(cpu.lbu(ORDER + u32(i)))
 		for k in 0 ..< 2 {
 			if order[i] == plan.members[k] {
 				at[k] = i
@@ -872,7 +873,7 @@ turn_order :: proc() {
 	copy(order[first + 2:count], order[first + 1:count - 1])
 	order[first + 1] = plan.members[1]
 	for i in 0 ..< count {
-		psx.sb(ORDER + u32(i), u32(order[i]))
+		cpu.sb(ORDER + u32(i), u32(order[i]))
 	}
 	if .Game in core.trace.active {
 		core.tracef(.Game, "combo order: %d behind %d", plan.members[1], plan.members[0])
@@ -889,18 +890,18 @@ chain :: proc() {
 		combo_menu.chain()
 		return
 	}
-	c := &psx.cpu
-	turn := psx.lbu(ORDER_POS)
-	first, second := psx.lbu(ORDER + turn), psx.lbu(ORDER + turn + 1)
-	if turn + 1 >= psx.lbu(ORDER_COUNT) || first >= 6 || second >= 6 {
+	c := &cpu.state
+	turn := cpu.lbu(ORDER_POS)
+	first, second := cpu.lbu(ORDER + turn), cpu.lbu(ORDER + turn + 1)
+	if turn + 1 >= cpu.lbu(ORDER_COUNT) || first >= 6 || second >= 6 {
 		combo_menu.chain()
 		return
 	}
 	p1, p2 := party_combatant(first), party_combatant(second)
-	ap_1 := u32(psx.lbu(SKILL_DATA + psx.lhu(p1 + C_SKILL) * SKILL_DATA_SIZE + SKILL_AP))
-	ap_2 := u32(psx.lbu(SKILL_DATA + psx.lhu(p2 + C_SKILL) * SKILL_DATA_SIZE + SKILL_AP))
+	ap_1 := u32(cpu.lbu(SKILL_DATA + cpu.lhu(p1 + C_SKILL) * SKILL_DATA_SIZE + SKILL_AP))
+	ap_2 := u32(cpu.lbu(SKILL_DATA + cpu.lhu(p2 + C_SKILL) * SKILL_DATA_SIZE + SKILL_AP))
 	surcharge := (ap_1 + ap_2 + 1) / 2
-	ap := psx.lhu(p2 + C_AP)
+	ap := cpu.lhu(p2 + C_AP)
 	if ap < ap_2 + surcharge {
 		c.r[2] = 0
 		return
@@ -909,7 +910,7 @@ chain :: proc() {
 	if c.r[2] & 0xff == 0 {
 		return
 	}
-	psx.sh(p2 + C_AP, ap - surcharge)
+	cpu.sh(p2 + C_AP, ap - surcharge)
 	if .Game in core.trace.active {
 		core.tracef(.Game, "combo surcharge: member %d pays %d AP chaining onto %d", second, surcharge, first)
 	}
@@ -921,32 +922,32 @@ chain :: proc() {
 // then +5 per mastery level, sure at the top one or for a combo never performed.
 @(private = "file")
 chain_roll :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	// The earlier caster, then the one that would chain onto it.
 	first, second := c.r[4] & 0xff, c.r[5] & 0xff
 	p1, p2 := party_combatant(first), party_combatant(second)
-	chance := 85 if psx.lbu(BATTLE_KIND) == 0 else 75
-	if psx.lbu(p1 + C_CHAIN) == CHAIN_TRAIT {
+	chance := 85 if cpu.lbu(BATTLE_KIND) == 0 else 75
+	if cpu.lbu(p1 + C_CHAIN) == CHAIN_TRAIT {
 		chance += 10
 	}
-	if psx.lbu(p2 + C_CHAIN) == CHAIN_TRAIT {
+	if cpu.lbu(p2 + C_CHAIN) == CHAIN_TRAIT {
 		chance += 10
 	}
-	skill_1, skill_2 := u16(psx.lhu(p1 + C_SKILL)), u16(psx.lhu(p2 + C_SKILL))
-	elements := psx.lhu(SKILL_DATA + u32(skill_1) * SKILL_DATA_SIZE + SKILL_ELEMENTS)
-	if elements & psx.lhu(SKILL_DATA + u32(skill_2) * SKILL_DATA_SIZE + SKILL_ELEMENTS) != 0 {
+	skill_1, skill_2 := u16(cpu.lhu(p1 + C_SKILL)), u16(cpu.lhu(p2 + C_SKILL))
+	elements := cpu.lhu(SKILL_DATA + u32(skill_1) * SKILL_DATA_SIZE + SKILL_ELEMENTS)
+	if elements & cpu.lhu(SKILL_DATA + u32(skill_2) * SKILL_DATA_SIZE + SKILL_ELEMENTS) != 0 {
 		chance += 5
 	}
 	sum, count := u32(0), u32(0)
 	for e in 0 ..< ENEMY_COUNT {
 		if enemy_standing(e) {
-			sum += psx.lhu(enemy_combatant(u32(e)) + C_AGL)
+			sum += cpu.lhu(enemy_combatant(u32(e)) + C_AGL)
 			count += 1
 		}
 	}
 	// The game divides by zero with no enemy standing: MIPS gives -1.
 	mean := i32(sum & 0xffff) / i32(count) if count > 0 else -1
-	if mean + 1 < i32(psx.lhu(p1 + C_AGL)) || mean + 1 < i32(psx.lhu(p2 + C_AGL)) {
+	if mean + 1 < i32(cpu.lhu(p1 + C_AGL)) || mean + 1 < i32(cpu.lhu(p2 + C_AGL)) {
 		chance += 5
 	}
 	if combo := combo_of(skill_1, skill_2); config.battle_combo_mastery && first < 6 && second < 6 && combo >= 0 {
@@ -954,14 +955,14 @@ chain_roll :: proc() {
 		chance = ROLL if level == MASTERY_MAX || config.battle_combo_uses[combo] == 0 else chance + MASTERY_STEP * level
 	}
 	ra := c.r[31]
-	psx.call(RAND)
+	cpu.call(RAND)
 	c.r[31] = ra
 	c.r[2] = u32(i32(c.r[2]) % ROLL - i32(chance & 0xff)) >> 31
 }
 
 @(private)
 combo_menu_draws :: proc() -> bool {
-	return combo_menu.shown || at_spell_list() && psx.lbu(SPELL_WINDOW + WINDOW_PAGE) == 0
+	return combo_menu.shown || at_spell_list() && cpu.lbu(SPELL_WINDOW + WINDOW_PAGE) == 0
 }
 
 @(private)
@@ -979,23 +980,23 @@ combo_menu_draw :: proc() {
 @(private = "file")
 combo_lines_draw :: proc() {
 	chosen := chosen_line()
-	if psx.lbu(SPELL_WINDOW + WINDOW_PAGE) != 0 {
+	if cpu.lbu(SPELL_WINDOW + WINDOW_PAGE) != 0 {
 		return
 	}
-	actor := u8(psx.lbu(BATTLE_STATE + INPUT_ACTOR))
-	wx := int(i16(psx.lhu(SPELL_WINDOW + WINDOW_X)))
-	top := int(psx.lbu(SPELL_WINDOW + WINDOW_TOP))
+	actor := u8(cpu.lbu(BATTLE_STATE + INPUT_ACTOR))
+	wx := int(i16(cpu.lhu(SPELL_WINDOW + WINDOW_X)))
+	top := int(cpu.lbu(SPELL_WINDOW + WINDOW_TOP))
 	for &o, i in combo_menu.options[:combo_lines()] {
 		row := combos_slot() + i - top
 		if row < 0 || row >= WINDOW_ROWS {
 			continue
 		}
-		y := int(i16(psx.lhu(SPELL_WINDOW + WINDOW_Y))) + SLOT_Y + row * SLOT_H
+		y := int(i16(cpu.lhu(SPELL_WINDOW + WINDOW_Y))) + SLOT_Y + row * SLOT_H
 		game_routine(SKILL_ICON, {u32(wx + SLOT_ICON_X), u32(y), u32(FIRST_COMBO + o.combo), 0, 0})
 		menu_text(wx + SLOT_X, y, combo_seen(o.combo) ? combo_name(o.combo) : "???")
 		own := o.skills[0] if o.members[0] == actor else o.skills[1]
 		buf: [4]u8
-		menu_text_right(wx + SLOT_AP_X, y, strconv.write_int(buf[:], i64(psx.lbu(SKILL_DATA + u32(own) * SKILL_DATA_SIZE + SKILL_AP)), 10))
+		menu_text_right(wx + SLOT_AP_X, y, strconv.write_int(buf[:], i64(cpu.lbu(SKILL_DATA + u32(own) * SKILL_DATA_SIZE + SKILL_AP)), 10))
 	}
 	if chosen < 0 {
 		return
@@ -1055,7 +1056,7 @@ combo_list_draw :: proc() {
 c_name :: proc(p: u32, buf: []u8) -> string {
 	n := 0
 	for n < len(buf) {
-		ch := u8(psx.lbu(p + C_NAME + u32(n)))
+		ch := u8(cpu.lbu(p + C_NAME + u32(n)))
 		if ch == 0 {
 			break
 		}

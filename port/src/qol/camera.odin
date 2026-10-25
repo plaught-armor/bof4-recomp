@@ -41,7 +41,8 @@ package qol
 import "core:fmt"
 import "core:math"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 import "ps:core"
 
@@ -98,7 +99,7 @@ ROTATE_MASK_A :: 0x80116d8e // u16
 @(private = "file")
 ROTATE_MASK_B :: 0x80116d90 // u16
 @(private = "file")
-PEEK_BUTTONS :: psx.PAD_LEFT | psx.PAD_RIGHT
+PEEK_BUTTONS :: host.PAD_LEFT | host.PAD_RIGHT
 
 @(private = "file")
 SPIN_DELAY :: 12
@@ -112,13 +113,13 @@ Phase :: enum u16 {
 
 @(private = "file")
 camera: struct {
-	original:  psx.Func_Proc,
+	original:  cpu.Func_Proc,
 	// Fractional curve steps carried between ticks.
 	carry:     f64,
 	// Ticks spent in the hold phase without peeking.
 	held_for:  int,
-	field:     psx.Func_Proc,
-	compass:   psx.Func_Proc,
+	field:     cpu.Func_Proc,
+	compass:   cpu.Func_Proc,
 	// Vblank of the last field tick.
 	last_tick: u64,
 	// Mouse drag (window pixels) toward the next fixed-angle turn.
@@ -135,8 +136,8 @@ camera_init :: proc() -> bool {
 }
 
 @(private)
-hook_game_mode :: proc(addr: u32, fn: psx.Func_Proc) -> (psx.Func_Proc, bool) {
-	original, ok := psx.hook_overlay(addr, SLOT_GAME, GAME_ID, fn)
+hook_game_mode :: proc(addr: u32, fn: cpu.Func_Proc) -> (cpu.Func_Proc, bool) {
+	original, ok := cpu.hook_overlay(addr, SLOT_GAME, GAME_ID, fn)
 	if !ok {
 		fmt.eprintf("qol: game mode handler %08x not found\n", addr)
 	}
@@ -145,27 +146,27 @@ hook_game_mode :: proc(addr: u32, fn: psx.Func_Proc) -> (psx.Func_Proc, bool) {
 
 @(private = "file")
 compass_task :: proc() {
-	shown := psx.lbu(HUD_SHOWN)
-	psx.sb(HUD_SHOWN, 0)
+	shown := cpu.lbu(HUD_SHOWN)
+	cpu.sb(HUD_SHOWN, 0)
 	camera.compass()
-	psx.sb(HUD_SHOWN, shown)
+	cpu.sb(HUD_SHOWN, shown)
 }
 
 @(private = "file")
 field_tick :: proc() {
 	camera.field()
-	now := psx.vblanks()
+	now := cpu.vblanks()
 	gap := now - camera.last_tick
 	camera.last_tick = now
-	mouse := psx.mouse_drag_take()
+	mouse := host.mouse_drag_take()
 	degrees, drag := 0.0, f64(mouse.x)
 	if config.camera_stick {
-		degrees = f64(psx.sticks().right.x) * config.camera_stick_speed * f64(gap) / VBLANK_HZ
+		degrees = f64(host.sticks().right.x) * config.camera_stick_speed * f64(gap) / VBLANK_HZ
 	}
-	if psx.lbu(OPTION_CAMERA_REVERSE) != 0 {
+	if cpu.lbu(OPTION_CAMERA_REVERSE) != 0 {
 		degrees, drag = -degrees, -drag
 	}
-	turning := psx.lhu(GAME_MODE) == MODE_FIELD_ID || config.camera_third_person && third_person_keeps()
+	turning := cpu.lhu(GAME_MODE) == MODE_FIELD_ID || config.camera_third_person && third_person_keeps()
 	if gap > MAX_STICK_GAP || !turning {
 		camera.drag_px = 0
 		return
@@ -198,36 +199,36 @@ drag_turn :: proc(drag: f64) {
 	if abs(camera.drag_px) < DRAG_TURN_PX {
 		return
 	}
-	button := u16(camera.drag_px > 0 ? psx.PAD_L1 : psx.PAD_R1)
-	psx.press_for(button, psx.TAP_HOLD)
+	button := u16(camera.drag_px > 0 ? host.PAD_L1 : host.PAD_R1)
+	host.press_for(button, host.TAP_HOLD)
 	camera.drag_px = 0
 	if .Game in core.trace.active {
-		core.tracef(.Game, "camera: drag turn %s", button == psx.PAD_L1 ? "L1" : "R1")
+		core.tracef(.Game, "camera: drag turn %s", button == host.PAD_L1 ? "L1" : "R1")
 	}
 }
 
 @(private = "file")
 map_rotation :: proc() -> u32 {
-	table := psx.lw(psx.lw(MAP_HEADER) + 0x30)
-	return psx.lbu(table + psx.lhu(MAP_SECTION) * 3)
+	table := cpu.lw(cpu.lw(MAP_HEADER) + 0x30)
+	return cpu.lbu(table + cpu.lhu(MAP_SECTION) * 3)
 }
 
 @(private = "file")
 camera_tick :: proc() {
-	phase := Phase(psx.lhu(MODE_PHASE))
+	phase := Phase(cpu.lhu(MODE_PHASE))
 	if phase == .Hold && config.camera_hold_to_spin && spin_due() {
-		psx.sb(ROTATE_LEFT, ROTATE_TICKS)
-		psx.sh(MODE_PHASE, u32(Phase.Turn))
+		cpu.sb(ROTATE_LEFT, ROTATE_TICKS)
+		cpu.sh(MODE_PHASE, u32(Phase.Turn))
 		phase = .Turn
 		if .Game in core.trace.active {
-			core.tracef(.Game, "camera: spin again, sign %d", i8(psx.lbu(ROTATE_SIGN)))
+			core.tracef(.Game, "camera: spin again, sign %d", i8(cpu.lbu(ROTATE_SIGN)))
 		}
 	}
 	camera.original()
 	if phase == .Turn {
 		turn_extra_steps()
 		if .Game in core.trace.active {
-			core.tracef(.Game, "camera: yaw %03x, %d steps left", psx.lhu(CAMERA_YAW), psx.lbu(ROTATE_LEFT))
+			core.tracef(.Game, "camera: yaw %03x, %d steps left", cpu.lhu(CAMERA_YAW), cpu.lbu(ROTATE_LEFT))
 		}
 	}
 }
@@ -236,9 +237,9 @@ camera_tick :: proc() {
 // peek, for SPIN_DELAY ticks.
 @(private = "file")
 spin_due :: proc() -> bool {
-	held := psx.lhu(PAD_ROTATE_HELD)
-	rotate_held := held & (psx.lhu(ROTATE_MASK_A) | psx.lhu(ROTATE_MASK_B)) != 0
-	if !rotate_held || held & PEEK_BUTTONS != 0 || psx.lhu(PEEK_OFFSET) != 0 {
+	held := cpu.lhu(PAD_ROTATE_HELD)
+	rotate_held := held & (cpu.lhu(ROTATE_MASK_A) | cpu.lhu(ROTATE_MASK_B)) != 0
+	if !rotate_held || held & PEEK_BUTTONS != 0 || cpu.lhu(PEEK_OFFSET) != 0 {
 		camera.held_for = 0
 		return false
 	}
@@ -257,16 +258,16 @@ turn_extra_steps :: proc() {
 	camera.carry += config.camera_rotate_speed - 1
 	extra := int(math.floor(camera.carry))
 	camera.carry -= f64(extra)
-	sign := u32(i32(i8(psx.lbu(ROTATE_SIGN))))
+	sign := u32(i32(i8(cpu.lbu(ROTATE_SIGN))))
 	for _ in 0 ..< extra {
-		left := psx.lbu(ROTATE_LEFT)
+		left := cpu.lbu(ROTATE_LEFT)
 		if left == 0 {
 			camera.carry = 0
 			return
 		}
-		step := psx.lhu(ROTATE_CURVE + (ROTATE_TICKS - left) * 2)
-		yaw := psx.lhu(CAMERA_YAW) + sign * step
-		psx.sh(CAMERA_YAW, yaw & 0xfff)
-		psx.sb(ROTATE_LEFT, left - 1)
+		step := cpu.lhu(ROTATE_CURVE + (ROTATE_TICKS - left) * 2)
+		yaw := cpu.lhu(CAMERA_YAW) + sign * step
+		cpu.sh(CAMERA_YAW, yaw & 0xfff)
+		cpu.sb(ROTATE_LEFT, left - 1)
 	}
 }

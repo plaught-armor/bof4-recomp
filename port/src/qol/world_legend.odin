@@ -16,7 +16,8 @@
 package qol
 
 import "core:strings"
-import "ps:psx"
+import host "ps:psx/host"
+import render "ps:psx/render"
 
 @(private = "file")
 LEGEND_PAGE_X :: 640
@@ -131,13 +132,13 @@ world_legend_vblank :: proc() {
 slot_text :: proc(b: Slot_Button) -> string {
 	switch b {
 	case .Triangle:
-		return button_label(psx.PAD_TRIANGLE)
+		return button_label(host.PAD_TRIANGLE)
 	case .Circle:
-		return button_label(psx.PAD_CIRCLE)
+		return button_label(host.PAD_CIRCLE)
 	case .Square:
-		return button_label(psx.PAD_SQUARE)
+		return button_label(host.PAD_SQUARE)
 	case .Select:
-		return button_label(psx.PAD_SELECT)
+		return button_label(host.PAD_SELECT)
 	case .Confirm:
 		mask := action_mask(.Confirm)
 		if mask == 0 {
@@ -145,18 +146,18 @@ slot_text :: proc(b: Slot_Button) -> string {
 		}
 		return button_label(mask & (~mask + 1))
 	case .Menu:
-		if psx.input_device() == .PlayStation {
+		if host.input_device() == .PlayStation {
 			return "START"
 		}
-		return button_label(psx.PAD_START)
+		return button_label(host.PAD_START)
 	case .Shoulders:
-		l1, r1 := button_label(psx.PAD_L1), button_label(psx.PAD_R1)
+		l1, r1 := button_label(host.PAD_L1), button_label(host.PAD_R1)
 		if l1 == "" || r1 == "" {
 			return ""
 		}
 		text := strings.concatenate({l1, "/", r1}, context.temp_allocator)
 		if len(text) > 5 {
-			l1, r1 = button_label(psx.PAD_L1, true), button_label(psx.PAD_R1, true)
+			l1, r1 = button_label(host.PAD_L1, true), button_label(host.PAD_R1, true)
 			text = strings.concatenate({l1, "/", r1}, context.temp_allocator)
 		}
 		return text
@@ -169,12 +170,12 @@ slot_text :: proc(b: Slot_Button) -> string {
 @(private = "file")
 button_label :: proc(bit: u16, short := false) -> string {
 	name: string
-	switch device := psx.input_device(); device {
+	switch device := host.input_device(); device {
 	case .PlayStation:
 		return ""
 	case .Keyboard:
 		names: [1]string
-		if psx.key_sources(bit, names[:]) == 0 {
+		if host.key_sources(bit, names[:]) == 0 {
 			return ""
 		}
 		if short {
@@ -182,7 +183,7 @@ button_label :: proc(bit: u16, short := false) -> string {
 		}
 		name = key_label(names[0])
 	case .Xbox, .Nintendo:
-		c, ok := psx.pad_source(bit)
+		c, ok := host.pad_source(bit)
 		if !ok {
 			return ""
 		}
@@ -199,7 +200,7 @@ button_label :: proc(bit: u16, short := false) -> string {
 
 // Two-character names of the shoulder buttons for the "L1/R1" legend.
 @(private = "file")
-PAD_GLYPHS_SHORT := [psx.Input_Device][psx.Pad_Control]string {
+PAD_GLYPHS_SHORT := [host.Input_Device][host.Pad_Control]string {
 	.Keyboard    = {},
 	.PlayStation = {},
 	.Xbox        = #partial {.Left_Shoulder = "LB", .Right_Shoulder = "RB"},
@@ -327,7 +328,7 @@ slot_hash :: proc(s: Slot, p: Slot_Pixels) -> u32 {
 slot_read :: proc(s: Slot) -> (p: Slot_Pixels) {
 	// 8bpp texels are the bytes of the page's halfwords, low byte first.
 	for y in 0 ..< s.h {
-		row := ([^]u8)(psx.vram_at(LEGEND_PAGE_X, i32(s.v + y)))
+		row := ([^]u8)(render.vram_at(LEGEND_PAGE_X, i32(s.v + y)))
 		copy(p[y][:s.w], row[s.u:][:s.w])
 	}
 	return p
@@ -338,7 +339,7 @@ slot_write :: proc(s: Slot, p: Slot_Pixels) {
 	for y in 0 ..< s.h {
 		for x in 0 ..< s.w {
 			u := s.u + x
-			w := psx.vram_at(i32(LEGEND_PAGE_X + u / 2), i32(s.v + y))
+			w := render.vram_at(i32(LEGEND_PAGE_X + u / 2), i32(s.v + y))
 			shift := 8 * uint(u & 1)
 			w^ = w^ &~ (0xff << shift) | u16(p[y][x]) << shift
 		}

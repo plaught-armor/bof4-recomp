@@ -18,7 +18,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -66,7 +66,7 @@ ANGLE_TURN :: 0x1000
 
 @(private = "file")
 shake: struct {
-	view_build: psx.Func_Proc,
+	view_build: cpu.Func_Proc,
 	frame:      u32,
 	// Each field's value at the last two game frames, and the correction the
 	// current frame's view applies to it.
@@ -78,7 +78,7 @@ shake: struct {
 
 @(private)
 shake_init :: proc() -> bool {
-	original, ok := psx.hook(VIEW_BUILD, view_build)
+	original, ok := cpu.hook(VIEW_BUILD, view_build)
 	if !ok {
 		fmt.eprintf("qol: view builder %08x not found\n", VIEW_BUILD)
 		return false
@@ -94,7 +94,7 @@ view_build :: proc() {
 		shake.view_build()
 		return
 	}
-	frame := psx.lw(GAME_FRAME)
+	frame := cpu.lw(GAME_FRAME)
 	if !shake.primed || frame != shake.frame {
 		shake_step(frame)
 	}
@@ -153,16 +153,16 @@ field_delta :: proc(kind: Field_Kind, to, from: i64) -> i64 {
 @(private)
 field_read :: proc(f: View_Field) -> u32 {
 	if f.kind == .Position {
-		return psx.lw(f.addr)
+		return cpu.lw(f.addr)
 	}
-	return psx.lh(f.addr)
+	return cpu.lh(f.addr)
 }
 
 @(private)
 field_write :: proc(f: View_Field, v: u32) {
 	if f.kind == .Position {
-		psx.sw(f.addr, v)
+		cpu.sw(f.addr, v)
 		return
 	}
-	psx.sh(f.addr, v)
+	cpu.sh(f.addr, v)
 }

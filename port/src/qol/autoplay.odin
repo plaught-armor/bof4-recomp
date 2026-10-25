@@ -18,7 +18,7 @@
 // replay's last entry. Commands:
 //
 //   wait N            N vblanks
-//   press BUTTON [N]  hold a button (psx.PAD_NAMES) for N vblanks (default 4)
+//   press BUTTON [N]  hold a button (host.PAD_NAMES) for N vblanks (default 4)
 //   stick DEG N       push the left stick toward world angle DEG (0 = -z,
 //                     clockwise) for N vblanks
 //   goto X Z          walk the leader to tile X, Z along the collision grid
@@ -68,7 +68,7 @@
 //                     the leader (a town whose levels the walk cannot climb
 //                     between is surveyed a warp per door)
 //   clock N           run the CPU at N times the PS1's clock from here
-//                     (psx.clock_mul; testing only)
+//                     (io.clock_mul; testing only)
 //   quit              exit
 //
 // Every command but quit gives up after its timeout (`timeout N` sets it for
@@ -84,7 +84,9 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
+import io "ps:psx/io"
 
 import "ps:core"
 
@@ -335,7 +337,7 @@ auto: struct {
 	fighters: [PARTY_SLOT_COUNT]u32,
 	// `boss N`: the BOSS file the next battle loads, 0 none.
 	boss:     u32,
-	file_load: psx.Func_Proc,
+	file_load: cpu.Func_Proc,
 	// Game mode and map last seen, to log changes.
 	seen:    [2]u32,
 	// Choices seen since the leader last had control: a hash of the string
@@ -438,7 +440,7 @@ autoplay_init :: proc() -> bool {
 	// Ends the script: a run that reaches it passed.
 	append(&auto.steps, Step{op = .Quit, line = len(lines)})
 	ok: bool
-	auto.file_load, ok = psx.hook(FILE_LOAD, file_load)
+	auto.file_load, ok = cpu.hook(FILE_LOAD, file_load)
 	if !ok {
 		fmt.eprintf("BOF4_AUTO: file loader %08x not found\n", FILE_LOAD)
 	}
@@ -449,11 +451,11 @@ autoplay_init :: proc() -> bool {
 // encounter writes the area until then, so an earlier write does not last.
 @(private = "file")
 file_load :: proc() {
-	file := psx.cpu.r[4]
+	file := cpu.state.r[4]
 	if auto.boss != 0 && file >= AREAB_FILE && file <= AREAB_LAST {
-		psx.sb(BATTLE_AREA, auto.boss)
-		psx.sb(BATTLE_BOSS, auto.boss)
-		psx.cpu.r[4] = AREAB_LAST + auto.boss
+		cpu.sb(BATTLE_AREA, auto.boss)
+		cpu.sb(BATTLE_BOSS, auto.boss)
+		cpu.state.r[4] = AREAB_LAST + auto.boss
 		auto.boss = 0
 	}
 	auto.file_load()
@@ -481,7 +483,7 @@ parse_step :: proc(line: string) -> (s: Step, ok: bool) {
 		if len(words) < 2 {
 			return
 		}
-		for n in psx.PAD_NAMES {
+		for n in host.PAD_NAMES {
 			if n.name == words[1] {
 				s.a = i32(n.bit)
 			}
@@ -596,43 +598,43 @@ parse_step :: proc(line: string) -> (s: Step, ok: bool) {
 // Once per vblank, from config.odin's vblank.
 @(private)
 autoplay_vblank :: proc() {
-	if psx.preload_child {
+	if io.preload_child {
 		return
 	}
 	if auto.cheat {
 		cheat()
 	}
 	// A replay (BOF4_REPLAY) leading up to the script plays out untouched.
-	if len(auto.steps) == 0 || psx.host_presents() <= psx.replay_end {
+	if len(auto.steps) == 0 || host.host_presents() <= host.replay_end {
 		return
 	}
 	auto.ticker += 1
-	psx.auto_pad, psx.auto_stick = 0, {}
+	host.auto_pad, host.auto_stick = 0, {}
 	if auto.stuck > 0 {
 		// Let the snapshot be drawn, then give up.
 		auto.stuck -= 1
 		if auto.stuck == 0 {
-			psx.ram_dump_env()
+			cpu.ram_dump_env()
 			os.exit(3)
 		}
 		return
 	}
-	mode := psx.lhu(GAME_MODE)
-	seen := [2]u32{mode, psx.lhu(MAP_ID)}
+	mode := cpu.lhu(GAME_MODE)
+	seen := [2]u32{mode, cpu.lhu(MAP_ID)}
 	if seen != auto.seen {
 		auto.seen = seen
-		fmt.eprintfln("autoplay: mode %d map %04x at present %d", seen[0], seen[1], psx.host_presents())
+		fmt.eprintfln("autoplay: mode %d map %04x at present %d", seen[0], seen[1], host.host_presents())
 	}
 	// Menus (a shop) keep an info box open; only the field's boxes are
 	// dialogue, and only while they hold the leader (the pointer outlives
 	// the box, and a confirm then talks to whoever the leader faces).
-	box := psx.lw(TEXT_BOX)
+	box := cpu.lw(TEXT_BOX)
 	auto.control_t = auto.control_t + 1 if has_control() else 0
 	if auto.control_t > SETTLE {
 		auto.choice_count = 0
 	}
-	if box != 0 && psx.lbu(box) != BOX_STATE_CHOICE {
-		auto.question = text_hash(psx.lw(box + BOX_TEXT))
+	if box != 0 && cpu.lbu(box) != BOX_STATE_CHOICE {
+		auto.question = text_hash(cpu.lw(box + BOX_TEXT))
 	}
 	// The world map has no text boxes: a box left from before would take
 	// a confirm meant for nothing and enter the place again.
@@ -643,7 +645,7 @@ autoplay_vblank :: proc() {
 		// The script presses everything.
 	} else if haggling() {
 		haggle()
-	} else if box != 0 && psx.lbu(box) == BOX_STATE_CHOICE && mode != MODE_BATTLE && !has_control() {
+	} else if box != 0 && cpu.lbu(box) == BOX_STATE_CHOICE && mode != MODE_BATTLE && !has_control() {
 		// A choice holds the leader; with control back the box is stale,
 		// and a confirm would talk to whoever the leader faces.
 		choose(box)
@@ -653,10 +655,10 @@ autoplay_vblank :: proc() {
 		auto.choice = 0
 		if auto.qte && mode == MODE_BATTLE && timed_acting() {
 			if timed_cue_left() == 1 {
-				psx.auto_pad |= confirm_button()
+				host.auto_pad |= confirm_button()
 			}
 		} else if !auto.no_pulse && auto.ticker % PULSE < PULSE_ON {
-			psx.auto_pad |= confirm_button()
+			host.auto_pad |= confirm_button()
 		}
 	} else if mode == MODE_MENU {
 		// A walk can bump a shopkeeper open; leave the shop.
@@ -673,8 +675,8 @@ autoplay_vblank :: proc() {
 	}
 	auto.ticks += 1
 	if auto.ticks > auto.timeout {
-		fmt.eprintfln("autoplay: stuck at line %d (%v) after %d vblanks, map %04x mode %d at present %d: %s", step.line, step.op, auto.ticks, psx.lhu(MAP_ID), mode, psx.host_presents(), auto.why)
-		psx.snapshot_now()
+		fmt.eprintfln("autoplay: stuck at line %d (%v) after %d vblanks, map %04x mode %d at present %d: %s", step.line, step.op, auto.ticks, cpu.lhu(MAP_ID), mode, host.host_presents(), auto.why)
+		host.snapshot_now()
 		auto.stuck = 10
 	}
 }
@@ -685,9 +687,9 @@ trace_line :: proc(step: Step) {
 	pos := obj + OBJ_POS
 	fmt.eprintfln(
 		"autoplay: trace %d line %d map %04x.%d mode %d leader %.2f,%.2f height %.2f layer %d state %d stick %.2f,%.2f pad %04x: %s",
-		psx.host_presents(), step.line, psx.lhu(MAP_ID), psx.lbu(MAP_SECTION), psx.lhu(GAME_MODE),
-		f64(i32(psx.lw(pos))) / 0x10000, f64(i32(psx.lw(pos + 8))) / 0x10000, f64(i32(psx.lw(pos + 4))) / 0x10000, psx.lbu(pos + POS_LAYER), psx.lbu(obj + OBJ_STATE),
-		psx.auto_stick.x, psx.auto_stick.y, psx.auto_pad, auto.why,
+		host.host_presents(), step.line, cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION), cpu.lhu(GAME_MODE),
+		f64(i32(cpu.lw(pos))) / 0x10000, f64(i32(cpu.lw(pos + 8))) / 0x10000, f64(i32(cpu.lw(pos + 4))) / 0x10000, cpu.lbu(pos + POS_LAYER), cpu.lbu(obj + OBJ_STATE),
+		host.auto_stick.x, host.auto_stick.y, host.auto_pad, auto.why,
 	)
 }
 
@@ -710,41 +712,41 @@ run_step :: proc(s: ^Step) -> bool {
 		auto.timeout = s.a
 		return true
 	case .Press:
-		psx.auto_pad |= u16(s.a)
+		host.auto_pad |= u16(s.a)
 		return auto.ticks >= s.b
 	case .Stick:
 		steer(f64(s.a))
 		return auto.ticks >= s.b
 	case .Goto:
 		// An exit tile is reached when the map or section changes.
-		place := [3]u32{psx.lhu(MAP_ID), psx.lbu(MAP_SECTION), 0}
+		place := [3]u32{cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION), 0}
 		if auto.ticks == 0 {
 			auto.place = place
 		}
 		return place != auto.place || walk(s.a, s.b)
 	case .Until_Map:
-		return psx.lhu(MAP_ID) == u32(s.a)
+		return cpu.lhu(MAP_ID) == u32(s.a)
 	case .Until_Field:
 		return settle(has_control())
 	case .Until_World:
 		return settle(on_world_map())
 	case .Log:
 		pos := leader_obj() + OBJ_POS
-		x, z := (i32(psx.lw(pos)) + 0x8000) >> 16, (i32(psx.lw(pos + 8)) + 0x8000) >> 16
-		fmt.eprintfln("autoplay: %s (map %04x.%d tile %d,%d, present %d)", s.text, psx.lhu(MAP_ID), psx.lbu(MAP_SECTION), x, z, psx.host_presents())
+		x, z := (i32(cpu.lw(pos)) + 0x8000) >> 16, (i32(cpu.lw(pos + 8)) + 0x8000) >> 16
+		fmt.eprintfln("autoplay: %s (map %04x.%d tile %d,%d, present %d)", s.text, cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION), x, z, host.host_presents())
 		return true
 	case .Poke:
-		psx.sb(u32(s.a), u32(s.b))
+		cpu.sb(u32(s.a), u32(s.b))
 		fmt.eprintfln("autoplay: poke %08x = %d", u32(s.a), s.b)
 		return true
 	case .Point:
-		psx.pointer_move({f32(s.a), f32(s.b)})
+		host.pointer_move({f32(s.a), f32(s.b)})
 		return true
 	case .Grid:
 		print_grid()
 		return true
 	case .Snap:
-		psx.snapshot_now()
+		host.snapshot_now()
 		return true
 	case .Edit:
 		map_editor.toggle = true
@@ -770,14 +772,14 @@ run_step :: proc(s: ^Step) -> bool {
 	case .Doors:
 		return doors_tick(s.a == 1)
 	case .Clock:
-		psx.clock_set(u64(s.a))
+		io.clock_set(u64(s.a))
 		return true
 	case .Boss:
 		auto.boss = u32(s.a)
 		return true
 	case .Quit:
-		fmt.eprintfln("autoplay: done at present %d", psx.host_presents())
-		psx.ram_dump_env()
+		fmt.eprintfln("autoplay: done at present %d", host.host_presents())
+		cpu.ram_dump_env()
 		os.exit(0)
 	}
 	return true
@@ -791,7 +793,7 @@ fight_tick :: proc(s: ^Step) -> bool {
 	if auto.ticks == 0 {
 		s.b = 0
 	}
-	if psx.lhu(GAME_MODE) == MODE_BATTLE {
+	if cpu.lhu(GAME_MODE) == MODE_BATTLE {
 		s.b = 1
 		auto.why = "in battle"
 		return s.a != 0
@@ -805,8 +807,8 @@ fight_tick :: proc(s: ^Step) -> bool {
 		return false
 	}
 	auto.why = "no battle (encounters off here?)"
-	if psx.lbu(STEPS_LEFT) != 0xff {
-		psx.sb(STEPS_LEFT, 1)
+	if cpu.lbu(STEPS_LEFT) != 0xff {
+		cpu.sb(STEPS_LEFT, 1)
 	}
 	steer(f64((auto.ticks / FIGHT_PACE) % 2 * 180))
 	return false
@@ -834,7 +836,7 @@ doors_tick :: proc(near: bool) -> bool {
 			}
 		}
 	}
-	here := [2]u32{psx.lhu(MAP_ID), psx.lbu(MAP_SECTION)}
+	here := [2]u32{cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION)}
 	if dd.next >= n || near && dd.next != dd.only {
 		// A door may settle while the leader walks to the next.
 		for s, i in spots[:n] {
@@ -872,7 +874,7 @@ doors_tick :: proc(near: bool) -> bool {
 	} else if !done {
 		// The camera looks at the doorway from behind the leader.
 		auto.why = fmt.tprintf("facing door %04x.%d", s.world[0], s.world[1])
-		psx.sh(CAMERA_YAW, u32(i32(math.round(s.angle * 4096 / 360))) & 0xfff)
+		cpu.sh(CAMERA_YAW, u32(i32(math.round(s.angle * 4096 / 360))) & 0xfff)
 		done = dd.t > DOORS_FACE
 	}
 	if !done {
@@ -891,7 +893,7 @@ doors_tick :: proc(near: bool) -> bool {
 settle :: proc(ready: bool) -> bool {
 	// Control right after a map change can be the old map's, before the load
 	// starts. A door's load happens behind the fade, with control still on.
-	place := [3]u32{psx.lhu(MAP_ID), psx.lbu(MAP_SECTION), psx.lw(MAP_BLOCK)}
+	place := [3]u32{cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION), cpu.lw(MAP_BLOCK)}
 	still := ready && screen_fade() == 0 && place == auto.place
 	auto.place = place
 	auto.settled = still ? auto.settled + 1 : 0
@@ -900,13 +902,13 @@ settle :: proc(ready: bool) -> bool {
 
 @(private = "file")
 map_place :: proc() -> [2]u32 {
-	return {psx.lhu(MAP_ID), psx.lbu(MAP_SECTION)}
+	return {cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION)}
 }
 
 @(private = "file")
 leader_tile :: proc() -> [2]i32 {
 	pos := leader_obj() + OBJ_POS
-	return {(i32(psx.lw(pos)) + 0x8000) >> 16, (i32(psx.lw(pos + 8)) + 0x8000) >> 16}
+	return {(i32(cpu.lw(pos)) + 0x8000) >> 16, (i32(cpu.lw(pos + 8)) + 0x8000) >> 16}
 }
 
 // One vblank of `tour`: true when every exit has been visited.
@@ -956,8 +958,8 @@ tour_tick :: proc() -> bool {
 			e := t.exits[t.next]
 			p := map_place()
 			at := leader_tile()
-			fmt.eprintfln("autoplay: tour exit %d of map %04x.%d at %d,%d leads to map %04x.%d tile %d,%d (present %d)", t.next, t.place[0], t.place[1], e.x, e.y, p[0], p[1], at.x, at.y, psx.host_presents())
-			psx.snapshot_now()
+			fmt.eprintfln("autoplay: tour exit %d of map %04x.%d at %d,%d leads to map %04x.%d tile %d,%d (present %d)", t.next, t.place[0], t.place[1], e.x, e.y, p[0], p[1], at.x, at.y, host.host_presents())
+			host.snapshot_now()
 			back: [1][2]i32
 			if p[0] & WORLD_MAP_MASK == WORLD_MAP || tour_exits(back[:]) == 0 {
 				back[0] = {-1, -1}
@@ -975,7 +977,7 @@ tour_tick :: proc() -> bool {
 		} else if t.back.x < 0 {
 			auto.why = "no way back, confirming"
 			if auto.ticker % PULSE < PULSE_ON {
-				psx.auto_pad |= confirm_button()
+				host.auto_pad |= confirm_button()
 			}
 		} else {
 			walk(t.back.x, t.back.y)
@@ -983,10 +985,10 @@ tour_tick :: proc() -> bool {
 	case .Return:
 		if settle(has_control()) {
 			if map_place() != t.place {
-				fmt.eprintfln("autoplay: tour exit %d of map %04x.%d came back to map %04x.%d", t.next, t.place[0], t.place[1], psx.lhu(MAP_ID), psx.lbu(MAP_SECTION))
+				fmt.eprintfln("autoplay: tour exit %d of map %04x.%d came back to map %04x.%d", t.next, t.place[0], t.place[1], cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION))
 				t.phase = .Lost
 			} else {
-				psx.snapshot_now()
+				host.snapshot_now()
 				t.next += 1
 				t.phase = .Go
 			}
@@ -998,7 +1000,7 @@ tour_tick :: proc() -> bool {
 		// Each phase gets the whole step timeout.
 		auto.ticks = 0
 		auto.settled = 0
-		auto.place = {psx.lhu(MAP_ID), psx.lbu(MAP_SECTION), psx.lw(MAP_BLOCK)}
+		auto.place = {cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION), cpu.lw(MAP_BLOCK)}
 	}
 	return false
 }
@@ -1010,7 +1012,7 @@ talk_tick :: proc() -> bool {
 	tk := &auto.talk
 	tk.t += 1
 	leader := leader_tile()
-	place := [2]u32{psx.lhu(MAP_ID), psx.lbu(MAP_SECTION)}
+	place := [2]u32{cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION)}
 	if !tk.begun {
 		tk.place, tk.begun = place, true
 	} else if place != tk.place && has_control() {
@@ -1066,7 +1068,7 @@ talk_tick :: proc() -> bool {
 				tk.n_stairs += 1
 				return false
 			}
-			fmt.eprintfln("autoplay: talked to everyone on map %04x.%d", psx.lhu(MAP_ID), psx.lbu(MAP_SECTION))
+			fmt.eprintfln("autoplay: talked to everyone on map %04x.%d", cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION))
 			tk^ = {}
 			return true
 		}
@@ -1085,7 +1087,7 @@ talk_tick :: proc() -> bool {
 			}
 			tk.interrupted = false
 			if max(abs(at.x - leader.x), abs(at.y - leader.y)) <= 1 {
-				fmt.eprintfln("autoplay: talked to npc %d at %d,%d on the way (present %d)", tk.npc, at.x, at.y, psx.host_presents())
+				fmt.eprintfln("autoplay: talked to npc %d at %d,%d on the way (present %d)", tk.npc, at.x, at.y, host.host_presents())
 				tk.done[tk.npc], tk.phase = true, .Pick
 				return false
 			}
@@ -1101,7 +1103,7 @@ talk_tick :: proc() -> bool {
 		}
 		// The open side of the NPC nearest the leader.
 		pos := leader_obj() + OBJ_POS
-		g, ok := grid_of(psx.lbu(pos + POS_LAYER))
+		g, ok := grid_of(cpu.lbu(pos + POS_LAYER))
 		goal, goal_d := [2]i32{-1, -1}, i32(max(i32))
 		for d in ([4][2]i32{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
 			n := at + d
@@ -1118,7 +1120,7 @@ talk_tick :: proc() -> bool {
 	case .Face:
 		at := npc_tile(tk.npc)
 		pos := leader_obj() + OBJ_POS
-		px, pz := f64(i32(psx.lw(pos))) / 0x10000, f64(i32(psx.lw(pos + 8))) / 0x10000
+		px, pz := f64(i32(cpu.lw(pos))) / 0x10000, f64(i32(cpu.lw(pos + 8))) / 0x10000
 		steer(math.to_degrees(math.atan2(f64(at.x) - px, -(f64(at.y) - pz))))
 		if tk.t > TALK_FACE {
 			tk.phase, tk.t = .Chat, 0
@@ -1130,14 +1132,14 @@ talk_tick :: proc() -> bool {
 			back_out()
 		} else if tk.talked && tk.t > SETTLE {
 			at := npc_tile(tk.npc)
-			fmt.eprintfln("autoplay: talked to npc %d at %d,%d (present %d)", tk.npc, at.x, at.y, psx.host_presents())
+			fmt.eprintfln("autoplay: talked to npc %d at %d,%d (present %d)", tk.npc, at.x, at.y, host.host_presents())
 			tk.done[tk.npc], tk.phase = true, .Pick
 		} else if !tk.talked && tk.t > TALK_WAIT {
 			at := npc_tile(tk.npc)
 			fmt.eprintfln("autoplay: npc %d at %d,%d had nothing to say", tk.npc, at.x, at.y)
 			tk.done[tk.npc], tk.phase = true, .Pick
 		} else if !tk.talked && auto.ticker % PULSE < PULSE_ON {
-			psx.auto_pad |= confirm_button()
+			host.auto_pad |= confirm_button()
 		}
 	case .Climb:
 		// Walk onto the stair, then push along its direction until the
@@ -1166,7 +1168,7 @@ talk_tick :: proc() -> bool {
 
 @(private = "file")
 leader_layer :: proc() -> u32 {
-	return psx.lbu(leader_obj() + OBJ_POS + POS_LAYER)
+	return cpu.lbu(leader_obj() + OBJ_POS + POS_LAYER)
 }
 
 // The nearest untried stair (kind 0xc cell) on the leader's layer, when an
@@ -1178,7 +1180,7 @@ talk_stair :: proc(leader: [2]i32) -> (stair: [3]i32, ok: bool) {
 	others := false
 	for i in u32(0) ..< NPC_COUNT {
 		npc := NPCS + i * NPC_SIZE
-		if !tk.done[i] && psx.lbu(npc) != 0 && psx.lbu(npc + OBJ_POS + POS_LAYER) != layer {
+		if !tk.done[i] && cpu.lbu(npc) != 0 && cpu.lbu(npc + OBJ_POS + POS_LAYER) != layer {
 			others = true
 		}
 	}
@@ -1205,13 +1207,13 @@ talk_stair :: proc(leader: [2]i32) -> (stair: [3]i32, ok: bool) {
 @(private = "file")
 npc_here :: proc(i: u32) -> bool {
 	npc := NPCS + i * NPC_SIZE
-	return psx.lbu(npc) != 0 && psx.lbu(npc + OBJ_POS + POS_LAYER) == psx.lbu(leader_obj() + OBJ_POS + POS_LAYER)
+	return cpu.lbu(npc) != 0 && cpu.lbu(npc + OBJ_POS + POS_LAYER) == cpu.lbu(leader_obj() + OBJ_POS + POS_LAYER)
 }
 
 @(private = "file")
 npc_tile :: proc(i: u32) -> [2]i32 {
 	pos := NPCS + i * NPC_SIZE + OBJ_POS
-	return {(i32(psx.lw(pos)) + 0x8000) >> 16, (i32(psx.lw(pos + 8)) + 0x8000) >> 16}
+	return {(i32(cpu.lw(pos)) + 0x8000) >> 16, (i32(cpu.lw(pos + 8)) + 0x8000) >> 16}
 }
 
 // Fill out with one tile per group of touching exit tiles the leader can
@@ -1219,7 +1221,7 @@ npc_tile :: proc(i: u32) -> [2]i32 {
 @(private = "file")
 tour_exits :: proc(out: [][2]i32) -> int {
 	pos := leader_obj() + OBJ_POS
-	g, ok := grid_of(psx.lbu(pos + POS_LAYER))
+	g, ok := grid_of(cpu.lbu(pos + POS_LAYER))
 	if !ok || g.w > GRID_MAX || g.h > GRID_MAX {
 		return 0
 	}
@@ -1285,7 +1287,7 @@ tour_exits :: proc(out: [][2]i32) -> int {
 // next the next time (wrapping), moving the cursor with Down.
 @(private = "file")
 choose :: proc(box: u32) {
-	text := psx.lw(box + BOX_TEXT)
+	text := cpu.lw(box + BOX_TEXT)
 	if text != auto.choice {
 		auto.choice = text
 		// "Yes|No" alone says little: the question before it tells choices apart.
@@ -1311,10 +1313,10 @@ choose :: proc(box: u32) {
 		return
 	}
 	// The box takes a first press before the cursor moves.
-	if psx.lbu(box + BOX_STEP) != 0 && int(psx.lbu(box + BOX_CURSOR)) != auto.option {
-		psx.auto_pad |= psx.PAD_DOWN
+	if cpu.lbu(box + BOX_STEP) != 0 && int(cpu.lbu(box + BOX_CURSOR)) != auto.option {
+		host.auto_pad |= host.PAD_DOWN
 	} else {
-		psx.auto_pad |= confirm_button()
+		host.auto_pad |= confirm_button()
 	}
 }
 
@@ -1323,7 +1325,7 @@ choose :: proc(box: u32) {
 text_hash :: proc(text: u32) -> u32 {
 	h := u32(2166136261)
 	for i in u32(0) ..< CHOICE_TEXT_MAX {
-		b := psx.lbu(text + i)
+		b := cpu.lbu(text + i)
 		if b == 0 {
 			break
 		}
@@ -1338,7 +1340,7 @@ text_line :: proc(text: u32) -> string {
 	buf: [CHOICE_TEXT_MAX]u8
 	n := 0
 	for ; n < CHOICE_TEXT_MAX; n += 1 {
-		b := psx.lbu(text + u32(n))
+		b := cpu.lbu(text + u32(n))
 		if b == 0 {
 			break
 		}
@@ -1352,7 +1354,7 @@ text_line :: proc(text: u32) -> string {
 choice_options :: proc(text: u32) -> int {
 	n := 1
 	for i in u32(0) ..< CHOICE_TEXT_MAX {
-		switch psx.lbu(text + i) {
+		switch cpu.lbu(text + i) {
 		case 0:
 			return n
 		case 1:
@@ -1384,7 +1386,7 @@ TRIANGLE_COST :: 5 // gold Triangle needs
 
 @(private = "file")
 drinking :: proc() -> bool {
-	return psx.lw(SCE04_CALL) == SCE04_ENTRY && psx.lbu(CONTEST) == CONTEST_TURN
+	return cpu.lw(SCE04_CALL) == SCE04_ENTRY && cpu.lbu(CONTEST) == CONTEST_TURN
 }
 
 @(private = "file")
@@ -1392,12 +1394,12 @@ drink :: proc() {
 	if auto.ticker % PULSE >= PULSE_ON {
 		return
 	}
-	if psx.lbu(CONTEST + 4) != DRINK_CIRCLE {
-		psx.auto_pad |= psx.PAD_CIRCLE
-	} else if psx.lw(ZENNY) >= TRIANGLE_COST {
-		psx.auto_pad |= psx.PAD_TRIANGLE
+	if cpu.lbu(CONTEST + 4) != DRINK_CIRCLE {
+		host.auto_pad |= host.PAD_CIRCLE
+	} else if cpu.lw(ZENNY) >= TRIANGLE_COST {
+		host.auto_pad |= host.PAD_TRIANGLE
 	} else {
-		psx.auto_pad |= psx.PAD_SQUARE
+		host.auto_pad |= host.PAD_SQUARE
 	}
 }
 
@@ -1423,65 +1425,65 @@ HAGGLE_PRICE :: 123
 
 @(private = "file")
 haggling :: proc() -> bool {
-	return psx.lw(HAGGLE_PHASES + 4) == HAGGLE_ENTRY && psx.lbu(HAGGLE) == HAGGLE_ENTERING
+	return cpu.lw(HAGGLE_PHASES + 4) == HAGGLE_ENTRY && cpu.lbu(HAGGLE) == HAGGLE_ENTERING
 }
 
 @(private = "file")
 haggle :: proc() {
-	rest := HAGGLE_PRICE - i32(i16(psx.lhu(HAGGLE_TOTAL)))
-	psx.sh(HAGGLE_OFFER, u32(max(rest, 1)))
+	rest := HAGGLE_PRICE - i32(i16(cpu.lhu(HAGGLE_TOTAL)))
+	cpu.sh(HAGGLE_OFFER, u32(max(rest, 1)))
 	if auto.ticker % PULSE < PULSE_ON {
-		psx.auto_pad |= confirm_button()
+		host.auto_pad |= confirm_button()
 	}
 }
 
 @(private = "file")
 confirm_button :: proc() -> u16 {
-	if m := u16(psx.lhu(CONFIRM_MASK)); m != 0 {
+	if m := u16(cpu.lhu(CONFIRM_MASK)); m != 0 {
 		return m
 	}
-	return psx.PAD_CIRCLE
+	return host.PAD_CIRCLE
 }
 
 // Back out of a menu a talk opened (a shop): cancel is pulsed while one
 // shows, outside the modes the main tick confirms through.
 @(private = "file")
 back_out :: proc() {
-	mode := psx.lhu(GAME_MODE)
+	mode := cpu.lhu(GAME_MODE)
 	if mode != MODE_FIELD && mode != MODE_EVENT && mode != MODE_BATTLE && auto.ticker % PULSE < PULSE_ON {
-		psx.auto_pad |= cancel_button()
+		host.auto_pad |= cancel_button()
 	}
 }
 
 @(private = "file")
 cancel_button :: proc() -> u16 {
-	if m := u16(psx.lhu(CONFIRM_MASK + 2)); m != 0 {
+	if m := u16(cpu.lhu(CONFIRM_MASK + 2)); m != 0 {
 		return m
 	}
-	return psx.PAD_TRIANGLE
+	return host.PAD_TRIANGLE
 }
 
 @(private = "file")
 has_control :: proc() -> bool {
-	if psx.lw(SLOT_ENGINE) != FLD_MAIN_ID || psx.lhu(GAME_MODE) != MODE_FIELD {
+	if cpu.lw(SLOT_ENGINE) != FLD_MAIN_ID || cpu.lhu(GAME_MODE) != MODE_FIELD {
 		return false
 	}
-	state := psx.lbu(leader_obj() + OBJ_STATE)
+	state := cpu.lbu(leader_obj() + OBJ_STATE)
 	return state == STATE_CONTROL || state == STATE_IDLE
 }
 
 // The world map is a field mode with the leader in a state of its own.
 @(private)
 on_world_map :: proc() -> bool {
-	return psx.lhu(GAME_MODE) == MODE_FIELD && psx.lbu(leader_obj() + OBJ_STATE) == STATE_WORLD
+	return cpu.lhu(GAME_MODE) == MODE_FIELD && cpu.lbu(leader_obj() + OBJ_STATE) == STATE_WORLD
 }
 
 // Push the left stick toward world angle `degrees`.
 @(private = "file")
 steer :: proc(degrees: f64) {
-	yaw := f64(psx.lhu(CAMERA_YAW)) * 360.0 / 4096
+	yaw := f64(cpu.lhu(CAMERA_YAW)) * 360.0 / 4096
 	a := math.to_radians(degrees - yaw)
-	psx.auto_stick = {f32(math.sin(a)), f32(-math.cos(a))}
+	host.auto_stick = {f32(math.sin(a)), f32(-math.cos(a))}
 }
 
 // One vblank of walking to tile (x, z): true on arrival. The way is the
@@ -1494,8 +1496,8 @@ walk :: proc(x, z: i32) -> bool {
 		return false
 	}
 	pos := leader_obj() + OBJ_POS
-	px := f64(i32(psx.lw(pos))) / 0x10000
-	pz := f64(i32(psx.lw(pos + 8))) / 0x10000
+	px := f64(i32(cpu.lw(pos))) / 0x10000
+	pz := f64(i32(cpu.lw(pos + 8))) / 0x10000
 	cx, cz := i32(math.floor(px + 0.5)), i32(math.floor(pz + 0.5))
 	if cx == x && cz == z {
 		// A door that switches at once (interiors.odin door_exit_at) leads
@@ -1508,9 +1510,9 @@ walk :: proc(x, z: i32) -> bool {
 		}
 		return true
 	}
-	g, ok := grid_of(psx.lbu(pos + POS_LAYER))
+	g, ok := grid_of(cpu.lbu(pos + POS_LAYER))
 	auto.goal = {x, z}
-	place := [3]u32{psx.lhu(MAP_ID), psx.lbu(MAP_SECTION), psx.lw(MAP_BLOCK)}
+	place := [3]u32{cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION), cpu.lw(MAP_BLOCK)}
 	if place != auto.blocked_at {
 		auto.blocked_at, auto.n_blocked = place, 0
 	}
@@ -1656,7 +1658,7 @@ step_allowed :: proc(a, b: u8) -> bool {
 	case 0x10, 0x12, 0x13, 0x30, 0x50, 0xa3, 0xff:
 		return false
 	case 0xa4:
-		if psx.lhu(FIELD_FLAGS) & 0x200 != 0 {
+		if cpu.lhu(FIELD_FLAGS) & 0x200 != 0 {
 			return false
 		}
 	}
@@ -1717,17 +1719,17 @@ autoplay_party_unhurt :: proc() -> bool {
 // of the records (recomputing their stats as it starts), found by name.
 @(private = "file")
 cheat :: proc() {
-	battle := psx.lhu(GAME_MODE) == MODE_BATTLE
+	battle := cpu.lhu(GAME_MODE) == MODE_BATTLE
 	if !battle {
 		auto.fighters = {}
 	}
 	for i in u32(0) ..< PARTY_SLOT_COUNT {
-		index := psx.lbu(PARTY_SLOTS + i)
+		index := cpu.lbu(PARTY_SLOTS + i)
 		if index >= CHAR_COUNT {
 			continue
 		}
 		rec := char_record(index)
-		psx.sh(rec + CHAR_HP, psx.lhu(rec + RECORD_HP_MAX))
+		cpu.sh(rec + CHAR_HP, cpu.lhu(rec + RECORD_HP_MAX))
 		if !battle {
 			continue
 		}
@@ -1739,26 +1741,26 @@ cheat :: proc() {
 		if at == 0 {
 			continue
 		}
-		psx.sh(at + CHAR_HP, psx.lhu(at + RECORD_HP_MAX))
+		cpu.sh(at + CHAR_HP, cpu.lhu(at + RECORD_HP_MAX))
 		if auto.hp_only {
 			continue
 		}
 		for s in u32(0) ..< 3 {
-			psx.sh(at + CHAR_PWR + 2 * s, CHEAT_STAT)
+			cpu.sh(at + CHAR_PWR + 2 * s, CHEAT_STAT)
 		}
 	}
 }
 
 @(private = "file")
 same_name :: proc(a, b: u32) -> bool {
-	return psx.lw(a) == psx.lw(b) && psx.lw(a + 4) == psx.lw(b + 4)
+	return cpu.lw(a) == cpu.lw(b) && cpu.lw(a + 4) == cpu.lw(b + 4)
 }
 
 // The battle's copy of record rec, 0 when none.
 @(private = "file")
 find_fighter :: proc(rec: u32) -> u32 {
 	for at := u32(FIGHTERS_FROM); at < FIGHTERS_TO; at += 4 {
-		if same_name(at, rec) && psx.lhu(at + RECORD_HP_MAX) == psx.lhu(rec + RECORD_HP_MAX) {
+		if same_name(at, rec) && cpu.lhu(at + RECORD_HP_MAX) == cpu.lhu(rec + RECORD_HP_MAX) {
 			return at
 		}
 	}
@@ -1772,13 +1774,13 @@ GRID_NEAR :: 3
 @(private = "file")
 print_grid :: proc() {
 	pos := leader_obj() + OBJ_POS
-	g, ok := grid_of(psx.lbu(pos + POS_LAYER))
+	g, ok := grid_of(cpu.lbu(pos + POS_LAYER))
 	if !ok {
 		fmt.eprintln("autoplay: no grid")
 		return
 	}
-	lx, lz := (i32(psx.lw(pos)) + 0x8000) >> 16, (i32(psx.lw(pos + 8)) + 0x8000) >> 16
-	fmt.eprintfln("autoplay: grid %dx%d of map %04x.%d, x across, z down", g.w, g.h, psx.lhu(MAP_ID), psx.lbu(MAP_SECTION))
+	lx, lz := (i32(cpu.lw(pos)) + 0x8000) >> 16, (i32(cpu.lw(pos + 8)) + 0x8000) >> 16
+	fmt.eprintfln("autoplay: grid %dx%d of map %04x.%d, x across, z down", g.w, g.h, cpu.lhu(MAP_ID), cpu.lbu(MAP_SECTION))
 	b := strings.builder_make(context.temp_allocator)
 	for z in 0 ..< g.h {
 		strings.builder_reset(&b)

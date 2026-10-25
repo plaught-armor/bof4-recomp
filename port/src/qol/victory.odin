@@ -25,7 +25,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -56,14 +56,14 @@ HOLD :: 45 // ticks a finished panel stays up
 
 @(private = "file")
 victory: struct {
-	tick:  psx.Func_Proc,
+	tick:  cpu.Func_Proc,
 	wait:  u32, // STATE | SUB << 8 of the wait being held, 0 none
 	held:  u32, // ticks since that wait's count ended
 }
 
 @(private)
 victory_init :: proc() -> bool {
-	original, ok := psx.hook_overlay(END_TICK, SLOT_ENGINE, END_ID, victory_tick)
+	original, ok := cpu.hook_overlay(END_TICK, SLOT_ENGINE, END_ID, victory_tick)
 	if !ok {
 		fmt.eprintf("qol: battle end function %08x not found\n", END_TICK)
 		return false
@@ -74,8 +74,8 @@ victory_init :: proc() -> bool {
 
 @(private = "file")
 victory_tick :: proc() {
-	state, sub := psx.lbu(STATE), psx.lbu(SUB)
-	if !config.battle_quick_victory || psx.lbu(BATTLE_STATE) != RESULTS || state > LAST_WAIT_STATE || sub != WAIT_SUB {
+	state, sub := cpu.lbu(STATE), cpu.lbu(SUB)
+	if !config.battle_quick_victory || cpu.lbu(BATTLE_STATE) != RESULTS || state > LAST_WAIT_STATE || sub != WAIT_SUB {
 		victory.wait = 0
 		victory.tick()
 		return
@@ -84,16 +84,16 @@ victory_tick :: proc() {
 	// of its own.
 	wait := state | sub << 8
 	if state == LEVEL_STATE {
-		wait |= psx.lbu(COUNT) << 16 | 1 << 24
+		wait |= cpu.lbu(COUNT) << 16 | 1 << 24
 	}
 	if wait != victory.wait {
 		victory.wait = wait
 		victory.held = 0
-		if state != LEVEL_STATE && psx.lbu(COUNT) > QUICK_COUNT {
-			psx.sb(COUNT, QUICK_COUNT)
+		if state != LEVEL_STATE && cpu.lbu(COUNT) > QUICK_COUNT {
+			cpu.sb(COUNT, QUICK_COUNT)
 		}
 	}
-	if state != LEVEL_STATE && psx.lbu(COUNT) != 0 {
+	if state != LEVEL_STATE && cpu.lbu(COUNT) != 0 {
 		victory.tick()
 		return
 	}
@@ -103,10 +103,10 @@ victory_tick :: proc() {
 		return
 	}
 	if .Game in core.trace.active {
-		core.tracef(.Game, "victory: state %d member %d, confirm pressed", state, psx.lbu(COUNT))
+		core.tracef(.Game, "victory: state %d member %d, confirm pressed", state, cpu.lbu(COUNT))
 	}
-	pressed := psx.lhu(PAD_PRESSED)
-	psx.sh(PAD_PRESSED, pressed | psx.lhu(CONFIRM_MASK))
+	pressed := cpu.lhu(PAD_PRESSED)
+	cpu.sh(PAD_PRESSED, pressed | cpu.lhu(CONFIRM_MASK))
 	victory.tick()
-	psx.sh(PAD_PRESSED, pressed)
+	cpu.sh(PAD_PRESSED, pressed)
 }

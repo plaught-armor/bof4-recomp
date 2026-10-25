@@ -29,7 +29,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -108,12 +108,12 @@ WINDOW_MEMBER :: 0x8
 
 @(private = "file")
 learning: struct {
-	check: psx.Func_Proc,
+	check: cpu.Func_Proc,
 }
 
 @(private)
 learning_init :: proc() -> bool {
-	original, ok := psx.hook_overlay(LEARN_CHECK, SLOT_ENGINE, ROUND_ID, learn_check)
+	original, ok := cpu.hook_overlay(LEARN_CHECK, SLOT_ENGINE, ROUND_ID, learn_check)
 	if !ok {
 		fmt.eprintf("qol: battle function %08x not found\n", LEARN_CHECK)
 		return false
@@ -128,9 +128,9 @@ learn_check :: proc() {
 		learning.check()
 		return
 	}
-	c := &psx.cpu
+	c := &cpu.state
 	skill := c.r[4] & 0xff
-	level := psx.lbu(SKILL_DATA + skill * SKILL_DATA_SIZE + LEARN_LEVEL) & 0xf
+	level := cpu.lbu(SKILL_DATA + skill * SKILL_DATA_SIZE + LEARN_LEVEL) & 0xf
 	if level == 0 {
 		c.r[2] = 0
 		return
@@ -139,13 +139,13 @@ learn_check :: proc() {
 	learner, found := u32(0), false
 	for member in u32(0) ..< PARTY_COUNT {
 		p := party_combatant(member)
-		if psx.lbu(p + COMBATANT_FLAGS) & COMBATANT_ACTIVE == 0 || psx.lhu(p + COMBATANT_HP) == 0 {
+		if cpu.lbu(p + COMBATANT_FLAGS) & COMBATANT_ACTIVE == 0 || cpu.lhu(p + COMBATANT_HP) == 0 {
 			continue
 		}
-		if !found || psx.lbu(p + COMBATANT_COMMAND) == COMMAND_GUARD {
+		if !found || cpu.lbu(p + COMBATANT_COMMAND) == COMMAND_GUARD {
 			learner, found = member, true
 		}
-		if psx.lbu(p + COMBATANT_COMMAND) == COMMAND_GUARD {
+		if cpu.lbu(p + COMBATANT_COMMAND) == COMMAND_GUARD {
 			break
 		}
 	}
@@ -156,12 +156,12 @@ learn_check :: proc() {
 	ra := c.r[31]
 	defer c.r[31] = ra
 	p := party_combatant(learner)
-	gauge, gauge_max := psx.lhu(p + COMBATANT_GAUGE), psx.lw(p + COMBATANT_GAUGE_MAX)
+	gauge, gauge_max := cpu.lhu(p + COMBATANT_GAUGE), cpu.lw(p + COMBATANT_GAUGE_MAX)
 	chance := i32(min(gauge * 100 / max(gauge_max, 1), GAUGE_PART_MAX))
-	if psx.lbu(p + COMBATANT_BOOST_STATE) == BOOST_ON && psx.lbu(p + COMBATANT_CHAR) < CHAR_COUNT {
+	if cpu.lbu(p + COMBATANT_BOOST_STATE) == BOOST_ON && cpu.lbu(p + COMBATANT_CHAR) < CHAR_COUNT {
 		chance += BOOST
 	}
-	chance = (chance + i32(psx.lbu(p + COMBATANT_LEARN_STAT)) + 100) * 100
+	chance = (chance + i32(cpu.lbu(p + COMBATANT_LEARN_STAT)) + 100) * 100
 	index := i32(level) - 1
 	if gauge >= gauge_max >> 2 {
 		index -= 1
@@ -170,13 +170,13 @@ learn_check :: proc() {
 		index -= 1
 	}
 	chance /= LEARN_DIVISORS[clamp(index, 0, len(LEARN_DIVISORS) - 1)]
-	psx.call(RAND)
+	cpu.call(RAND)
 	rolled := i32(c.r[2]) % ROLL < chance
 	// Fails only when the party knows the skill already.
 	c.r[4] = p + COMBATANT_RECORD
 	c.r[5] = skill
 	c.r[6] = 0
-	psx.call(SKILL_ADD)
+	cpu.call(SKILL_ADD)
 	if i8(c.r[2]) < 0 {
 		c.r[2] = 255
 		return
@@ -185,10 +185,10 @@ learn_check :: proc() {
 		core.tracef(.Game, "learn: member %d skill %02x, chance %d/%d %v", learner, skill, chance, ROLL, rolled)
 	}
 	c.r[4], c.r[5] = 3, 4
-	psx.call(WINDOW_OPEN)
-	psx.sb(WINDOWS + (c.r[2] & 0xff) * WINDOW_SIZE + WINDOW_MEMBER, learner)
-	psx.sb(LEARN_TEXT + LEARN_MEMBER, learner)
-	psx.sb(LEARN_TEXT + LEARN_SKILL, skill)
-	psx.sw(BATTLE_FLAGS, psx.lw(BATTLE_FLAGS) | LEARN_SHOW)
+	cpu.call(WINDOW_OPEN)
+	cpu.sb(WINDOWS + (c.r[2] & 0xff) * WINDOW_SIZE + WINDOW_MEMBER, learner)
+	cpu.sb(LEARN_TEXT + LEARN_MEMBER, learner)
+	cpu.sb(LEARN_TEXT + LEARN_SKILL, skill)
+	cpu.sw(BATTLE_FLAGS, cpu.lw(BATTLE_FLAGS) | LEARN_SHOW)
 	c.r[2] = 1
 }

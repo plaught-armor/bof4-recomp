@@ -305,7 +305,7 @@ exits into the forest; see [Noritake's Town](#noritakes-town-cut-test-village).
   files from the patch's xdelta files and the disc without running its
   Windows programs; the port serves them from `port/dengeki/` at sectors past
   the disc's end (file table entries 0x28e and 0x3b7 rewritten while the
-  option is on, `psx.sector_hook`). The game sizes file reads from the EMI
+  option is on, `spu.sector_hook`). The game sizes file reads from the EMI
   header, never from the table (loader 0x8013b6f4, file-to-LBA 0x8013c264).
   AREAM019 has no patch.
 

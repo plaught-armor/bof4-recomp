@@ -70,7 +70,7 @@ The scroll-bar tags L1/L2/R1/R2 are 8x5 texels in that page at (208,217),
 (216,217), (240,210), (240,217) (background colour 1, foreground 5). The port
 redraws these each vblank for the active input device
 (`qol/button_icons.odin`). What it draws is worked out again only when
-`psx.binds_hash()` (every binding plus the device in use) or the Confirm
+`host.binds_hash()` (every binding plus the device in use) or the Confirm
 and Cancel masks change; a world map legend slot is hashed again only when
 its texels changed since the last vblank. Together that cut the vblank's
 prompt work from about 4% to under 2% of the main thread.
@@ -132,12 +132,12 @@ screen (`qol/controls_screen.odin`) replaces the game's Buttons screen
 (`BUTTONS_TICK` 0x801b6fd4 wrapped, `BUTTONS_DRAW` 0x801afcac replaced) and
 writes its custom layout back after those copies.
 
-Pad masks as the game sees them (`PAD_*` in `psx/platform.odin`; the action
+Pad masks as the game sees them (`PAD_*` in `psx/host/platform.odin`; the action
 table uses the same bits): L2 0x0001, R2 0x0002, L1 0x0004, R1 0x0008,
 Triangle 0x0010, Circle 0x0020, Cross 0x0040, Square 0x0080, Select 0x0100,
 Start 0x0800, Up 0x1000, Right 0x2000, Down 0x4000, Left 0x8000. A set bit
 means pressed. Names usable in configs and `BOF4_INPUT` are `PAD_NAMES` in
-`psx/input.odin`.
+`psx/host/input.odin`.
 
 ## Settings
 

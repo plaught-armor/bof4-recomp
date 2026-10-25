@@ -12,7 +12,9 @@ package qol
 
 import "core:strconv"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
+import spu "ps:psx/spu"
 
 import "ps:core"
 
@@ -47,17 +49,17 @@ cinematics: struct {
 @(private)
 cinematics_init :: proc() -> bool {
 	cinematics.skipped = -1
-	psx.read_start_hook = cinematics_read
+	spu.read_start_hook = cinematics_read
 	return true
 }
 
 // A read starts at lba: note a cinematic's companion file or MAGRET.
 @(private = "file")
 cinematics_read :: proc(lba: u32) {
-	if psx.lhu(GAME_MODE) != MODE_BATTLE {
+	if cpu.lhu(GAME_MODE) != MODE_BATTLE {
 		return
 	}
-	if lba == psx.lw(FILE_TABLE + MAGRET_FILE * 4) {
+	if lba == cpu.lw(FILE_TABLE + MAGRET_FILE * 4) {
 		cinematics.returned = true
 		return
 	}
@@ -65,7 +67,7 @@ cinematics_read :: proc(lba: u32) {
 		return
 	}
 	for f in u32(FIRST_CINEMATIC) ..= LAST_CINEMATIC {
-		if lba == psx.lw(FILE_TABLE + f * 4) {
+		if lba == cpu.lw(FILE_TABLE + f * 4) {
 			cinematics.playing = 1 << (f - FIRST_CINEMATIC)
 			if config.battle_skip_seen && config.battle_seen & cinematics.playing != 0 {
 				cinematics.skipped = 0
@@ -81,14 +83,14 @@ cinematics_vblank :: proc() {
 		cinematics.returned = false
 		return
 	}
-	ended: bool = cinematics.returned || psx.lhu(GAME_MODE) != MODE_BATTLE
+	ended: bool = cinematics.returned || cpu.lhu(GAME_MODE) != MODE_BATTLE
 	cinematics.returned = false
 	if cinematics.skipped >= 0 {
 		cinematics.skipped += 1
 		ended ||= cinematics.skipped > SKIP_LIMIT
-		psx.skipping = !ended
+		host.skipping = !ended
 		// Keep the picture held through the next present.
-		psx.hold_picture = ended ? 0 : 1
+		host.hold_picture = ended ? 0 : 1
 	}
 	if !ended {
 		return

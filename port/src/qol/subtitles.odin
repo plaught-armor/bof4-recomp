@@ -4,12 +4,14 @@
 // voice lines that the US release left without subtitles. While it plays,
 // each line shows in English at the bottom of the picture, timed by the
 // frame number in the movie's video sectors as the drive reads them
-// (psx.movie_position). The translations are this port's own. "The one who
+// (spu.movie_position). The translations are this port's own. "The one who
 // never changes" is utsurowazaru mono, the game's Japanese subtitle, which
 // the movie's title card shows.
 package qol
 
-import "ps:psx"
+import host "ps:psx/host"
+import mdec "ps:psx/mdec"
+import spu "ps:psx/spu"
 
 // ZBOF4.STR on the disc: its first sector and length in sectors.
 @(private = "file")
@@ -51,8 +53,8 @@ subtitles: struct {
 @(private)
 subtitles_vblank :: proc() {
 	text := ""
-	lba, frame := psx.movie_position()
-	if config.text_subtitles && psx.movie_playing() && lba >= OPENING_LBA && lba < OPENING_LBA + OPENING_SECTORS {
+	lba, frame := spu.movie_position()
+	if config.text_subtitles && mdec.movie_playing() && lba >= OPENING_LBA && lba < OPENING_LBA + OPENING_SECTORS {
 		// Frame numbers start at 1.
 		t := f32(max(frame, 1) - 1) / MOVIE_FPS
 		for l in OPENING_LINES {
@@ -65,6 +67,6 @@ subtitles_vblank :: proc() {
 	if text == "" && !subtitles.shown {
 		return
 	}
-	psx.osd_set_label(text, (psx.WINDOW_W - len(text) * 8) / 2, SUBTITLE_Y)
+	host.osd_set_label(text, (host.WINDOW_W - len(text) * 8) / 2, SUBTITLE_Y)
 	subtitles.shown = text != ""
 }

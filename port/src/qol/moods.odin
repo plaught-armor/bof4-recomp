@@ -33,7 +33,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -355,7 +355,7 @@ personality :: proc(slot: u32) -> Personality {
 	name: [ENEMY_NAME_LEN]u8
 	n := 0
 	for ; n < ENEMY_NAME_LEN; n += 1 {
-		name[n] = u8(psx.lbu(enemy_combatant(slot) + ENEMY_NAME + u32(n)))
+		name[n] = u8(cpu.lbu(enemy_combatant(slot) + ENEMY_NAME + u32(n)))
 		if name[n] == 0 {
 			break
 		}
@@ -391,31 +391,31 @@ mood_of :: proc(slot: u32) -> (Mood, u32) {
 	t := TRAITS[personality(slot)]
 	s := &moods.slots[slot]
 	e := enemy_combatant(slot)
-	hp, hp_max := u64(psx.lw(e + COMBATANT_HP)), u64(max(psx.lw(e + COMBATANT_HP_MAX), 1))
+	hp, hp_max := u64(cpu.lw(e + COMBATANT_HP)), u64(max(cpu.lw(e + COMBATANT_HP_MAX), 1))
 	fought, fallen: u32
 	for k in u32(0) ..< SLOTS {
 		other := enemy_combatant(k)
-		if psx.lw(other + COMBATANT_HP) != 0 {
+		if cpu.lw(other + COMBATANT_HP) != 0 {
 			moods.fought[k] = true
 		}
 		if moods.fought[k] {
 			fought += 1
-			fallen += 1 if psx.lw(other + COMBATANT_HP) == 0 else 0
+			fallen += 1 if cpu.lw(other + COMBATANT_HP) == 0 else 0
 		}
 	}
 	if hp * TWELFTHS < hp_max * u64(t.desperate) || t.side && fought > 1 && fallen * 2 >= fought {
 		return .Desperate, NO_CULPRIT
 	}
-	if s.rage != 0 && s.culprit < FRONT && psx.lw(party_combatant(u32(s.culprit)) + COMBATANT_HP) != 0 {
+	if s.rage != 0 && s.culprit < FRONT && cpu.lw(party_combatant(u32(s.culprit)) + COMBATANT_HP) != 0 {
 		return .Enraged, u32(s.culprit)
 	}
 	dragon := false
 	front_hp, front_max: u64
 	for member in u32(0) ..< FRONT {
 		p := party_combatant(member)
-		dragon ||= psx.lw(p + COMBATANT_HP) != 0 && psx.lbu(p + CHAR) >= DRAGON_FORM
-		front_hp += u64(psx.lw(p + COMBATANT_HP))
-		front_max += u64(psx.lw(p + COMBATANT_HP_MAX))
+		dragon ||= cpu.lw(p + COMBATANT_HP) != 0 && cpu.lbu(p + CHAR) >= DRAGON_FORM
+		front_hp += u64(cpu.lw(p + COMBATANT_HP))
+		front_max += u64(cpu.lw(p + COMBATANT_HP_MAX))
 	}
 	if hp * TWELFTHS < hp_max * u64(t.cautious) || t.dragon && dragon {
 		return .Cautious, NO_CULPRIT
@@ -435,12 +435,12 @@ mood_turn :: proc(slot: u32) {
 	s := &moods.slots[slot]
 	mood, _ := mood_of(slot)
 	if .Game in core.trace.active {
-		core.tracef(.Game, "moods: slot %d turn ends %v (was %v), HP %d/%d", slot, mood, s.mood, psx.lw(enemy_combatant(slot) + COMBATANT_HP), psx.lw(enemy_combatant(slot) + COMBATANT_HP_MAX))
+		core.tracef(.Game, "moods: slot %d turn ends %v (was %v), HP %d/%d", slot, mood, s.mood, cpu.lw(enemy_combatant(slot) + COMBATANT_HP), cpu.lw(enemy_combatant(slot) + COMBATANT_HP_MAX))
 	}
 	if mood != s.mood {
 		s.mood = mood
 		if mood != .Calm {
-			moods.shown, moods.shown_slot, moods.shown_till = mood, slot, psx.lw(GAME_FRAME) + SHOW_FRAMES
+			moods.shown, moods.shown_slot, moods.shown_till = mood, slot, cpu.lw(GAME_FRAME) + SHOW_FRAMES
 		}
 	}
 	if s.rage != 0 {
@@ -450,7 +450,7 @@ mood_turn :: proc(slot: u32) {
 
 @(private)
 moods_draws :: proc() -> bool {
-	return config.battle_ai_moods && psx.lhu(GAME_MODE) == GAME_MODE_BATTLE && psx.lw(GAME_FRAME) < moods.shown_till
+	return config.battle_ai_moods && cpu.lhu(GAME_MODE) == GAME_MODE_BATTLE && cpu.lw(GAME_FRAME) < moods.shown_till
 }
 
 @(private)
@@ -471,19 +471,19 @@ mood_hit :: proc(actor, target: u32, dealt: i32) {
 	}
 	slot := target - ENEMY_IDS
 	e := enemy_combatant(slot)
-	hp := psx.lw(e + COMBATANT_HP)
+	hp := cpu.lw(e + COMBATANT_HP)
 	if hp == 0 {
 		return
 	}
 	if u32(dealt) >= hp {
 		for k in u32(0) ..< SLOTS {
-			if k != slot && psx.lw(enemy_combatant(k) + COMBATANT_HP) != 0 && TRAITS[personality(k)].rage_ally {
+			if k != slot && cpu.lw(enemy_combatant(k) + COMBATANT_HP) != 0 && TRAITS[personality(k)].rage_ally {
 				enrage(k, actor)
 			}
 		}
 		return
 	}
-	if t := TRAITS[personality(slot)]; t.rage_hit != 0 && u64(dealt) * u64(t.rage_hit) >= u64(psx.lw(e + COMBATANT_HP_MAX)) {
+	if t := TRAITS[personality(slot)]; t.rage_hit != 0 && u64(dealt) * u64(t.rage_hit) >= u64(cpu.lw(e + COMBATANT_HP_MAX)) {
 		enrage(slot, actor)
 	}
 }

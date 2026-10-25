@@ -21,7 +21,9 @@
 // for (a whole-picture pop of a pixel).
 package qol
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import gte "ps:psx/gte"
+import io "ps:psx/io"
 
 import "ps:core"
 
@@ -89,7 +91,7 @@ gte_log: struct {
 
 @(private)
 matrix_init :: proc() {
-	psx.gte_matrix_filter = matrix_filter
+	gte.gte_matrix_filter = matrix_filter
 }
 
 // A real frame's drawing starts: its writes go to note `slot`'s log.
@@ -127,10 +129,10 @@ matrix_end :: proc() {
 
 @(private = "file")
 matrix_filter :: proc(r, v: u32) -> u32 {
-	if gte_log.mode == .Off || psx.events_frozen != (gte_log.mode == .Blend) {
+	if gte_log.mode == .Off || io.events_frozen != (gte_log.mode == .Blend) {
 		return v
 	}
-	ra := psx.cpu.r[31]
+	ra := cpu.state.r[31]
 	if gte_log.mode == .Record {
 		log_append(&gte_log.logs[gte_log.rec], ra, r, v)
 		return v

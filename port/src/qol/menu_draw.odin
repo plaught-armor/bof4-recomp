@@ -14,7 +14,9 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
+import render "ps:psx/render"
 
 // a0 x, a1 y, a2 width, a3 height (8..255): frame and dark translucent body.
 @(private)
@@ -52,7 +54,7 @@ SPRITE_UNTINTED :: 0x808080
 
 @(private = "file")
 menu_draw: struct {
-	frame_end: psx.Func_Proc,
+	frame_end: cpu.Func_Proc,
 	held:      u16, // pad buttons held at the last vblank, for the panel
 }
 
@@ -67,11 +69,11 @@ PANEL :: [4]int{4, 8, 312, 224} // x, y, width, height
 
 // Pad buttons that hide the panel.
 @(private = "file")
-PANEL_CLOSE :: psx.PAD_CROSS | psx.PAD_CIRCLE | psx.PAD_TRIANGLE
+PANEL_CLOSE :: host.PAD_CROSS | host.PAD_CIRCLE | host.PAD_TRIANGLE
 
 @(private)
 menu_draw_init :: proc() -> bool {
-	original, ok := psx.hook(FRAME_END, frame_end)
+	original, ok := cpu.hook(FRAME_END, frame_end)
 	if !ok {
 		fmt.eprintf("qol: frame end %08x not found\n", FRAME_END)
 		return false
@@ -115,32 +117,32 @@ frame_end :: proc() {
 // camp menu command) count as seen, so they do not hide it.
 @(private)
 panel_open :: proc(page: int) {
-	psx.osd_panel_page = page
-	if !psx.osd_panel_shown {
-		psx.osd_toggle_panel()
+	host.osd_panel_page = page
+	if !host.osd_panel_shown {
+		host.osd_toggle_panel()
 	}
-	menu_draw.held = psx.pad_buttons()
+	menu_draw.held = host.pad_buttons()
 }
 
 // Once per vblank: the buttons newly pressed while the panel is up, for its
 // page. Cross, Circle or Triangle hide it; Left and Right turn its pages.
 @(private)
 panel_vblank :: proc() -> u16 {
-	held := psx.pad_buttons()
+	held := host.pad_buttons()
 	pressed := held &~ menu_draw.held
 	menu_draw.held = held
-	if !psx.osd_panel_shown {
+	if !host.osd_panel_shown {
 		return 0
 	}
 	if pressed & PANEL_CLOSE != 0 {
-		psx.osd_hide_panel()
+		host.osd_hide_panel()
 		return 0
 	}
-	if pressed & psx.PAD_LEFT != 0 {
-		psx.osd_panel_step(-1)
+	if pressed & host.PAD_LEFT != 0 {
+		host.osd_panel_step(-1)
 	}
-	if pressed & psx.PAD_RIGHT != 0 {
-		psx.osd_panel_step(1)
+	if pressed & host.PAD_RIGHT != 0 {
+		host.osd_panel_step(1)
 	}
 	return pressed
 }
@@ -171,7 +173,7 @@ menu_text_right :: proc(x, y: int, text: string, colour := MENU_WHITE) {
 @(private)
 menu_text_width :: proc(text: string) -> (w: int) {
 	for i in 0 ..< min(len(text), TEXT_MAX) {
-		w += int(psx.lbu(FONT_WIDTHS + u32(text[i])) & 0xf)
+		w += int(cpu.lbu(FONT_WIDTHS + u32(text[i])) & 0xf)
 	}
 	return w
 }
@@ -181,7 +183,7 @@ menu_text_width :: proc(text: string) -> (w: int) {
 menu_text_fit :: proc(text: string, w: int) -> string {
 	used := 0
 	for i in 0 ..< min(len(text), TEXT_MAX) {
-		used += int(psx.lbu(FONT_WIDTHS + u32(text[i])) & 0xf)
+		used += int(cpu.lbu(FONT_WIDTHS + u32(text[i])) & 0xf)
 		if used > w {
 			return text[:i]
 		}
@@ -200,13 +202,13 @@ menu_sprite :: proc(x, y, w, h, u, v: int, page: u32, clut_x, clut_y: int, tint:
 	SPRITE :: 0x64000000
 	SPRITE_BYTES :: 0x18
 	assert(tint <= 0xffffff && u >= 0 && u + w <= 0x100 && v >= 0 && v + h <= 0x100 && clut_x % 16 == 0)
-	prim := psx.lw(SPRITE_PACKETS)
-	psx.sw(prim, SPRITE_TAG)
-	psx.sw(prim + 4, DRAW_MODE | page)
-	psx.sw(prim + 8, SPRITE | tint)
-	psx.sw(prim + 12, u32(x) & 0xffff | u32(y) << 16)
-	psx.sw(prim + 16, (u32(clut_y) << 6 | u32(clut_x) / 16) << 16 | u32(v) << 8 | u32(u))
-	psx.sw(prim + 20, u32(h) << 16 | u32(w))
+	prim := cpu.lw(SPRITE_PACKETS)
+	cpu.sw(prim, SPRITE_TAG)
+	cpu.sw(prim + 4, DRAW_MODE | page)
+	cpu.sw(prim + 8, SPRITE | tint)
+	cpu.sw(prim + 12, u32(x) & 0xffff | u32(y) << 16)
+	cpu.sw(prim + 16, (u32(clut_y) << 6 | u32(clut_x) / 16) << 16 | u32(v) << 8 | u32(u))
+	cpu.sw(prim + 20, u32(h) << 16 | u32(w))
 	game_routine(PRIM_COMMIT, {1, SPRITE_BYTES, 0, 0, 0})
 }
 
@@ -216,25 +218,25 @@ menu_sprite :: proc(x, y, w, h, u, v: int, page: u32, clut_x, clut_y: int, tint:
 // argument. Returns v0.
 @(private)
 game_routine :: proc(target: u32, args: [5]u32, text := "") -> u32 {
-	c := &psx.cpu
+	c := &cpu.state
 	regs, hi, lo := c.r, c.hi, c.lo
 	sp := (c.r[29] - CALL_FRAME) &~ 7
 	fifth := args[4]
 	if text != "" {
 		n := min(len(text), TEXT_MAX)
 		for i in 0 ..< n {
-			psx.sb(sp + TEXT_AT + u32(i), u32(text[i]))
+			cpu.sb(sp + TEXT_AT + u32(i), u32(text[i]))
 		}
-		psx.sb(sp + TEXT_AT + u32(n), 0)
+		cpu.sb(sp + TEXT_AT + u32(n), 0)
 		fifth = sp + TEXT_AT
 	}
-	psx.sw(sp + 16, fifth)
+	cpu.sw(sp + 16, fifth)
 	c.r[29] = sp
 	c.r[4], c.r[5], c.r[6], c.r[7] = args[0], args[1], args[2], args[3]
 	c.r[31] = FRAME_END_RET
 	// The port's own text already names the device's buttons.
 	button_text.raw = target == TEXT_DRAW
-	psx.call(target)
+	cpu.call(target)
 	button_text.raw = false
 	v0 := c.r[2]
 	c.r, c.hi, c.lo = regs, hi, lo
@@ -284,7 +286,7 @@ PLACE_HALFWORDS_MAX :: 16
 halfwords_place :: proc(x0, y0: i32, rows: ^[PLACE_ROWS_MAX][PLACE_HALFWORDS_MAX]u16, w, h: int) -> bool {
 	for y in 0 ..< h {
 		for x in 0 ..< w {
-			now := psx.vram_at(x0 + i32(x), y0 + i32(y))^
+			now := render.vram_at(x0 + i32(x), y0 + i32(y))^
 			if now != 0 && now != rows[y][x] {
 				return false
 			}
@@ -292,7 +294,7 @@ halfwords_place :: proc(x0, y0: i32, rows: ^[PLACE_ROWS_MAX][PLACE_HALFWORDS_MAX
 	}
 	for y in 0 ..< h {
 		for x in 0 ..< w {
-			psx.vram_at(x0 + i32(x), y0 + i32(y))^ = rows[y][x]
+			render.vram_at(x0 + i32(x), y0 + i32(y))^ = rows[y][x]
 		}
 	}
 	return true

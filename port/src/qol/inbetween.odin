@@ -62,6 +62,10 @@ import "core:math"
 import "core:slice"
 
 import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
+import io "ps:psx/io"
+import render "ps:psx/render"
 
 import "ps:core"
 
@@ -94,7 +98,7 @@ MAX_PERIOD :: 4
 // doorway with its room picture) must draw for three every frame.
 @(private = "file")
 SPAN_HISTORY :: 8
-#assert(MAX_PERIOD - 1 <= psx.EXTRA_FRAMES)
+#assert(MAX_PERIOD - 1 <= render.EXTRA_FRAMES)
 @(private = "file")
 MAX_LATE :: 512
 @(private = "file")
@@ -159,8 +163,8 @@ Late :: struct {
 @(private = "file")
 Frame_Note :: struct {
 	draw_start: ^psx.Draw_Start,
-	regs:       psx.Cpu,
-	draw:       psx.Func_Proc,
+	regs:       cpu.Cpu,
+	draw:       cpu.Func_Proc,
 	scene_ret:  u32,
 	pose:       Pose,
 	late:       Late,
@@ -173,9 +177,9 @@ NOTES :: 3
 
 @(private = "file")
 inbetween: struct {
-	field_draw:    psx.Func_Proc,
-	battle_draw:   psx.Func_Proc,
-	draw_otag_env: psx.Func_Proc,
+	field_draw:    cpu.Func_Proc,
+	battle_draw:   cpu.Func_Proc,
+	draw_otag_env: cpu.Func_Proc,
 	checkpoint:    ^psx.Checkpoint,
 	notes:         [NOTES]Frame_Note,
 	// The note of the frame drawn last (or being drawn).
@@ -190,7 +194,7 @@ inbetween: struct {
 	// vblanks between it and the frame before, the vblank it was sent at,
 	// and the next picture to draw (1 .. period-1; 0 none queued).
 	queued:        int,
-	otag_regs:     psx.Cpu,
+	otag_regs:     cpu.Cpu,
 	period:        u64,
 	sent_at:       u64,
 	next:          u64,
@@ -200,9 +204,9 @@ inbetween: struct {
 	// last few frames (span_at counts them).
 	draw_spans:    [SPAN_HISTORY]u64,
 	span_at:       int,
-	scene_draw:    psx.Func_Proc,
-	layer_add:     psx.Func_Proc,
-	frame_end:     psx.Func_Proc,
+	scene_draw:    cpu.Func_Proc,
+	layer_add:     cpu.Func_Proc,
+	frame_end:     cpu.Func_Proc,
 	world_cut:     bool,
 	// The queued frame is the first of a world entered through a door: it
 	// blends from cut_pose, the town's last step carried on (cut_from).
@@ -253,7 +257,7 @@ inbetween_init :: proc() -> bool {
 	if !ok {
 		return false
 	}
-	original_send, hooked := psx.hook(DRAW_OTAG_ENV, draw_otag_env)
+	original_send, hooked := cpu.hook(DRAW_OTAG_ENV, draw_otag_env)
 	if !hooked {
 		fmt.eprintf("qol: DrawOTagEnv %08x not found\n", DRAW_OTAG_ENV)
 		return false
@@ -271,12 +275,12 @@ inbetween_init :: proc() -> bool {
 		}
 		n.draw_start = ds
 	}
-	original_battle, found := psx.hook(BATTLE_DRAW, battle_draw)
+	original_battle, found := cpu.hook(BATTLE_DRAW, battle_draw)
 	if !found {
 		fmt.eprintf("qol: battle draw %08x not found\n", BATTLE_DRAW)
 		return false
 	}
-	psx.present_hook = inbetween_present
+	host.present_hook = inbetween_present
 	inbetween.field_draw = original_draw
 	inbetween.battle_draw = original_battle
 	inbetween.draw_otag_env = original_send
@@ -288,9 +292,9 @@ inbetween_init :: proc() -> bool {
 @(private = "file")
 late_init :: proc() -> bool {
 	ok: [3]bool
-	inbetween.scene_draw, ok[0] = psx.hook(SCENE_DRAW, scene_draw)
-	inbetween.layer_add, ok[1] = psx.hook(LAYER_ADD, layer_add)
-	inbetween.frame_end, ok[2] = psx.hook(FRAME_END, frame_end)
+	inbetween.scene_draw, ok[0] = cpu.hook(SCENE_DRAW, scene_draw)
+	inbetween.layer_add, ok[1] = cpu.hook(LAYER_ADD, layer_add)
+	inbetween.frame_end, ok[2] = cpu.hook(FRAME_END, frame_end)
 	if ok != {true, true, true} {
 		fmt.eprintf("qol: smooth motion: draw functions not found %v\n", ok)
 		return false
@@ -302,7 +306,7 @@ late_init :: proc() -> bool {
 @(private = "file")
 scene_draw :: proc() {
 	note := &inbetween.notes[inbetween.noting]
-	real := inbetween.armed && psx.cpu.r[31] == note.scene_ret && !psx.events_frozen
+	real := inbetween.armed && cpu.state.r[31] == note.scene_ret && !io.events_frozen
 	inbetween.scene_draw()
 	if real {
 		matrix_end()
@@ -317,14 +321,14 @@ scene_draw :: proc() {
 @(private = "file")
 layer_add :: proc() {
 	late := &inbetween.notes[inbetween.noting].late
-	if !late.recording || psx.events_frozen {
+	if !late.recording || io.events_frozen {
 		inbetween.layer_add()
 		return
 	}
-	addr := psx.lw(SPRITE_PACKETS)
-	layer, size := psx.cpu.r[4] & 0xff, psx.cpu.r[5] & 0xff
+	addr := cpu.lw(SPRITE_PACKETS)
+	layer, size := cpu.state.r[4] & 0xff, cpu.state.r[5] & 0xff
 	inbetween.layer_add()
-	if psx.lw(SPRITE_PACKETS) == addr {
+	if cpu.lw(SPRITE_PACKETS) == addr {
 		return // pool full: the game dropped the prim too
 	}
 	if late.count == MAX_LATE {
@@ -341,13 +345,13 @@ layer_add :: proc() {
 @(private = "file")
 frame_end :: proc() {
 	late := &inbetween.notes[inbetween.noting].late
-	if late.recording && !psx.events_frozen && psx.cpu.r[31] == FRAME_END_RET {
+	if late.recording && !io.events_frozen && cpu.state.r[31] == FRAME_END_RET {
 		late.recording = false
 		late_copy(late)
 	}
-	if !psx.events_frozen && psx.cpu.r[31] == FRAME_END_RET && inbetween.drawing {
+	if !io.events_frozen && cpu.state.r[31] == FRAME_END_RET && inbetween.drawing {
 		inbetween.drawing = false
-		inbetween.draw_spans[inbetween.span_at % len(inbetween.draw_spans)] = psx.vblanks() - inbetween.sent_at
+		inbetween.draw_spans[inbetween.span_at % len(inbetween.draw_spans)] = cpu.vblanks() - inbetween.sent_at
 		inbetween.span_at += 1
 	}
 	inbetween.frame_end()
@@ -363,7 +367,7 @@ late_copy :: proc(late: ^Late) {
 			break
 		}
 		for k in 0 ..< n {
-			late.bytes[used + k] = u8(psx.lbu(late.addr[i] + u32(k)))
+			late.bytes[used + k] = u8(cpu.lbu(late.addr[i] + u32(k)))
 		}
 		used += n
 	}
@@ -378,14 +382,14 @@ late_copy :: proc(late: ^Late) {
 late_replay :: proc(late: ^Late) {
 	used := u32(0)
 	for i in 0 ..< late.count {
-		addr := psx.lw(SPRITE_PACKETS)
+		addr := cpu.lw(SPRITE_PACKETS)
 		for k in 0 ..< late.size[i] {
-			psx.sb(addr + k, u32(late.bytes[used + k]))
+			cpu.sb(addr + k, u32(late.bytes[used + k]))
 		}
 		used += late.size[i]
-		psx.cpu.r[4], psx.cpu.r[5] = late.layer[i], late.size[i]
+		cpu.state.r[4], cpu.state.r[5] = late.layer[i], late.size[i]
 		inbetween.layer_add()
-		if psx.lw(SPRITE_PACKETS) == addr && .Game in core.trace.active {
+		if cpu.lw(SPRITE_PACKETS) == addr && .Game in core.trace.active {
 			core.tracef(.Game, "inbetween: prim pool full, %d late prims left out", late.count - i)
 			return
 		}
@@ -396,7 +400,7 @@ late_replay :: proc(late: ^Late) {
 @(private = "file")
 field_draw :: proc() {
 	if frame_draw_call() {
-		draw_note(inbetween.field_draw, psx.cpu.r[31] + 8, FIELD_OBJECT_CUT_LIMIT)
+		draw_note(inbetween.field_draw, cpu.state.r[31] + 8, FIELD_OBJECT_CUT_LIMIT)
 	}
 	inbetween.field_draw()
 }
@@ -405,7 +409,7 @@ field_draw :: proc() {
 @(private = "file")
 battle_draw :: proc() {
 	if frame_draw_call() {
-		draw_note(inbetween.battle_draw, psx.cpu.r[31] + 8, BATTLE_OBJECT_CUT_LIMIT)
+		draw_note(inbetween.battle_draw, cpu.state.r[31] + 8, BATTLE_OBJECT_CUT_LIMIT)
 	}
 	inbetween.battle_draw()
 }
@@ -414,14 +418,14 @@ battle_draw :: proc() {
 // pass, and the scene render is the caller's next instruction.
 @(private = "file")
 frame_draw_call :: proc() -> bool {
-	return !psx.events_frozen && psx.lw(psx.cpu.r[31]) == JAL_SCENE_DRAW
+	return !io.events_frozen && cpu.lw(cpu.state.r[31]) == JAL_SCENE_DRAW
 }
 
 // Note the pose, memory and registers at the frame's first draw call, which
 // the pass runs again through `draw`; its scene render returns to scene_ret.
 // Objects moving further than `cut` in a game frame snap.
 @(private = "file")
-draw_note :: proc(draw: psx.Func_Proc, scene_ret: u32, cut: i64) {
+draw_note :: proc(draw: cpu.Func_Proc, scene_ret: u32, cut: i64) {
 	inbetween.noting = (inbetween.noting + 1) % NOTES
 	if inbetween.next != 0 && inbetween.noting == (inbetween.queued + NOTES - 1) % NOTES {
 		// Two frames drawn since the queue: its older note is reused.
@@ -431,7 +435,7 @@ draw_note :: proc(draw: psx.Func_Proc, scene_ret: u32, cut: i64) {
 	pose_record(&note.pose)
 	note.pose.cut = cut
 	psx.draw_start_save(note.draw_start)
-	note.regs = psx.cpu
+	note.regs = cpu.state
 	note.draw = draw
 	note.scene_ret = scene_ret
 	note.late.ready = false
@@ -444,13 +448,13 @@ draw_note :: proc(draw: psx.Func_Proc, scene_ret: u32, cut: i64) {
 // field_draw as the main loop sends it.
 @(private = "file")
 draw_otag_env :: proc() {
-	if psx.cpu.r[31] == MAIN_DRAW_RET && !psx.events_frozen {
-		tween_record(psx.cpu.r[4])
+	if cpu.state.r[31] == MAIN_DRAW_RET && !io.events_frozen {
+		tween_record(cpu.state.r[4])
 	}
-	if inbetween.armed && psx.cpu.r[31] == MAIN_DRAW_RET {
+	if inbetween.armed && cpu.state.r[31] == MAIN_DRAW_RET {
 		inbetween.armed = false
 		queue_inbetween()
-	} else if psx.cpu.r[31] == MAIN_DRAW_RET && !psx.events_frozen {
+	} else if cpu.state.r[31] == MAIN_DRAW_RET && !io.events_frozen {
 		tween_draw(inbetween.draw_otag_env, inbetween.checkpoint)
 	}
 	inbetween.draw_otag_env()
@@ -462,7 +466,7 @@ queue_inbetween :: proc() {
 	// the passes (the next frame's logic) must not add to them.
 	matrix_end()
 	inbetween.next = 0
-	inbetween.sent_at = psx.vblanks()
+	inbetween.sent_at = cpu.vblanks()
 	q := inbetween.noting
 	prev, cur := &inbetween.notes[(q + NOTES - 1) % NOTES].pose, &inbetween.notes[q].pose
 	period := cur.vblank - prev.vblank
@@ -474,7 +478,7 @@ queue_inbetween :: proc() {
 		return
 	}
 	inbetween.queued = q
-	inbetween.otag_regs = psx.cpu
+	inbetween.otag_regs = cpu.state
 	inbetween.period = period
 	inbetween.captured = 0
 	sections_pass_note()
@@ -502,10 +506,10 @@ queue_inbetween :: proc() {
 // picture is left out, and the repeat shows the one before.
 @(private = "file")
 inbetween_present :: proc() {
-	if inbetween.next == 0 || psx.events_frozen || inbetween.drawing || !psx.display_repeats() {
+	if inbetween.next == 0 || io.events_frozen || inbetween.drawing || !host.display_repeats() {
 		return
 	}
-	step := psx.vblanks() - inbetween.sent_at
+	step := cpu.vblanks() - inbetween.sent_at
 	if step < inbetween.next {
 		return
 	}
@@ -521,7 +525,7 @@ inbetween_present :: proc() {
 
 // Draw the queued frame's picture `f` of the way from the game frame before
 // it, as extra picture `index`. False when the GPU is busy. The pass draws
-// the hi-res target alone (psx.hi_only_begin); one that turns out to read
+// the hi-res target alone (render.hi_only_begin); one that turns out to read
 // VRAM it left undrawn is drawn again with both.
 @(private = "file")
 inbetween_pass :: proc(f: f64, index: int) -> bool {
@@ -549,9 +553,9 @@ inbetween_draw :: proc(f: f64, index: int, hi_only: bool) -> (ok, missed: bool) 
 	}
 	defer psx.checkpoint_restore(inbetween.checkpoint)
 	// Ends before the restore (defers run last first).
-	hi := hi_only && psx.hi_only_begin()
+	hi := hi_only && render.hi_only_begin()
 	defer if hi {
-		missed = psx.hi_only_end()
+		missed = render.hi_only_end()
 	}
 	inbetween_replaying = true
 	defer inbetween_replaying = false
@@ -559,25 +563,25 @@ inbetween_draw :: proc(f: f64, index: int, hi_only: bool) -> (ok, missed: bool) 
 	// A cut's frame before is another world's: its matrices are no start.
 	if inbetween.cut {
 		pose_blend(&inbetween.cut_pose, &note.pose, f)
-		psx.cpu = note.regs
+		cpu.state = note.regs
 		matrix_blend_begin(f, q, q, false)
 	} else {
 		camera_moved := pose_blend(&prev.pose, &note.pose, f)
-		psx.cpu = note.regs
+		cpu.state = note.regs
 		matrix_blend_begin(f, (q + NOTES - 1) % NOTES, q, camera_moved)
 	}
 	note.draw()
-	psx.cpu.r[29] = note.regs.r[29]
+	cpu.state.r[29] = note.regs.r[29]
 	game_call(SCENE_DRAW, note.scene_ret)
 	matrix_end()
 	late_replay(&note.late)
-	psx.cpu = main
+	cpu.state = main
 	game_call(FRAME_END, FRAME_END_RET)
 	doors_between_draw()
-	psx.cpu = main
+	cpu.state = main
 	inbetween.draw_otag_env()
 	env := main.r[5]
-	psx.capture_extra_frame(i32(i16(psx.lh(env))), i32(i16(psx.lh(env + 2))), index)
+	host.capture_extra_frame(i32(i16(cpu.lh(env))), i32(i16(cpu.lh(env + 2))), index)
 	ok = true
 	return
 }
@@ -631,21 +635,21 @@ pose_record :: proc(p: ^Pose) {
 		p.camera[i] = i64(i32(field_read(f)))
 	}
 	p.count = 0
-	p.vblank = psx.vblanks()
-	p.held = psx.hold_picture > 0
+	p.vblank = cpu.vblanks()
+	p.held = host.hold_picture > 0
 	p.cut_in = inbetween.world_cut
 	inbetween.world_cut = false
 	p.tp = third_person_state()
-	list := psx.lw(OBJECT_SETS + psx.lbu(OBJECT_SET) * 4)
+	list := cpu.lw(OBJECT_SETS + cpu.lbu(OBJECT_SET) * 4)
 	for _ in 0 ..< MAX_GROUPS {
-		base := psx.lw(list)
+		base := cpu.lw(list)
 		if base == 0 {
 			return
 		}
-		stride, count := psx.lw(list + 4), i32(psx.lw(list + 8))
+		stride, count := cpu.lw(list + 4), i32(cpu.lw(list + 8))
 		for k in 0 ..< max(count, 0) {
 			obj := base + u32(k) * stride
-			if psx.lbu(obj) & OBJECT_ACTIVE == 0 {
+			if cpu.lbu(obj) & OBJECT_ACTIVE == 0 {
 				continue
 			}
 			if p.count == MAX_OBJECTS {
@@ -653,7 +657,7 @@ pose_record :: proc(p: ^Pose) {
 			}
 			p.addr[p.count] = obj
 			for axis in 0 ..< 3 {
-				p.pos[p.count][axis] = i32(psx.lw(obj + OBJECT_POS + u32(axis) * 4))
+				p.pos[p.count][axis] = i32(cpu.lw(obj + OBJECT_POS + u32(axis) * 4))
 			}
 			p.count += 1
 		}
@@ -739,7 +743,7 @@ object_blend :: proc(obj: u32, from, to: [3]i32, back: f64, cut: i64) -> bool {
 	}
 	for axis in 0 ..< 3 {
 		v := i64(to[axis]) - i64(f64(d[axis]) * back)
-		psx.sw(obj + OBJECT_POS + u32(axis) * 4, u32(i32(v)))
+		cpu.sw(obj + OBJECT_POS + u32(axis) * 4, u32(i32(v)))
 	}
 	return true
 }

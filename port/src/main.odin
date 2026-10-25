@@ -7,7 +7,11 @@ package main
 import "core:fmt"
 import "core:os"
 
-import "ps:psx"
+import bios "ps:psx/bios"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
+import io "ps:psx/io"
+import spu "ps:psx/spu"
 import "qol"
 import "rec"
 
@@ -21,44 +25,44 @@ main :: proc() {
 		fmt.eprintln("cannot read", exe_path)
 		os.exit(1)
 	}
-	pc, gp, sp, ok := psx.load_exe(exe)
+	pc, gp, sp, ok := cpu.load_exe(exe)
 	if !ok {
 		fmt.eprintln("not a PS-X EXE:", exe_path)
 		os.exit(1)
 	}
-	if !psx.cdrom_open(cue) {
+	if !spu.cdrom_open(cue) {
 		os.exit(1)
 	}
-	if !psx.trace_init() {
+	if !cpu.trace_init() {
 		os.exit(1)
 	}
 	if !qol.boot() {
 		os.exit(1)
 	}
-	if !psx.platform_init("Breath of Fire IV") {
+	if !host.platform_init("Breath of Fire IV") {
 		os.exit(1)
 	}
 
-	psx.register_funcs(rec.EXE_FUNCS[:])
+	cpu.register_funcs(rec.EXE_FUNCS[:])
 	rec.register_overlays()
 	if !qol.init() {
 		os.exit(1)
 	}
-	psx.events_init()
-	psx.spu_init()
-	psx.xa_init()
-	psx.timers_init()
-	psx.dma_init()
-	psx.bios_init()
-	psx.card_files = {"bof4_slot1.mcd", "bof4_slot2.mcd"}
-	if !psx.memcard_init() {
+	io.events_init()
+	spu.spu_init()
+	spu.xa_init()
+	io.timers_init()
+	io.dma_init()
+	bios.bios_init()
+	bios.card_files = {"bof4_slot1.mcd", "bof4_slot2.mcd"}
+	if !bios.memcard_init() {
 		os.exit(1)
 	}
 
-	psx.cpu.r[28] = gp
-	psx.cpu.r[29] = sp
-	psx.cpu.r[30] = sp
-	psx.cop0.sr = 0x40000401
-	psx.call(pc)
+	cpu.state.r[28] = gp
+	cpu.state.r[29] = sp
+	cpu.state.r[30] = sp
+	cpu.cop0.sr = 0x40000401
+	cpu.call(pc)
 	fmt.eprintln("game returned from its entry point")
 }

@@ -14,7 +14,7 @@
 // per skill id, from SKILL_NAMES, to a NUL-terminated name.
 package qol
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 @(private = "file")
 COMMAND_ID :: 0x33
@@ -74,11 +74,11 @@ examine: struct {
 // Called every frame end; true while the window is up.
 @(private)
 examine_draws :: proc() -> bool {
-	if psx.lhu(GAME_MODE) != GAME_MODE_BATTLE {
+	if cpu.lhu(GAME_MODE) != GAME_MODE_BATTLE {
 		examine.armed = true
 		return false
 	}
-	switch psx.lw(SLOT_ENGINE) {
+	switch cpu.lw(SLOT_ENGINE) {
 	case ROUND_ID:
 		examine.armed = false
 	case COMMAND_ID:
@@ -99,12 +99,12 @@ examine_gather :: proc() {
 	examine.count = 0
 	for e in u32(0) ..< ENEMY_COUNT {
 		p := enemy_combatant(e)
-		if psx.lbu(p + ENEMY_NAME) == 0 || psx.lw(p + COMBATANT_HP) == 0 {
+		if cpu.lbu(p + ENEMY_NAME) == 0 || cpu.lw(p + COMBATANT_HP) == 0 {
 			continue
 		}
 		name: [ENEMY_NAME_LEN]u8
 		for k in u32(0) ..< ENEMY_NAME_LEN {
-			name[k] = u8(psx.lbu(p + ENEMY_NAME + k))
+			name[k] = u8(cpu.lbu(p + ENEMY_NAME + k))
 		}
 		line: ^Examine_Line
 		for &l in examine.lines[:examine.count] {
@@ -113,8 +113,8 @@ examine_gather :: proc() {
 			}
 		}
 		for k in u32(0) ..< ENEMY_SKILL_COUNT {
-			skill := u8(psx.lbu(p + ENEMY_SKILLS + k))
-			if psx.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + LEARN_LEVEL) & 0xf == 0 {
+			skill := u8(cpu.lbu(p + ENEMY_SKILLS + k))
+			if cpu.lbu(SKILL_DATA + u32(skill) * SKILL_DATA_SIZE + LEARN_LEVEL) & 0xf == 0 {
 				continue
 			}
 			if line == nil {
@@ -196,10 +196,10 @@ enemy_name :: proc(l: ^Examine_Line) -> string {
 // The game's name for a skill, copied into buf.
 @(private)
 skill_name :: proc(skill: u8, buf: []u8) -> string {
-	at := SKILL_NAMES + u32(psx.lhu(SKILL_NAMES + u32(skill) * 2))
+	at := SKILL_NAMES + u32(cpu.lhu(SKILL_NAMES + u32(skill) * 2))
 	n := 0
 	for n < len(buf) {
-		ch := u8(psx.lbu(at + u32(n)))
+		ch := u8(cpu.lbu(at + u32(n)))
 		if ch == 0 {
 			break
 		}

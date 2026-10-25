@@ -17,7 +17,8 @@
 // now the port's Display page), which shows a second value table.
 package qol
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 // a0 the menu record. Per overlay (setting_menu.odin), as the tables and
 // message ids.
@@ -277,33 +278,33 @@ text_value :: proc(byte: u32) -> int {
 
 @(private = "file")
 game_value_at :: proc(row: Game_Row) -> u32 {
-	return psx.lw(GAME_VALUES[setting_overlay] + 4 * u32(row))
+	return cpu.lw(GAME_VALUES[setting_overlay] + 4 * u32(row))
 }
 
 // The Options screen's tick (a0 the menu record), as the game's with the
 // port's rows.
 @(private = "file")
 options_screen_tick :: proc() {
-	menu := psx.cpu.r[4]
-	pressed := psx.lhu(PAD_PRESSED)
-	if pressed & psx.PAD_SELECT != 0 {
-		if psx.lbu(SETTING_WIN + OPTIONS_STEP) == 0 {
-			psx.sb(SELECT_STATE, 0)
+	menu := cpu.state.r[4]
+	pressed := cpu.lhu(PAD_PRESSED)
+	if pressed & host.PAD_SELECT != 0 {
+		if cpu.lbu(SETTING_WIN + OPTIONS_STEP) == 0 {
+			cpu.sb(SELECT_STATE, 0)
 			game_routine(SHOW_MESSAGE, {SELECT_MESSAGE[setting_overlay], 0, 0, 0, 0})
 		}
 		return
 	}
-	repeat := psx.lhu(PAD_REPEAT)
-	confirm := pressed & psx.lhu(CONFIRM_MASK) != 0
+	repeat := cpu.lhu(PAD_REPEAT)
+	confirm := pressed & cpu.lhu(CONFIRM_MASK) != 0
 	r := screen.rows[screen.row]
 	toggle := confirm && r.option >= 0 && option_toggles(options[r.option])
 	switch {
-	case repeat & (psx.PAD_UP | psx.PAD_DOWN) != 0:
+	case repeat & (host.PAD_UP | host.PAD_DOWN) != 0:
 		game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
-		screen.row = (screen.row + (repeat & psx.PAD_DOWN != 0 ? 1 : -1)) %% len(screen.rows)
+		screen.row = (screen.row + (repeat & host.PAD_DOWN != 0 ? 1 : -1)) %% len(screen.rows)
 		screen.top = clamp(screen.top, screen.row - VISIBLE + 1, screen.row)
-	case repeat & (psx.PAD_LEFT | psx.PAD_RIGHT) != 0 || toggle:
-		dir := repeat & psx.PAD_LEFT != 0 ? -1 : 1
+	case repeat & (host.PAD_LEFT | host.PAD_RIGHT) != 0 || toggle:
+		dir := repeat & host.PAD_LEFT != 0 ? -1 : 1
 		if r.option >= 0 {
 			port_step(r.option, dir)
 		} else {
@@ -311,15 +312,15 @@ options_screen_tick :: proc() {
 		}
 	}
 	r = screen.rows[screen.row]
-	psx.sb(SETTING_WIN + OPTIONS_ROW, u32(r.game))
-	psx.sh(INFO_TEXT, r.option >= 0 ? INFO_NONE : GAME_INFO[setting_overlay] + u32(r.game))
-	game_routine(psx.lbu(OPTION_SOUND) == 0 ? SOUND_STEREO : SOUND_MONO, {})
-	if pressed & psx.lhu(CANCEL_MASK) != 0 {
+	cpu.sb(SETTING_WIN + OPTIONS_ROW, u32(r.game))
+	cpu.sh(INFO_TEXT, r.option >= 0 ? INFO_NONE : GAME_INFO[setting_overlay] + u32(r.game))
+	game_routine(cpu.lbu(OPTION_SOUND) == 0 ? SOUND_STEREO : SOUND_MONO, {})
+	if pressed & cpu.lhu(CANCEL_MASK) != 0 {
 		game_routine(SOUND, {SOUND_CANCEL, 0, 0, 0, 0})
-		psx.sb(SETTING_WIN + OPTIONS_OPEN, 0)
-		psx.sb(menu + MENU_STATE, 0)
-		psx.sb(SETTING_WIN + OPTIONS_STEP, 0)
-		psx.sh(COMMAND_WIN + WIN_GREY, 0)
+		cpu.sb(SETTING_WIN + OPTIONS_OPEN, 0)
+		cpu.sb(menu + MENU_STATE, 0)
+		cpu.sb(SETTING_WIN + OPTIONS_STEP, 0)
+		cpu.sh(COMMAND_WIN + WIN_GREY, 0)
 		options_screen_save()
 	}
 }
@@ -338,8 +339,8 @@ port_step :: proc(i, dir: int) {
 @(private = "file")
 game_step :: proc(row: Game_Row, dir: int) {
 	at := game_value_at(row)
-	v := int(psx.lbu(at))
-	most := int(psx.lbu(GAME_MOST[setting_overlay] + u32(row)))
+	v := int(cpu.lbu(at))
+	most := int(cpu.lbu(GAME_MOST[setting_overlay] + u32(row)))
 	switch {
 	case row == .Text:
 		t := (text_value(u32(v)) + dir) %% TEXT_CHOICES
@@ -359,11 +360,11 @@ game_step :: proc(row: Game_Row, dir: int) {
 		v = (v + dir) %% (most + 1)
 	}
 	game_routine(SOUND, {SOUND_MOVE, 0, 0, 0, 0})
-	psx.sb(at, u32(v))
+	cpu.sb(at, u32(v))
 	if row == .Vib && v != 0 {
-		psx.sb(PAD_STATE + RUMBLE_TIMER, RUMBLE_PULSE)
-		psx.sb(PAD_STATE + RUMBLE_ON, 1)
-		psx.sb(PAD_STATE + RUMBLE_LEVEL, 0)
+		cpu.sb(PAD_STATE + RUMBLE_TIMER, RUMBLE_PULSE)
+		cpu.sb(PAD_STATE + RUMBLE_ON, 1)
+		cpu.sb(PAD_STATE + RUMBLE_LEVEL, 0)
 	}
 }
 
@@ -374,7 +375,7 @@ options_screen_save :: proc() {
 		dirty ||= c
 	}
 	if dirty && !options_save(screen.changed[:]) {
-		psx.osd_toast("Settings not saved")
+		host.osd_toast("Settings not saved")
 		return
 	}
 	screen.changed = {}
@@ -384,16 +385,16 @@ options_screen_save :: proc() {
 // the game's draw with the port's rows and scrolling.
 @(private)
 options_screen_draw :: proc(rec: u32) {
-	x := int(i16(psx.lhu(rec + SETTING_X)))
-	y := int(i16(psx.lhu(rec + SETTING_Y)))
+	x := int(i16(cpu.lhu(rec + SETTING_X)))
+	y := int(i16(cpu.lhu(rec + SETTING_Y)))
 	for i in u32(0) ..< 2 {
 		w := GAME_WINDOWS[setting_overlay] + 8 * i
-		wx := x + int(i16(psx.lhu(w)))
-		wy := y + int(i16(psx.lhu(w + 2)))
-		game_routine(WINDOW_DRAW, {u32(wx), u32(wy), psx.lhu(w + 4), psx.lbu(w + 6), 0})
+		wx := x + int(i16(cpu.lhu(w)))
+		wy := y + int(i16(cpu.lhu(w + 2)))
+		game_routine(WINDOW_DRAW, {u32(wx), u32(wy), cpu.lhu(w + 4), cpu.lbu(w + 6), 0})
 	}
 	game_routine(TITLE_DRAW, {u32(x + 4), u32(y - 4), TITLE_TAB, 0, 0})
-	open := psx.lbu(rec + OPTIONS_OPEN)
+	open := cpu.lbu(rec + OPTIONS_OPEN)
 	for i in screen.top ..< min(screen.top + VISIBLE, len(screen.rows)) {
 		r := screen.rows[i]
 		ry := y + ROW_TOP + (i - screen.top) * ROW_STEP
@@ -442,16 +443,16 @@ game_text :: proc(x, y: int, id: u32, colour: u32) {
 @(private = "file")
 game_row_draw :: proc(row: Game_Row, x, ry: int, lit: bool) {
 	game_text(x + LABEL_X, ry, GAME_LABEL[setting_overlay] + u32(row), MENU_WHITE)
-	v := psx.lbu(game_value_at(row))
+	v := cpu.lbu(game_value_at(row))
 	if row >= VOLUME_FIRST {
 		bar_draw(row, int(v), x, ry)
 		return
 	}
 	label := u32(GAME_CHOICE_LABEL[setting_overlay])
 	for r in Game_Row(0) ..< row {
-		label += psx.lbu(GAME_CHOICES[setting_overlay] + u32(r))
+		label += cpu.lbu(GAME_CHOICES[setting_overlay] + u32(r))
 	}
-	choices := int(psx.lbu(GAME_CHOICES[setting_overlay] + u32(row)))
+	choices := int(cpu.lbu(GAME_CHOICES[setting_overlay] + u32(row)))
 	if row == .Text {
 		t := text_value(v)
 		names, span := TEXT_LABELS, TEXT_SPAN
@@ -466,7 +467,7 @@ game_row_draw :: proc(row: Game_Row, x, ry: int, lit: bool) {
 		}
 	} else {
 		for k in 0 ..< choices {
-			cx := int(i16(psx.lhu(GAME_CHOICE_AT[setting_overlay] + 4 * (3 * u32(row) + u32(k)))))
+			cx := int(i16(cpu.lhu(GAME_CHOICE_AT[setting_overlay] + 4 * (3 * u32(row) + u32(k)))))
 			game_text(x + cx, ry, label + u32(k), choice_colour(int(v) == k, lit))
 		}
 	}
@@ -491,32 +492,32 @@ port_row_draw :: proc(o: Option, x, ry: int, lit: bool) {
 @(private = "file")
 bar_draw :: proc(row: Game_Row, v, x, ry: int) {
 	uv := GAME_BAR_UV[setting_overlay] + 4 * u32(row - VOLUME_FIRST)
-	u0, v0, u1, v1 := psx.lbu(uv), psx.lbu(uv + 1), psx.lbu(uv + 2), psx.lbu(uv + 3)
+	u0, v0, u1, v1 := cpu.lbu(uv), cpu.lbu(uv + 1), cpu.lbu(uv + 2), cpu.lbu(uv + 3)
 	n := (v + 1) / 2 * 3 / 2
 	x0 := u32(x + BAR_X) & 0xffff
 	x1 := u32(x + BAR_X + n) & 0xffff
 	top := u32(ry + BAR_TOP) << 16
 	bottom := u32(ry + BAR_BOTTOM) << 16
-	prim := psx.lw(SPRITE_PACKETS)
-	psx.sw(prim, BAR_QUAD_TAG)
-	psx.sw(prim + 4, BAR_QUAD)
-	psx.sw(prim + 8, x0 | top)
-	psx.sw(prim + 12, u0 | v0 << 8 | BAR_CLUT << 16)
-	psx.sw(prim + 16, x1 | top)
-	psx.sw(prim + 20, u1 | v0 << 8 | BAR_PAGE << 16)
-	psx.sw(prim + 24, x0 | bottom)
-	psx.sw(prim + 28, u0 | v1 << 8)
-	psx.sw(prim + 32, x1 | bottom)
-	psx.sw(prim + 36, u1 | v1 << 8)
+	prim := cpu.lw(SPRITE_PACKETS)
+	cpu.sw(prim, BAR_QUAD_TAG)
+	cpu.sw(prim + 4, BAR_QUAD)
+	cpu.sw(prim + 8, x0 | top)
+	cpu.sw(prim + 12, u0 | v0 << 8 | BAR_CLUT << 16)
+	cpu.sw(prim + 16, x1 | top)
+	cpu.sw(prim + 20, u1 | v0 << 8 | BAR_PAGE << 16)
+	cpu.sw(prim + 24, x0 | bottom)
+	cpu.sw(prim + 28, u0 | v1 << 8)
+	cpu.sw(prim + 32, x1 | bottom)
+	cpu.sw(prim + 36, u1 | v1 << 8)
 	game_routine(PRIM_COMMIT, {1, BAR_QUAD_BYTES, 0, 0, 0})
 	line_draw(x + BAR_LINE[0], x + BAR_LINE[1], ry + BAR_LINE_BELOW, BAR_LINE_STYLE)
 	for mark in ([2][2]int{MARK_MAX, MARK_MIN}) {
-		prim = psx.lw(SPRITE_PACKETS)
-		psx.sw(prim, MARK_TAG)
-		psx.sw(prim + 4, MARK_SPRITE)
-		psx.sw(prim + 8, u32(x + mark[0]) & 0xffff | u32(ry + MARK_Y) << 16)
-		psx.sw(prim + 12, MARK_UV_CLUT | u32(mark[1]))
-		psx.sw(prim + 16, MARK_SIZE)
+		prim = cpu.lw(SPRITE_PACKETS)
+		cpu.sw(prim, MARK_TAG)
+		cpu.sw(prim + 4, MARK_SPRITE)
+		cpu.sw(prim + 8, u32(x + mark[0]) & 0xffff | u32(ry + MARK_Y) << 16)
+		cpu.sw(prim + 12, MARK_UV_CLUT | u32(mark[1]))
+		cpu.sw(prim + 16, MARK_SIZE)
 		game_routine(PRIM_COMMIT, {1, MARK_BYTES, 0, 0, 0})
 	}
 }

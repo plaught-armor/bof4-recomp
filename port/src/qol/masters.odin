@@ -35,7 +35,9 @@ import "core:math/bits"
 
 import sdl "vendor:sdl2"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
+import render "ps:psx/render"
 
 import "ps:core"
 
@@ -220,7 +222,7 @@ masters_init :: proc() {
 	#assert(len(MASTER_FACES) == MASTER_COUNT)
 	// The journal and combos pages are always there; the masters page with
 	// the tracker.
-	psx.osd_panel_pages = config.masters_tracker ? PANEL_MASTERS + 1 : PANEL_COMBOS + 1
+	host.osd_panel_pages = config.masters_tracker ? PANEL_MASTERS + 1 : PANEL_COMBOS + 1
 }
 
 // Whether the masters draw in the game's picture (menu_draw.odin).
@@ -237,10 +239,10 @@ masters_active :: proc() -> bool {
 
 @(private)
 masters_vblank :: proc(pressed: u16) {
-	if config.masters_tracker && psx.osd_panel_shown && psx.osd_panel_page == PANEL_MASTERS {
+	if config.masters_tracker && host.osd_panel_shown && host.osd_panel_page == PANEL_MASTERS {
 		masters_select(pressed)
 	}
-	now := psx.vblanks()
+	now := cpu.vblanks()
 	if now < masters.next_read {
 		return
 	}
@@ -265,10 +267,10 @@ masters_vblank :: proc(pressed: u16) {
 @(private = "file")
 masters_select :: proc(pressed: u16) {
 	step := 0
-	if pressed & psx.PAD_UP != 0 {
+	if pressed & host.PAD_UP != 0 {
 		step -= 1
 	}
-	if pressed & psx.PAD_DOWN != 0 {
+	if pressed & host.PAD_DOWN != 0 {
 		step += 1
 	}
 	if step == 0 {
@@ -288,7 +290,7 @@ masters_select :: proc(pressed: u16) {
 @(private = "file")
 master_met :: proc(i: int) -> bool {
 	id := u32(i + 1)
-	return psx.lbu(MET + id / 8) >> (id % 8) & 1 != 0 || masters.pupils[i] != ""
+	return cpu.lbu(MET + id / 8) >> (id % 8) & 1 != 0 || masters.pupils[i] != ""
 }
 
 // The master's name, or "???" before the party has met it.
@@ -320,7 +322,7 @@ masters_order :: proc() -> (order: [MASTER_COUNT]int, met: int) {
 // given): the progress byte, past skills the party already knows.
 @(private = "file")
 master_next :: proc(i: int, m: Master) -> int {
-	progress := psx.lbu(PROGRESS + u32(i + 1))
+	progress := cpu.lbu(PROGRESS + u32(i + 1))
 	if progress == PROGRESS_DONE {
 		return m.tiers
 	}
@@ -337,7 +339,7 @@ skill_known :: proc(skill: u8) -> bool {
 		return false
 	}
 	bit := u32(skill - SKILL_FIRST)
-	return psx.lbu(SKILL_BITS + bit >> 3) & (1 << (bit & 7)) != 0
+	return cpu.lbu(SKILL_BITS + bit >> 3) & (1 << (bit & 7)) != 0
 }
 
 @(private = "file")
@@ -360,12 +362,12 @@ masters_alert :: proc(m: Master, ready: int, pupil: string) {
 @(private = "file")
 masters_pupils :: proc() -> (pupils: [MASTER_COUNT]string) {
 	for slot in 0 ..< PARTY_SLOT_COUNT {
-		index := psx.lbu(PARTY_SLOTS + u32(slot))
+		index := cpu.lbu(PARTY_SLOTS + u32(slot))
 		if index >= CHAR_COUNT {
 			continue
 		}
 		record := char_record(index)
-		id := psx.lbu(record + CHAR_MASTER)
+		id := cpu.lbu(record + CHAR_MASTER)
 		if id == 0 || id > MASTER_COUNT || pupils[id - 1] != "" {
 			continue
 		}
@@ -377,41 +379,41 @@ masters_pupils :: proc() -> (pupils: [MASTER_COUNT]string) {
 @(private = "file")
 char_name :: proc(record: u32) -> string {
 	n := 0
-	for n < CHAR_NAME_LEN && psx.lbu(record + u32(n)) != 0 {
+	for n < CHAR_NAME_LEN && cpu.lbu(record + u32(n)) != 0 {
 		n += 1
 	}
-	at := record & (psx.RAM_SIZE - 1)
-	return string(psx.ram[at:at + u32(n)])
+	at := record & (cpu.RAM_SIZE - 1)
+	return string(cpu.ram[at:at + u32(n)])
 }
 
 @(private = "file")
 counter_read :: proc(c: Counter) -> (v: u32) {
 	switch c {
 	case .Combo_Hits:
-		v = psx.lbu(MAX_COMBO_HITS)
+		v = cpu.lbu(MAX_COMBO_HITS)
 	case .Hours:
-		v = psx.lw(PLAY_HOURS)
+		v = cpu.lw(PLAY_HOURS)
 	case .Encounters:
-		v = psx.lw(ENCOUNTERS)
+		v = cpu.lw(ENCOUNTERS)
 	case .Combo_Damage:
-		v = psx.lw(MAX_COMBO_DAMAGE)
+		v = cpu.lw(MAX_COMBO_DAMAGE)
 	case .Hit_Damage:
-		v = psx.lw(MAX_HIT_DAMAGE)
+		v = cpu.lw(MAX_HIT_DAMAGE)
 	case .Ryu_Level:
-		v = psx.lhu(RYU_LEVEL)
+		v = cpu.lhu(RYU_LEVEL)
 	case .Ball_Rank:
-		v = psx.lbu(BALL_RANK)
+		v = cpu.lbu(BALL_RANK)
 	case .Fish_Points:
 		for k in 0 ..< u32(FISH_KINDS) {
-			v += psx.lhu(FISH_POINTS + k * 2)
+			v += cpu.lhu(FISH_POINTS + k * 2)
 		}
 	case .Species:
 		for k in 0 ..< u32(SPECIES_WORDS) {
-			v += u32(bits.count_ones(psx.lw(SPECIES + k * 4)))
+			v += u32(bits.count_ones(cpu.lw(SPECIES + k * 4)))
 		}
 	case .Faeries:
 		for k in 0 ..< u32(FAERIE_COUNT) {
-			v += psx.lbu(FAERIES + k * FAERIE_STRIDE) != 0 ? 1 : 0
+			v += cpu.lbu(FAERIES + k * FAERIE_STRIDE) != 0 ? 1 : 0
 		}
 	case .Inventory:
 		v = inventory_filled()
@@ -424,7 +426,7 @@ inventory_filled :: proc() -> (n: u32) {
 	for list in 0 ..< u32(INVENTORY_LISTS) {
 		for slot in 0 ..< u32(INVENTORY_SLOTS) {
 			at := INVENTORY + list * 0x200 + slot * 2
-			if psx.lbu(at) != 0 && psx.lbu(at + 1) != 0 {
+			if cpu.lbu(at) != 0 && cpu.lbu(at + 1) != 0 {
 				n += 1
 			}
 		}
@@ -475,13 +477,13 @@ COL_BOX_STAT_END :: COL_BOX + 24 // first stat, right-aligned
 @(private)
 masters_draw :: proc() {
 	masters_toasts_expire()
-	if psx.osd_panel_shown && psx.osd_panel_page == PANEL_MASTERS && config.masters_tracker {
+	if host.osd_panel_shown && host.osd_panel_page == PANEL_MASTERS && config.masters_tracker {
 		masters_draw_masters()
 		// The panel shows a ready reward in green; notices would cover it.
 		return
 	}
 	master_face_release()
-	if psx.osd_panel_shown {
+	if host.osd_panel_shown {
 		return // another page; notices would cover it
 	}
 	y := PANEL.y + PANEL.w - masters.toast_count * TOAST_H
@@ -562,11 +564,11 @@ stat_labels_loaded :: proc() -> bool {
 	x0 := STAT_LABEL_PAGE * 64 + label.x / 4
 	for y in label.y ..< label.y + label.w {
 		for x in x0 ..< x0 + STAT_LABELS * label.z / 4 {
-			add(&h, psx.vram_at(i32(x), i32(y))^)
+			add(&h, render.vram_at(i32(x), i32(y))^)
 		}
 	}
 	for c in 0 ..< 16 {
-		add(&h, psx.vram_at(i32(clut.x + c), i32(clut.y))^)
+		add(&h, render.vram_at(i32(clut.x + c), i32(clut.y))^)
 	}
 	return h == STAT_LABELS_HASH
 }

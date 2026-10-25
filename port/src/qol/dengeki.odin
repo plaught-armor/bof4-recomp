@@ -18,14 +18,15 @@
 // from the user's copy of the patch and disc into dengeki/ in the working
 // directory. When they are there and the option is on, the game's file table
 // points those two files at sectors past the disc's end, where
-// psx.sector_hook serves them. The patched files are longer than the disc's,
+// spu.sector_hook serves them. The patched files are longer than the disc's,
 // so they cannot take the disc's place; the game sizes reads from the EMI
 // header, not from the table.
 package qol
 
 import "core:fmt"
 import "core:os"
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import spu "ps:psx/spu"
 
 @(private = "file")
 WORLD_FLAGS :: 0x8011b878
@@ -55,13 +56,13 @@ dengeki := [?]Dengeki_File{{index = 0x28e, name = "AREAD068.EMI"}, {index = 0x3b
 dengeki_init :: proc() -> bool {
 	found := false
 	for &f in dengeki {
-		f.lba = psx.lw(FILE_TABLE + f.index * 4)
+		f.lba = cpu.lw(FILE_TABLE + f.index * 4)
 		path := fmt.tprintf("%s/%s", DENGEKI_DIR, f.name)
 		data, err := os.read_entire_file(path, context.allocator)
 		if err != nil {
 			continue
 		}
-		if len(data) > ADDED_SPAN * psx.DISC_DATA {
+		if len(data) > ADDED_SPAN * spu.DISC_DATA {
 			fmt.eprintfln("dengeki: %s is too long", path)
 			delete(data)
 			continue
@@ -70,7 +71,7 @@ dengeki_init :: proc() -> bool {
 		found = true
 	}
 	if found {
-		psx.sector_hook = dengeki_sector
+		spu.sector_hook = dengeki_sector
 	}
 	return true
 }
@@ -84,8 +85,8 @@ dengeki_sector :: proc(lba: u32) -> []u8 {
 	if i >= len(dengeki) || dengeki[i].data == nil {
 		return nil
 	}
-	at := int(lba - ADDED_LBA - i * ADDED_SPAN) * psx.DISC_DATA
-	@(static) sector: [psx.DISC_DATA]u8
+	at := int(lba - ADDED_LBA - i * ADDED_SPAN) * spu.DISC_DATA
+	@(static) sector: [spu.DISC_DATA]u8
 	sector = {}
 	if at < len(dengeki[i].data) {
 		copy(sector[:], dengeki[i].data[at:])
@@ -95,21 +96,21 @@ dengeki_sector :: proc(lba: u32) -> []u8 {
 
 @(private)
 dengeki_vblank :: proc() {
-	glom := psx.lbu(WORLD_FLAGS + MT_GLOM_BIT >> 3) & (1 << (MT_GLOM_BIT & 7)) != 0
+	glom := cpu.lbu(WORLD_FLAGS + MT_GLOM_BIT >> 3) & (1 << (MT_GLOM_BIT & 7)) != 0
 	open := config.field_dengeki && glom
 	for bit in DENGEKI_BITS {
 		addr := WORLD_FLAGS + bit >> 3
-		old := psx.lbu(addr)
+		old := cpu.lbu(addr)
 		mask := u32(1) << (bit & 7)
 		now := open ? old | mask : old &~ mask
 		if now != old {
-			psx.sb(addr, now)
+			cpu.sb(addr, now)
 		}
 	}
 	for f, i in dengeki {
 		lba := config.field_dengeki && f.data != nil ? ADDED_LBA + u32(i) * ADDED_SPAN : f.lba
-		if psx.lw(FILE_TABLE + f.index * 4) != lba {
-			psx.sw(FILE_TABLE + f.index * 4, lba)
+		if cpu.lw(FILE_TABLE + f.index * 4) != lba {
+			cpu.sw(FILE_TABLE + f.index * 4, lba)
 		}
 	}
 }

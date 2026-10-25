@@ -19,7 +19,9 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import render "ps:psx/render"
+import spu "ps:psx/spu"
 
 // u32 per game file: its first sector on the disc.
 @(private)
@@ -159,7 +161,7 @@ master_face_release :: proc() {
 vram_swap :: proc(p: ^Portrait, put: bool) {
 	for y in 0 ..< FACE_H {
 		for h in 0 ..< FACE_HALFWORDS {
-			at := psx.vram_at(i32(CELL_X + h), i32(PAGE_Y + y))
+			at := render.vram_at(i32(CELL_X + h), i32(PAGE_Y + y))
 			if put {
 				at^ = p.texels[y][h]
 			} else {
@@ -168,7 +170,7 @@ vram_swap :: proc(p: ^Portrait, put: bool) {
 		}
 	}
 	for c in 0 ..< COLOURS {
-		at := psx.vram_at(i32(CLUT_X + c), CLUT_Y)
+		at := render.vram_at(i32(CLUT_X + c), CLUT_Y)
 		if put {
 			at^ = p.clut[c]
 		} else {
@@ -181,13 +183,13 @@ vram_swap :: proc(p: ^Portrait, put: bool) {
 vram_holds :: proc(p: ^Portrait) -> bool {
 	for y in 0 ..< FACE_H {
 		for h in 0 ..< FACE_HALFWORDS {
-			if psx.vram_at(i32(CELL_X + h), i32(PAGE_Y + y))^ != p.texels[y][h] {
+			if render.vram_at(i32(CELL_X + h), i32(PAGE_Y + y))^ != p.texels[y][h] {
 				return false
 			}
 		}
 	}
 	for c in 0 ..< COLOURS {
-		if psx.vram_at(i32(CLUT_X + c), CLUT_Y)^ != p.clut[c] {
+		if render.vram_at(i32(CLUT_X + c), CLUT_Y)^ != p.clut[c] {
 			return false
 		}
 	}
@@ -201,13 +203,13 @@ face_quad :: proc(x, y: int) {
 	corners := [4][2]int{{x, y}, {x + FACE_W, y}, {x, y + FACE_H}, {x + FACE_W, y + FACE_H}}
 	texels := [4][2]int{{U0, 0}, {U1, 0}, {U0, FACE_H}, {U1, FACE_H}}
 	extra := [4]u32{QUAD_CLUT << 16, QUAD_TPAGE << 16, 0, 0}
-	prim := psx.lw(SPRITE_PACKETS)
-	psx.sw(prim, QUAD_TAG)
-	psx.sw(prim + 4, QUAD_CMD)
+	prim := cpu.lw(SPRITE_PACKETS)
+	cpu.sw(prim, QUAD_TAG)
+	cpu.sw(prim + 4, QUAD_CMD)
 	for k in 0 ..< 4 {
 		at := prim + 8 + u32(k) * 8
-		psx.sw(at, u32(corners[k].x) & 0xffff | u32(corners[k].y) << 16)
-		psx.sw(at + 4, extra[k] | u32(texels[k].y) << 8 | u32(texels[k].x))
+		cpu.sw(at, u32(corners[k].x) & 0xffff | u32(corners[k].y) << 16)
+		cpu.sw(at + 4, extra[k] | u32(texels[k].y) << 8 | u32(texels[k].x))
 	}
 	game_routine(PRIM_COMMIT, {1, QUAD_BYTES, 0, 0, 0})
 }
@@ -215,9 +217,9 @@ face_quad :: proc(x, y: int) {
 // Read face k of the game file into p, from the disc.
 @(private)
 face_read :: proc(file: u32, k: int, p: ^Portrait) -> bool {
-	lba := psx.lw(FILE_TABLE + file * 4)
-	header: [psx.DISC_DATA]u8
-	if !psx.disc_read(lba, header[:]) {
+	lba := cpu.lw(FILE_TABLE + file * 4)
+	header: [spu.DISC_DATA]u8
+	if !spu.disc_read(lba, header[:]) {
 		fmt.eprintf("masters: cannot read game file %x at sector %d\n", file, lba)
 		return false
 	}
@@ -232,14 +234,14 @@ face_read :: proc(file: u32, k: int, p: ^Portrait) -> bool {
 		fmt.eprintf("masters: game file %x has no face %d\n", file, k)
 		return false
 	}
-	#assert(TILE_BYTES == psx.DISC_DATA)
+	#assert(TILE_BYTES == spu.DISC_DATA)
 	tiles: [4][TILE_BYTES]u8 // two tile rows: a face spans at most two
 	read_tiles := min(last_row * 2 + 2, tile_count) - first_row * 2
 	assert(read_tiles <= len(tiles))
-	clut: [psx.DISC_DATA]u8
-	palette_sector := k * COLOURS * 2 / psx.DISC_DATA
-	if !psx.disc_read(lba + sheet + u32(first_row * 2), (cast([^]u8)&tiles)[:read_tiles * TILE_BYTES]) ||
-	   !psx.disc_read(lba + palette + u32(palette_sector), clut[:]) {
+	clut: [spu.DISC_DATA]u8
+	palette_sector := k * COLOURS * 2 / spu.DISC_DATA
+	if !spu.disc_read(lba + sheet + u32(first_row * 2), (cast([^]u8)&tiles)[:read_tiles * TILE_BYTES]) ||
+	   !spu.disc_read(lba + palette + u32(palette_sector), clut[:]) {
 		fmt.eprintf("masters: cannot read face %d of game file %x\n", k, file)
 		return false
 	}
@@ -252,7 +254,7 @@ face_read :: proc(file: u32, k: int, p: ^Portrait) -> bool {
 			p.texels[y][h] = u16(tile[at]) | u16(tile[at + 1]) << 8
 		}
 	}
-	base := k * COLOURS * 2 % psx.DISC_DATA
+	base := k * COLOURS * 2 % spu.DISC_DATA
 	for c in 0 ..< COLOURS {
 		p.clut[c] = u16(clut[base + c * 2]) | u16(clut[base + c * 2 + 1]) << 8
 	}
@@ -287,21 +289,21 @@ emi_entry :: proc(header: []u8, type: u32, addr: u32) -> (sector: u32, size: int
 @(private)
 emi_read :: proc(file, type, addr: u32, offset: int, buf: []u8) -> bool {
 	READ_MAX :: 8 // sectors
-	lba := psx.lw(FILE_TABLE + file * 4)
-	header: [psx.DISC_DATA]u8
-	if !psx.disc_read(lba, header[:]) {
+	lba := cpu.lw(FILE_TABLE + file * 4)
+	header: [spu.DISC_DATA]u8
+	if !spu.disc_read(lba, header[:]) {
 		return false
 	}
 	sector, size, ok := emi_entry(header[:], type, addr)
-	first := offset / psx.DISC_DATA
-	count := (offset + len(buf) + psx.DISC_DATA - 1) / psx.DISC_DATA - first
+	first := offset / spu.DISC_DATA
+	count := (offset + len(buf) + spu.DISC_DATA - 1) / spu.DISC_DATA - first
 	if !ok || offset + len(buf) > size || count > READ_MAX {
 		return false
 	}
-	data: [READ_MAX * psx.DISC_DATA]u8
-	if !psx.disc_read(lba + sector + u32(first), data[:count * psx.DISC_DATA]) {
+	data: [READ_MAX * spu.DISC_DATA]u8
+	if !spu.disc_read(lba + sector + u32(first), data[:count * spu.DISC_DATA]) {
 		return false
 	}
-	copy(buf, data[offset - first * psx.DISC_DATA:])
+	copy(buf, data[offset - first * spu.DISC_DATA:])
 	return true
 }

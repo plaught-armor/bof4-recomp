@@ -34,7 +34,11 @@ package qol
 
 import "core:math"
 
-import "ps:psx"
+import bios "ps:psx/bios"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
+import io "ps:psx/io"
+import render "ps:psx/render"
 
 import "ps:core"
 
@@ -269,14 +273,14 @@ Neighbour :: struct {
 
 @(private = "file")
 sections: struct {
-	draw: psx.Func_Proc,
+	draw: cpu.Func_Proc,
 	// The neighbours of the section drawn last, found for
 	// neighbours_key.
 	key:  [4]u32,
 	list: [MAX_NEIGHBOURS]Neighbour,
 	n:    int,
-	request: psx.Func_Proc,
-	enter:   psx.Func_Proc,
+	request: cpu.Func_Proc,
+	enter:   cpu.Func_Proc,
 	// The fades a crossing to a neighbour replaced, put back once the field
 	// is set up again.
 	fades:   [2]u32,
@@ -313,10 +317,10 @@ sections: struct {
 	floors:  [MAX_NEIGHBOURS + 1]Floor,
 	// floor_fill's cells to visit, grid indices.
 	queue:   [MAX_CELLS]u16,
-	models_draw: psx.Func_Proc,
-	model_objects_draw: psx.Func_Proc,
-	layer_models: psx.Func_Proc,
-	npc_update:  psx.Func_Proc,
+	models_draw: cpu.Func_Proc,
+	model_objects_draw: cpu.Func_Proc,
+	layer_models: cpu.Func_Proc,
+	npc_update:  cpu.Func_Proc,
 	// The neighbours' people, as spawned in their own sections' frames.
 	actors:  [MAX_ACTORS]Actor,
 	n_actors: int,
@@ -345,8 +349,8 @@ Actor :: struct {
 // All of RAM and the scratchpad, kept over a spawn run for a neighbour.
 @(private = "file")
 spawn_saved: struct {
-	ram:     [psx.RAM_SIZE]u8,
-	scratch: [psx.SCRATCH_SIZE]u8,
+	ram:     [cpu.RAM_SIZE]u8,
+	scratch: [cpu.SCRATCH_SIZE]u8,
 }
 
 // The cells of a section's grid its rooms take: floor and the walls round
@@ -362,19 +366,19 @@ Floor :: struct {
 @(private)
 sections_init :: proc() -> bool {
 	ok: bool
-	sections.draw, ok = psx.hook(LAYER_DRAW, layer_draw)
+	sections.draw, ok = cpu.hook(LAYER_DRAW, layer_draw)
 	if !ok {
 		return false
 	}
-	sections.models_draw, ok = psx.hook(MODELS_LIST_DRAW, models_draw)
+	sections.models_draw, ok = cpu.hook(MODELS_LIST_DRAW, models_draw)
 	if !ok {
 		return false
 	}
-	sections.model_objects_draw, ok = psx.hook(MODEL_OBJECTS_DRAW, model_objects_draw)
+	sections.model_objects_draw, ok = cpu.hook(MODEL_OBJECTS_DRAW, model_objects_draw)
 	if !ok {
 		return false
 	}
-	sections.layer_models, ok = psx.hook(MODELS_DRAW, layer_models)
+	sections.layer_models, ok = cpu.hook(MODELS_DRAW, layer_models)
 	if !ok {
 		return false
 	}
@@ -391,18 +395,18 @@ sections_init :: proc() -> bool {
 // room.
 @(private = "file")
 map_request :: proc() {
-	m, section := psx.cpu.r[4] & 0xffff, psx.cpu.r[5] & 0xff
-	near := m == psx.lhu(MAP_ID) && sections.key == neighbours_key(psx.lhu(MAP_SECTION)) && listed(sections.list[:sections.n], section)
+	m, section := cpu.state.r[4] & 0xffff, cpu.state.r[5] & 0xff
+	near := m == cpu.lhu(MAP_ID) && sections.key == neighbours_key(cpu.lhu(MAP_SECTION)) && listed(sections.list[:sections.n], section)
 	// A script's request (op 0x5b) is made wherever the party stands: the
 	// room comes in at the black of the game's fade out instead, and the
 	// game then sets it up as after a load (interiors.odin world_enter).
-	scripted := psx.cpu.r[31] == SCRIPT_REQUEST_RET && !door_walked_through()
+	scripted := cpu.state.r[31] == SCRIPT_REQUEST_RET && !door_walked_through()
 	// An arrival of cell 0, 0 leaves the party to the map's setup scripts
 	// (script op 0x5b requests mostly, some exits): a room switched to at
 	// once has them run already, so it would set the party down on that
 	// corner. Such a request loads as the game's, unless walked through or
 	// a script's, which the setup after the black places.
-	placed := psx.cpu.r[6] & 0xffff != 0 || psx.cpu.r[7] & 0xffff != 0 || door_walked_through() || scripted
+	placed := cpu.state.r[6] & 0xffff != 0 || cpu.state.r[7] & 0xffff != 0 || door_walked_through() || scripted
 	door := !near && placed && door_to(m, section)
 	sections.request()
 	if door && door_enter(m, section, scripted) {
@@ -419,7 +423,7 @@ map_request :: proc() {
 		// to ease in from. A script's switch is set up by the game after
 		// the black, the camera with it.
 		sections.door = false
-		sections.yaw = psx.lhu(CAMERA_YAW)
+		sections.yaw = cpu.lhu(CAMERA_YAW)
 		sections.pending = !scripted
 		sections.from_on = false
 		if !door_walked_through() && !scripted {
@@ -437,17 +441,17 @@ map_request :: proc() {
 	if !near && !door || sections.crossing {
 		return
 	}
-	sections.fades = {psx.lbu(FADE_IN), psx.lbu(FADE_OUT)}
+	sections.fades = {cpu.lbu(FADE_IN), cpu.lbu(FADE_OUT)}
 	sections.crossing = true
 	sections.walking = true
-	psx.hold_picture = near ? CROSS_HOLD : DOOR_HOLD
+	host.hold_picture = near ? CROSS_HOLD : DOOR_HOLD
 	sections.door = door
 	sections.from_on = false
 	sections.door_ease = false
 	sections.ease_v = {}
 	if door {
-		sections.yaw = psx.lhu(CAMERA_YAW)
-		sections.dir = psx.lbu(leader_obj() + OBJ_DIRECTION) & 7
+		sections.yaw = cpu.lhu(CAMERA_YAW)
+		sections.dir = cpu.lbu(leader_obj() + OBJ_DIRECTION) & 7
 		sections.pending = true
 	}
 	if .Game in core.trace.active && door {
@@ -455,14 +459,14 @@ map_request :: proc() {
 	}
 	for nb in sections.list[:sections.n] {
 		if nb.section == section {
-			sections.from = target_now() - layer_shift(section, psx.lhu(MAP_SECTION), nb.offset) * (TARGET_PER_CELL / VIEW_PER_CELL) + sections.ease
-			sections.yaw = psx.lhu(CAMERA_YAW)
+			sections.from = target_now() - layer_shift(section, cpu.lhu(MAP_SECTION), nb.offset) * (TARGET_PER_CELL / VIEW_PER_CELL) + sections.ease
+			sections.yaw = cpu.lhu(CAMERA_YAW)
 			sections.from_on = true
 			sections.pending = true
 		}
 	}
-	psx.sb(FADE_IN, NO_FADE)
-	psx.sb(FADE_OUT, NO_FADE)
+	cpu.sb(FADE_IN, NO_FADE)
+	cpu.sb(FADE_OUT, NO_FADE)
 }
 
 @(private = "file")
@@ -470,9 +474,9 @@ field_enter :: proc() {
 	sections.enter()
 	if sections.crossing {
 		sections.crossing = false
-		psx.sb(FADE_IN, sections.fades[0])
-		psx.sb(FADE_OUT, sections.fades[1])
-		psx.hold_picture = min(psx.hold_picture, ENTER_HOLD)
+		cpu.sb(FADE_IN, sections.fades[0])
+		cpu.sb(FADE_OUT, sections.fades[1])
+		host.hold_picture = min(host.hold_picture, ENTER_HOLD)
 	}
 }
 
@@ -486,14 +490,14 @@ crossing_turn :: proc() {
 	sections.pending = false
 	yaw := sections.yaw
 	if sections.door {
-		turn := (psx.lbu(leader_obj() + OBJ_DIRECTION) & 7) - sections.dir
+		turn := (cpu.lbu(leader_obj() + OBJ_DIRECTION) & 7) - sections.dir
 		yaw = (yaw + turn * 0x200) & 0xfff
 	}
 	if sections.from_on {
 		sections.ease = sections.from - target_now()
 	}
 	if config.camera_third_person {
-		psx.sh(CAMERA_YAW, yaw)
+		cpu.sh(CAMERA_YAW, yaw)
 	}
 }
 
@@ -504,9 +508,9 @@ crossing_turn :: proc() {
 // before the crossing.
 @(private)
 crossing_view_begin :: proc() -> [3]u32 {
-	t := [3]u32{psx.lhu(CAM_TARGET), psx.lhu(CAM_TARGET + 2), psx.lhu(CAM_TARGET + 4)}
-	now := psx.vblanks()
-	if !psx.events_frozen && now != sections.eased_at {
+	t := [3]u32{cpu.lhu(CAM_TARGET), cpu.lhu(CAM_TARGET + 2), cpu.lhu(CAM_TARGET + 4)}
+	now := cpu.vblanks()
+	if !io.events_frozen && now != sections.eased_at {
 		sections.eased_at = now
 		if sections.shown {
 			if sections.door_ease {
@@ -525,12 +529,12 @@ crossing_view_begin :: proc() -> [3]u32 {
 		if !sections.crossing {
 			crossing_turn()
 		}
-		sections.shown = psx.hold_picture == 0
+		sections.shown = host.hold_picture == 0
 	}
 	ease := inbetween_replaying ? sections.queued.ease : sections.ease
 	if ease != {} {
 		for i in u32(0) ..< 3 {
-			psx.sh(CAM_TARGET + 2 * i, u32(i32(i16(t[i])) + i32(math.round(ease[i]))))
+			cpu.sh(CAM_TARGET + 2 * i, u32(i32(i16(t[i])) + i32(math.round(ease[i]))))
 		}
 	}
 	return t
@@ -549,24 +553,24 @@ sections_pass_note :: proc() {
 @(private)
 crossing_view_end :: proc(t: [3]u32) {
 	for i in u32(0) ..< 3 {
-		psx.sh(CAM_TARGET + 2 * i, t[i])
+		cpu.sh(CAM_TARGET + 2 * i, t[i])
 	}
 }
 
 @(private = "file")
 target_now :: proc() -> [3]f32 {
-	return {f32(i16(psx.lhu(CAM_TARGET))), f32(i16(psx.lhu(CAM_TARGET + 2))), f32(i16(psx.lhu(CAM_TARGET + 4)))}
+	return {f32(i16(cpu.lhu(CAM_TARGET))), f32(i16(cpu.lhu(CAM_TARGET + 2))), f32(i16(cpu.lhu(CAM_TARGET + 4)))}
 }
 
 @(private = "file")
 layer_draw :: proc() {
-	section := psx.lhu(MAP_SECTION)
-	if psx.lbu(DRAW_LAYER) != section || psx.lw(SLOT_ENGINE) != FLD_MAIN_ID || interior_pass {
-		lo := psx.lw(PACKETS)
+	section := cpu.lhu(MAP_SECTION)
+	if cpu.lbu(DRAW_LAYER) != section || cpu.lw(SLOT_ENGINE) != FLD_MAIN_ID || interior_pass {
+		lo := cpu.lw(PACKETS)
 		sections.draw()
-		layer := u32(psx.lbu(DRAW_LAYER))
+		layer := u32(cpu.lbu(DRAW_LAYER))
 		if layer > u32(section) && layer < u32(section) + section_layers(u32(section)) && sections.key == neighbours_key(section) && open_any() {
-			psx.blacks_add(lo, psx.lw(PACKETS))
+			render.blacks_add(lo, cpu.lw(PACKETS))
 		}
 		return
 	}
@@ -586,7 +590,7 @@ layer_draw :: proc() {
 	list, n := sections.list, sections.n
 	tr: [3]u32
 	for i in u32(0) ..< 3 {
-		tr[i] = psx.lw(CAM_TR + 4 * i)
+		tr[i] = cpu.lw(CAM_TR + 4 * i)
 	}
 	// The section's own tiles give way where a neighbour has floor and this
 	// section has none: the wall tops around its rooms would cover the
@@ -609,16 +613,16 @@ layer_draw :: proc() {
 	// Each doorway's back gives way to the neighbour drawn past it; its
 	// sides and lintel stay.
 	backs: [MAX_NEIGHBOURS]int
-	lo := psx.lw(PACKETS)
+	lo := cpu.lw(PACKETS)
 	for nb, i in list[:n] {
-		backs[i] = psx.back_begin(lo, door_view(nb.door, tr), view_point(nb.front, tr))
+		backs[i] = render.back_begin(lo, door_view(nb.door, tr), view_point(nb.front, tr))
 	}
 	sections.draw()
 	for k in backs[:n] {
-		psx.back_end(k, psx.lw(PACKETS))
+		render.back_end(k, cpu.lw(PACKETS))
 	}
 	if open_any() {
-		psx.blacks_add(lo, psx.lw(PACKETS))
+		render.blacks_add(lo, cpu.lw(PACKETS))
 	}
 	unhide_tiles(hidden[:h])
 	if n == 0 {
@@ -633,25 +637,25 @@ layer_draw :: proc() {
 		}
 		others: [MAX_TILES][2]u32
 		k := hide_others(hidden[from[i]:from[i + 1]], &others)
-		lo := psx.lw(PACKETS)
+		lo := cpu.lw(PACKETS)
 		sections.draw()
-		psx.portal_add(lo, psx.lw(PACKETS), door_view(nb.door, tr), false)
+		render.portal_add(lo, cpu.lw(PACKETS), door_view(nb.door, tr), false)
 		unhide_tiles(others[:k])
 	}
 	for nb, i in list[:n] {
-		lo := psx.lw(PACKETS)
+		lo := cpu.lw(PACKETS)
 		for layer := nb.section + section_layers(nb.section) - 1; layer + 1 > nb.section; layer -= 1 {
 			draw_layer_at(layer, section, nb, tr, &sections.floors[i + 1])
 		}
-		through_door(nb, lo, psx.lw(PACKETS), tr)
+		through_door(nb, lo, cpu.lw(PACKETS), tr)
 	}
 	for i in u32(0) ..< 3 {
-		psx.sw(CAM_TR + 4 * i, tr[i])
+		cpu.sw(CAM_TR + 4 * i, tr[i])
 	}
-	psx.cpu.r[4] = CAM_MATRIX
-	psx.call(SET_TRANS)
-	psx.sb(DRAW_LAYER, section)
-	psx.call(LAYER_SETUP)
+	cpu.state.r[4] = CAM_MATRIX
+	cpu.call(SET_TRANS)
+	cpu.sb(DRAW_LAYER, section)
+	cpu.call(LAYER_SETUP)
 }
 
 // Run the spawn script for each neighbour as if it were the section loaded
@@ -663,23 +667,23 @@ spawn_actors :: proc(section: u32) {
 	if sections.n == 0 {
 		return
 	}
-	spawn_saved.ram = psx.ram
-	spawn_saved.scratch = psx.scratch
-	seed := psx.rand_seed()
+	spawn_saved.ram = cpu.ram
+	spawn_saved.scratch = cpu.scratch
+	seed := bios.rand_seed()
 	sections.rand = seed ~ 0x9e3779b9
 	for nb, i in sections.list[:sections.n] {
 		free: [len(POOLS)][NPC_COUNT]bool
 		for pool, p in POOLS {
 			for k in u32(0) ..< pool.count {
-				free[p][k] = psx.lbu(pool.base + pool.size * k) == 0
+				free[p][k] = cpu.lbu(pool.base + pool.size * k) == 0
 			}
 		}
-		psx.sh(MAP_SECTION, nb.section)
+		cpu.sh(MAP_SECTION, nb.section)
 		game_routine(SPAWN, {})
 		for pool, p in POOLS {
 			for k in u32(0) ..< pool.count {
 				at := pool.base + pool.size * k
-				if !free[p][k] || psx.lbu(at) == 0 || sections.n_actors == MAX_ACTORS {
+				if !free[p][k] || cpu.lbu(at) == 0 || sections.n_actors == MAX_ACTORS {
 					continue
 				}
 				a := &sections.actors[sections.n_actors]
@@ -690,11 +694,11 @@ spawn_actors :: proc(section: u32) {
 				sections.n_actors += 1
 			}
 		}
-		psx.ram_touch(0, psx.RAM_SIZE)
-		psx.ram = spawn_saved.ram
-		psx.scratch = spawn_saved.scratch
+		cpu.ram_touch(0, cpu.RAM_SIZE)
+		cpu.ram = spawn_saved.ram
+		cpu.scratch = spawn_saved.scratch
 	}
-	psx.set_rand_seed(seed)
+	bios.set_rand_seed(seed)
 	models: int
 	for a in sections.actors[:sections.n_actors] {
 		models += int(a.object[0] & OBJ_MODEL != 0)
@@ -704,7 +708,7 @@ spawn_actors :: proc(section: u32) {
 
 @(private = "file")
 actors_shown :: proc() -> bool {
-	return sections.n_actors > 0 && psx.lw(SLOT_ENGINE) == FLD_MAIN_ID && sections.key == neighbours_key(psx.lhu(MAP_SECTION))
+	return sections.n_actors > 0 && cpu.lw(SLOT_ENGINE) == FLD_MAIN_ID && sections.key == neighbours_key(cpu.lhu(MAP_SECTION))
 }
 
 // Draw the sprites of the neighbours' objects into the scene, each in a free
@@ -725,9 +729,9 @@ models_draw :: proc() {
 // stair of the floor below.
 @(private = "file")
 layer_models :: proc() {
-	section := u32(psx.lhu(MAP_SECTION))
-	layer := u32(psx.lbu(DRAW_LAYER))
-	if layer < section || layer >= section + section_layers(section) || psx.lw(SLOT_ENGINE) != FLD_MAIN_ID || interior_pass || sections.key != neighbours_key(section) {
+	section := u32(cpu.lhu(MAP_SECTION))
+	layer := u32(cpu.lbu(DRAW_LAYER))
+	if layer < section || layer >= section + section_layers(section) || cpu.lw(SLOT_ENGINE) != FLD_MAIN_ID || interior_pass || sections.key != neighbours_key(section) {
 		sections.layer_models()
 		return
 	}
@@ -766,24 +770,24 @@ model_objects_draw :: proc() {
 @(private = "file")
 npc_update :: proc() {
 	sections.npc_update()
-	if interior_pass || sections.n_actors == 0 || sections.key != neighbours_key(psx.lhu(MAP_SECTION)) {
+	if interior_pass || sections.n_actors == 0 || sections.key != neighbours_key(cpu.lhu(MAP_SECTION)) {
 		return
 	}
 	@(static) kept: [NPC_COUNT * NPC_SIZE]u8
 	for &b, j in kept {
-		b = u8(psx.lbu(NPCS + u32(j)))
+		b = u8(cpu.lbu(NPCS + u32(j)))
 	}
-	section := psx.lhu(MAP_SECTION)
-	seed := psx.rand_seed()
-	psx.set_rand_seed(sections.rand)
+	section := cpu.lhu(MAP_SECTION)
+	seed := bios.rand_seed()
+	bios.set_rand_seed(sections.rand)
 	for k in u32(0) ..< PARTY_COUNT {
 		at := PARTY_OBJ + PARTY_SIZE * k + NPC_POS
-		psx.sw(at, psx.lw(at) + AWAY)
+		cpu.sw(at, cpu.lw(at) + AWAY)
 	}
 	for nb, i in sections.list[:sections.n] {
 		any: bool
 		for k in u32(0) ..< NPC_COUNT {
-			psx.sb(NPCS + NPC_SIZE * k, 0)
+			cpu.sb(NPCS + NPC_SIZE * k, 0)
 		}
 		for a in sections.actors[:sections.n_actors] {
 			if a.neighbour == i && a.pool == 0 {
@@ -794,7 +798,7 @@ npc_update :: proc() {
 		if !any {
 			continue
 		}
-		psx.sh(MAP_SECTION, nb.section)
+		cpu.sh(MAP_SECTION, nb.section)
 		sections.npc_update()
 		for &a in sections.actors[:sections.n_actors] {
 			if a.neighbour == i && a.pool == 0 {
@@ -802,15 +806,15 @@ npc_update :: proc() {
 			}
 		}
 	}
-	psx.sh(MAP_SECTION, section)
-	sections.rand = psx.rand_seed()
-	psx.set_rand_seed(seed)
+	cpu.sh(MAP_SECTION, section)
+	sections.rand = bios.rand_seed()
+	bios.set_rand_seed(seed)
 	for k in u32(0) ..< PARTY_COUNT {
 		at := PARTY_OBJ + PARTY_SIZE * k + NPC_POS
-		psx.sw(at, psx.lw(at) - AWAY)
+		cpu.sw(at, cpu.lw(at) - AWAY)
 	}
 	for b, j in kept {
-		psx.sb(NPCS + u32(j), u32(b))
+		cpu.sb(NPCS + u32(j), u32(b))
 	}
 }
 
@@ -818,7 +822,7 @@ npc_update :: proc() {
 @(private = "file")
 free_slot :: proc(pool: Pool) -> u32 {
 	for k in u32(0) ..< pool.count {
-		if psx.lbu(pool.base + pool.size * k) == 0 {
+		if cpu.lbu(pool.base + pool.size * k) == 0 {
 			return pool.base + pool.size * k
 		}
 	}
@@ -828,7 +832,7 @@ free_slot :: proc(pool: Pool) -> u32 {
 @(private = "file")
 slot_take :: proc(slot, size: u32) -> (object: [NPC_SIZE]u8) {
 	for &b, j in object[:size] {
-		b = u8(psx.lbu(slot + u32(j)))
+		b = u8(cpu.lbu(slot + u32(j)))
 	}
 	return
 }
@@ -836,7 +840,7 @@ slot_take :: proc(slot, size: u32) -> (object: [NPC_SIZE]u8) {
 @(private = "file")
 slot_put :: proc(slot: u32, object: [NPC_SIZE]u8, size: u32) {
 	for j in 0 ..< size {
-		psx.sb(slot + j, u32(object[j]))
+		cpu.sb(slot + j, u32(object[j]))
 	}
 }
 
@@ -855,11 +859,11 @@ draw_actors :: proc(models: bool) {
 	}
 	tr: [3]u32
 	for i in u32(0) ..< 3 {
-		tr[i] = psx.lw(CAM_TR + 4 * i)
+		tr[i] = cpu.lw(CAM_TR + 4 * i)
 	}
-	section := psx.lhu(MAP_SECTION)
-	count := psx.lw(SPRITE_LIST_COUNT)
-	model_count, model_first := psx.lw(MODEL_LIST_COUNT), psx.lw(MODEL_LIST)
+	section := cpu.lhu(MAP_SECTION)
+	count := cpu.lw(SPRITE_LIST_COUNT)
+	model_count, model_first := cpu.lw(MODEL_LIST_COUNT), cpu.lw(MODEL_LIST)
 	actors := inbetween_replaying ? sections.queued.actors[:sections.queued.n_actors] : sections.actors[:sections.n_actors]
 	for a in actors {
 		flags := a.object[0]
@@ -875,44 +879,44 @@ draw_actors :: proc(models: bool) {
 		shift := layer_shift(nb.section, section, nb.offset)
 		for i in u32(0) ..< 3 {
 			at := slot + NPC_POS + 4 * i
-			pos := i32(psx.lw(at))
-			if psx.events_frozen && a.pool == 0 {
+			pos := i32(cpu.lw(at))
+			if io.events_frozen && a.pool == 0 {
 				// An in-between picture: part of the way back to where the
 				// frame's update found it.
-				d := pos - i32(psx.lw(slot + NPC_PREV + 4 * i))
+				d := pos - i32(cpu.lw(slot + NPC_PREV + 4 * i))
 				if abs(d) <= MAX_BLEND {
 					pos -= i32(math.round(f64(d) * inbetween_back))
 				}
 			}
-			psx.sw(at, u32(pos + i32(math.round(shift[i] * CELL / VIEW_PER_CELL))))
+			cpu.sw(at, u32(pos + i32(math.round(shift[i] * CELL / VIEW_PER_CELL))))
 		}
 		if models {
-			psx.sw(MODEL_LIST, slot)
-			psx.sw(MODEL_LIST_COUNT, 1)
-			lo := psx.lw(PACKETS)
+			cpu.sw(MODEL_LIST, slot)
+			cpu.sw(MODEL_LIST_COUNT, 1)
+			lo := cpu.lw(PACKETS)
 			actor_draw_models()
-			through_door(nb, lo, psx.lw(PACKETS), tr)
+			through_door(nb, lo, cpu.lw(PACKETS), tr)
 			continue
 		}
-		psx.sw(SPRITE_LIST_COUNT, count)
+		cpu.sw(SPRITE_LIST_COUNT, count)
 		actor_call(COLLECT, slot, SPRITE_LIST, COLLECT_RA)
-		if psx.lw(SPRITE_LIST_COUNT) == count {
+		if cpu.lw(SPRITE_LIST_COUNT) == count {
 			continue // off screen
 		}
 		sprite := slot + NPC_SPRITE
-		lo := psx.lw(SPRITE_PACKETS)
+		lo := cpu.lw(SPRITE_PACKETS)
 		actor_call(SPRITE_DRAW, sprite, 0, SPRITE_LIST_RA)
-		if shadow := psx.lbu(SHADOW_NEXT); psx.lbu(sprite + SPRITE_FLAGS) & FLAG_SHADOW != 0 && shadow < MAX_SHADOWS {
+		if shadow := cpu.lbu(SHADOW_NEXT); cpu.lbu(sprite + SPRITE_FLAGS) & FLAG_SHADOW != 0 && shadow < MAX_SHADOWS {
 			record := SHADOWS + SHADOW_SIZE * shadow
 			actor_call(SHADOW_SET, sprite, record, SHADOW_SET_RA)
 			actor_call(SPRITE_DRAW, record, 0, SHADOW_RA)
-			psx.sb(SHADOW_NEXT, shadow + 1)
+			cpu.sb(SHADOW_NEXT, shadow + 1)
 		}
-		through_door(nb, lo, psx.lw(SPRITE_PACKETS), tr)
+		through_door(nb, lo, cpu.lw(SPRITE_PACKETS), tr)
 	}
-	psx.sw(SPRITE_LIST_COUNT, count)
-	psx.sw(MODEL_LIST_COUNT, model_count)
-	psx.sw(MODEL_LIST, model_first)
+	cpu.sw(SPRITE_LIST_COUNT, count)
+	cpu.sw(MODEL_LIST_COUNT, model_count)
+	cpu.sw(MODEL_LIST, model_first)
 	for pool, p in POOLS {
 		if slots[p] != 0 {
 			slot_put(slots[p], kept[p], pool.size)
@@ -924,7 +928,7 @@ draw_actors :: proc(models: bool) {
 // registers.
 @(private = "file")
 actor_draw_models :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	regs, hi, lo := c.r, c.hi, c.lo
 	c.r[29] = (c.r[29] - ACTOR_FRAME) &~ 7
 	c.r[31] = MODEL_OBJECTS_RA
@@ -936,11 +940,11 @@ actor_draw_models :: proc() {
 // keeping the caller's registers.
 @(private = "file")
 actor_call :: proc(target, a0, a1, ra: u32) {
-	c := &psx.cpu
+	c := &cpu.state
 	regs, hi, lo := c.r, c.hi, c.lo
 	c.r[29] = (c.r[29] - ACTOR_FRAME) &~ 7
 	c.r[4], c.r[5], c.r[31] = a0, a1, ra
-	psx.call(target)
+	cpu.call(target)
 	c.r, c.hi, c.lo = regs, hi, lo
 }
 
@@ -954,19 +958,19 @@ draw_layer_at :: proc(layer, section: u32, nb: Neighbour, tr: [3]u32, floor: ^Fl
 	for i in u32(0) ..< 3 {
 		sum: f32
 		for j in u32(0) ..< 3 {
-			sum += f32(i16(psx.lhu(CAM_MATRIX + 6 * i + 2 * j))) * shift[j]
+			sum += f32(i16(cpu.lhu(CAM_MATRIX + 6 * i + 2 * j))) * shift[j]
 		}
-		psx.sw(CAM_TR + 4 * i, u32(i32(tr[i]) + i32(sum / 4096)))
+		cpu.sw(CAM_TR + 4 * i, u32(i32(tr[i]) + i32(sum / 4096)))
 	}
-	psx.cpu.r[4] = CAM_MATRIX
-	psx.call(SET_TRANS)
+	cpu.state.r[4] = CAM_MATRIX
+	cpu.call(SET_TRANS)
 	// LAYER_SETUP picks the blocks of geometry around the target, in the
 	// layer's own frame.
-	tx, tz := psx.lhu(CAM_TARGET), psx.lhu(CAM_TARGET + 4)
-	psx.sh(CAM_TARGET, u32(i32(i16(tx)) - i32(offset.x * TARGET_PER_CELL)))
-	psx.sh(CAM_TARGET + 4, u32(i32(i16(tz)) - i32(offset.z * TARGET_PER_CELL)))
-	psx.sb(DRAW_LAYER, layer)
-	psx.call(LAYER_SETUP)
+	tx, tz := cpu.lhu(CAM_TARGET), cpu.lhu(CAM_TARGET + 4)
+	cpu.sh(CAM_TARGET, u32(i32(i16(tx)) - i32(offset.x * TARGET_PER_CELL)))
+	cpu.sh(CAM_TARGET + 4, u32(i32(i16(tz)) - i32(offset.z * TARGET_PER_CELL)))
+	cpu.sb(DRAW_LAYER, layer)
+	cpu.call(LAYER_SETUP)
 	// Its rock gives way over this section's floor, but not its own floor:
 	// an upper storey stands over the rooms below it. An open floor above
 	// shows only its rooms: its rock and the black around them would cover
@@ -979,9 +983,9 @@ draw_layer_at :: proc(layer, section: u32, nb: Neighbour, tr: [3]u32, floor: ^Fl
 	keep := Cover{floor, origin(layer) - origin(nb.section), false}
 	hidden: [MAX_HIDDEN][2]u32
 	n := hide_tiles(over, keep, &hidden, 0)
-	lo := psx.lw(PACKETS)
+	lo := cpu.lw(PACKETS)
 	sections.draw()
-	if psx.lbu(DRAW_FLAGS) & FLAG_MODELS != 0 {
+	if cpu.lbu(DRAW_FLAGS) & FLAG_MODELS != 0 {
 		if open {
 			draw_models(layer, {&sections.floors[0], shift, false}, {floor, keep.shift, true})
 		} else {
@@ -989,11 +993,11 @@ draw_layer_at :: proc(layer, section: u32, nb: Neighbour, tr: [3]u32, floor: ^Fl
 		}
 	}
 	if open {
-		psx.blacks_add(lo, psx.lw(PACKETS))
+		render.blacks_add(lo, cpu.lw(PACKETS))
 	}
 	unhide_tiles(hidden[:n])
-	psx.sh(CAM_TARGET, tx)
-	psx.sh(CAM_TARGET + 4, tz)
+	cpu.sh(CAM_TARGET, tx)
+	cpu.sh(CAM_TARGET + 4, tz)
 }
 
 // Where `layer` is drawn in the frame of `section` when its section's origin
@@ -1021,15 +1025,15 @@ Cover :: struct {
 hide_tiles :: proc(over, keep: Cover, hidden: ^[MAX_HIDDEN][2]u32, n: int) -> int {
 	n := n
 	run := u32(TILE_RUNS)
-	for _ in 0 ..< psx.lhu(TILE_RUN_COUNT) {
-		tile := psx.lw(run)
-		count := i32(i16(psx.lhu(run + 4)))
-		at := [3]f32{f32(i32(i8(psx.lbu(run + 6))) * TILE_SPAN + TILE_CORNER), 0, f32(i32(i8(psx.lbu(run + 7))) * TILE_SPAN + TILE_CORNER)}
+	for _ in 0 ..< cpu.lhu(TILE_RUN_COUNT) {
+		tile := cpu.lw(run)
+		count := i32(i16(cpu.lhu(run + 4)))
+		at := [3]f32{f32(i32(i8(cpu.lbu(run + 6))) * TILE_SPAN + TILE_CORNER), 0, f32(i32(i8(cpu.lbu(run + 7))) * TILE_SPAN + TILE_CORNER)}
 		for _ in 0 ..< count {
-			kind := psx.lhu(tile)
+			kind := cpu.lhu(tile)
 			if kind != 0 && n < MAX_HIDDEN && (over.floor == nil || floor_under(over, at)) && !floor_under(keep, at) {
 				hidden[n] = {tile, kind}
-				psx.sh(tile, 0)
+				cpu.sh(tile, 0)
 				n += 1
 			}
 			tile += TILE_SIZE
@@ -1047,13 +1051,13 @@ hide_tiles :: proc(over, keep: Cover, hidden: ^[MAX_HIDDEN][2]u32, n: int) -> in
 @(private = "file")
 draw_models :: proc(layer: u32, over, keep: Cover) {
 	models: [MAX_MODELS]u32
-	lo := psx.lw(PACKETS)
+	lo := cpu.lw(PACKETS)
 	k := hide_models(layer, over, keep, false, &models)
 	sections.layer_models()
 	show_models(models[:k])
 	k = hide_models(layer, over, keep, true, &models)
 	sections.layer_models()
-	psx.blacks_add(lo, psx.lw(PACKETS))
+	render.blacks_add(lo, cpu.lw(PACKETS))
 	show_models(models[:k])
 }
 
@@ -1068,10 +1072,10 @@ hide_models :: proc(layer: u32, over, keep: Cover, off_pass: bool, hidden: ^[MAX
 		return 0
 	}
 	n := 0
-	for i in u32(0) ..< psx.lbu(desc + MODEL_COUNT) {
+	for i in u32(0) ..< cpu.lbu(desc + MODEL_COUNT) {
 		m := desc + MODEL_FIRST + MODEL_SIZE * i
 		flags := m + MODEL_FLAGS
-		at := [3]f32{f32(psx.lhu(m + MODEL_X)), 0, f32(psx.lhu(m + MODEL_Z))} * MODEL_UNIT
+		at := [3]f32{f32(cpu.lhu(m + MODEL_X)), 0, f32(cpu.lhu(m + MODEL_Z))} * MODEL_UNIT
 		g := keep.floor.grid
 		x := i32(math.floor((at.x + keep.shift.x) / VIEW_PER_CELL))
 		z := i32(math.floor((at.z + keep.shift.z) / VIEW_PER_CELL))
@@ -1079,8 +1083,8 @@ hide_models :: proc(layer: u32, over, keep: Cover, off_pass: bool, hidden: ^[MAX
 		// floor_under looks at a tile's span: the cells round the model.
 		round := at - TILE_SPAN / 2
 		hide := off_pass ? !off : off || floor_under(over, round) && !floor_under(keep, round)
-		if psx.lbu(flags) & MODEL_DRAWN != 0 && n < MAX_MODELS && hide {
-			psx.sb(flags, psx.lbu(flags) &~ MODEL_DRAWN)
+		if cpu.lbu(flags) & MODEL_DRAWN != 0 && n < MAX_MODELS && hide {
+			cpu.sb(flags, cpu.lbu(flags) &~ MODEL_DRAWN)
 			hidden[n] = flags
 			n += 1
 		}
@@ -1091,7 +1095,7 @@ hide_models :: proc(layer: u32, over, keep: Cover, off_pass: bool, hidden: ^[MAX
 @(private = "file")
 show_models :: proc(hidden: []u32) {
 	for m in hidden {
-		psx.sb(m, psx.lbu(m) | MODEL_DRAWN)
+		cpu.sb(m, cpu.lbu(m) | MODEL_DRAWN)
 	}
 }
 
@@ -1101,13 +1105,13 @@ show_models :: proc(hidden: []u32) {
 hide_others :: proc(keep: [][2]u32, hidden: ^[MAX_TILES][2]u32) -> int {
 	n := 0
 	run := u32(TILE_RUNS)
-	for _ in 0 ..< psx.lhu(TILE_RUN_COUNT) {
-		tile := psx.lw(run)
-		for _ in 0 ..< i32(i16(psx.lhu(run + 4))) {
-			kind := psx.lhu(tile)
+	for _ in 0 ..< cpu.lhu(TILE_RUN_COUNT) {
+		tile := cpu.lw(run)
+		for _ in 0 ..< i32(i16(cpu.lhu(run + 4))) {
+			kind := cpu.lhu(tile)
 			if kind != 0 && n < MAX_TILES && !kept(keep, tile) {
 				hidden[n] = {tile, kind}
-				psx.sh(tile, 0)
+				cpu.sh(tile, 0)
 				n += 1
 			}
 			tile += TILE_SIZE
@@ -1143,7 +1147,7 @@ view_point :: proc(c: [3]f32, tr: [3]u32) -> (v: [3]f32) {
 	for i in u32(0) ..< 3 {
 		sum: f32
 		for j in u32(0) ..< 3 {
-			sum += f32(i16(psx.lhu(CAM_MATRIX + 6 * i + 2 * j))) * c[j]
+			sum += f32(i16(cpu.lhu(CAM_MATRIX + 6 * i + 2 * j))) * c[j]
 		}
 		v[i] = sum / 4096 + f32(i32(tr[i]))
 	}
@@ -1153,7 +1157,7 @@ view_point :: proc(c: [3]f32, tr: [3]u32) -> (v: [3]f32) {
 @(private = "file")
 unhide_tiles :: proc(hidden: [][2]u32) {
 	for t in hidden {
-		psx.sh(t[0], t[1])
+		cpu.sh(t[0], t[1])
 	}
 }
 
@@ -1193,10 +1197,10 @@ floor_fill :: proc(f: ^Floor, section: u32) {
 	}
 	f.grid = g
 	n := 0
-	for p := exit_list(section); p != 0 && psx.lhu(p) != EXIT_END; p += EXIT_SIZE {
-		at := [2]i32{i32(psx.lbu(p + 4)), i32(psx.lbu(p + 5))}
-		step := psx.lbu(p + 3) & 1 != 0 ? [2]i32{0, 1} : [2]i32{1, 0}
-		for _ in 0 ..< psx.lbu(p + 10) {
+	for p := exit_list(section); p != 0 && cpu.lhu(p) != EXIT_END; p += EXIT_SIZE {
+		at := [2]i32{i32(cpu.lbu(p + 4)), i32(cpu.lbu(p + 5))}
+		step := cpu.lbu(p + 3) & 1 != 0 ? [2]i32{0, 1} : [2]i32{1, 0}
+		for _ in 0 ..< cpu.lbu(p + 10) {
 			n = floor_add(f, at, n)
 			at += step
 		}
@@ -1249,18 +1253,18 @@ is_wall :: proc(g: Grid, x, z: i32) -> bool {
 @(private)
 origin :: proc(layer: u32) -> [3]f32 {
 	at := LAYER_ORIGIN + 8 * layer
-	return {f32(psx.lbu(at)), f32(i16(psx.lhu(at + 2))), f32(psx.lbu(at + 4))}
+	return {f32(cpu.lbu(at)), f32(i16(cpu.lhu(at + 2))), f32(cpu.lbu(at + 4))}
 }
 
 // The sections `section` has a doorway pair with, up to len(list).
 @(private = "file")
 neighbours :: proc(section: u32, list: ^[MAX_NEIGHBOURS]Neighbour) -> int {
-	m := psx.lhu(MAP_ID)
+	m := cpu.lhu(MAP_ID)
 	n := 0
 	p := exit_list(section)
-	for ; p != 0 && psx.lhu(p) != EXIT_END && n < MAX_NEIGHBOURS; p += EXIT_SIZE {
-		other := psx.lbu(p + 2)
-		if psx.lhu(p) != m || other == section || listed(list[:n], other) {
+	for ; p != 0 && cpu.lhu(p) != EXIT_END && n < MAX_NEIGHBOURS; p += EXIT_SIZE {
+		other := cpu.lbu(p + 2)
+		if cpu.lhu(p) != m || other == section || listed(list[:n], other) {
 			continue
 		}
 		back := exit_to(other, m, section)
@@ -1287,7 +1291,7 @@ neighbours :: proc(section: u32, list: ^[MAX_NEIGHBOURS]Neighbour) -> int {
 		at := here + gap * d - there
 		quad := door(p, here, y)
 		// The arrival point in the neighbour, 256 a cell.
-		arrive := [2]f32{f32(i16(psx.lhu(p + 6))), f32(i16(psx.lhu(p + 8)))} / TARGET_PER_CELL
+		arrive := [2]f32{f32(i16(cpu.lhu(p + 6))), f32(i16(cpu.lhu(p + 8)))} / TARGET_PER_CELL
 		top := ground(other, {math.floor(arrive.x), math.floor(arrive.y)}, section, lb) * VIEW_PER_CELL / TARGET_PER_CELL
 		list[n] = {other, {at.x, dy, at.y}, quad, door_front(p, quad), top + dy - y, lp}
 		n += 1
@@ -1304,7 +1308,7 @@ drawn_open :: proc(nb: Neighbour) -> bool {
 	if nb.rise <= -UPPER_RISE {
 		return true
 	}
-	return nb.rise >= UPPER_RISE && u32(psx.lbu(leader_obj() + OBJ_LAYER)) == nb.layer
+	return nb.rise >= UPPER_RISE && u32(cpu.lbu(leader_obj() + OBJ_LAYER)) == nb.layer
 }
 
 // Show neighbour `nb`'s packets lo..<hi only through its doorway, unless it
@@ -1312,7 +1316,7 @@ drawn_open :: proc(nb: Neighbour) -> bool {
 @(private = "file")
 through_door :: proc(nb: Neighbour, lo, hi: u32, tr: [3]u32) {
 	if !drawn_open(nb) {
-		psx.portal_add(lo, hi, door_view(nb.door, tr), true)
+		render.portal_add(lo, hi, door_view(nb.door, tr), true)
 	}
 }
 
@@ -1329,8 +1333,8 @@ door_front :: proc(p: u32, quad: [4][3]f32) -> [3]f32 {
 @(private)
 door :: proc(p: u32, here: [2]f32, y: f32) -> [4][3]f32 {
 	d := exit_way(p)
-	along := psx.lbu(p + 3) & 1 != 0 ? [2]f32{0, 1} : [2]f32{1, 0}
-	half := f32(psx.lbu(p + 10)) / 2 + DOOR_MARGIN
+	along := cpu.lbu(p + 3) & 1 != 0 ? [2]f32{0, 1} : [2]f32{1, 0}
+	half := f32(cpu.lbu(p + 10)) / 2 + DOOR_MARGIN
 	mid := here + 0.5 + d * 0.5
 	a, b := (mid - along * half) * VIEW_PER_CELL, (mid + along * half) * VIEW_PER_CELL
 	return {{a.x, y, a.y}, {b.x, y, b.y}, {b.x, y + DOOR_HEIGHT, b.y}, {a.x, y + DOOR_HEIGHT, a.y}}
@@ -1348,11 +1352,11 @@ listed :: proc(list: []Neighbour, section: u32) -> bool {
 
 @(private)
 exit_list :: proc(section: u32) -> u32 {
-	base := psx.lw(EXITS)
-	if !in_ram(base) || !in_ram(psx.lw(base)) {
+	base := cpu.lw(EXITS)
+	if !in_ram(base) || !in_ram(cpu.lw(base)) {
 		return 0
 	}
-	p := psx.lw(psx.lw(base) + 4 * section)
+	p := cpu.lw(cpu.lw(base) + 4 * section)
 	return in_ram(p) ? p : 0
 }
 
@@ -1361,14 +1365,14 @@ exit_list :: proc(section: u32) -> u32 {
 // still find left over from the map before.
 @(private = "file")
 neighbours_key :: proc(section: u32) -> [4]u32 {
-	return {psx.lhu(MAP_ID), section, psx.lw(MAP_BLOCK), exit_list(section)}
+	return {cpu.lhu(MAP_ID), section, cpu.lw(MAP_BLOCK), exit_list(section)}
 }
 
 // The first exit of `section` to section `to` of map `m`, or 0.
 @(private)
 exit_to :: proc(section, m, to: u32) -> u32 {
-	for p := exit_list(section); p != 0 && psx.lhu(p) != EXIT_END; p += EXIT_SIZE {
-		if psx.lhu(p) == m && psx.lbu(p + 2) == to {
+	for p := exit_list(section); p != 0 && cpu.lhu(p) != EXIT_END; p += EXIT_SIZE {
+		if cpu.lhu(p) == m && cpu.lbu(p + 2) == to {
 			return p
 		}
 	}
@@ -1392,17 +1396,17 @@ ground :: proc(of: u32, cell: [2]f32, section: u32, layer: u32 = 0) -> f32 {
 	// GROUND works in the scratchpad through 0x1f8000d3, past the drawing's
 	// fog (0x1f8000ac..0x1f8000b6): called from a layer's draw, it left the
 	// room's first frame fogged through and its tiles culled.
-	saved := psx.scratch
-	pos := (psx.cpu.r[29] - POS_AT) &~ 7
-	psx.sw(pos, u32(i32((cell.x + 0.5) * CELL)))
-	psx.sw(pos + 4, psx.lw(LEADER_Y))
-	psx.sw(pos + 8, u32(i32((cell.y + 0.5) * CELL)))
+	saved := cpu.scratch
+	pos := (cpu.state.r[29] - POS_AT) &~ 7
+	cpu.sw(pos, u32(i32((cell.x + 0.5) * CELL)))
+	cpu.sw(pos + 4, cpu.lw(LEADER_Y))
+	cpu.sw(pos + 8, u32(i32((cell.y + 0.5) * CELL)))
 	// GROUND takes the layer counted from MAP_SECTION, so `of` is made the
 	// section for the call.
-	psx.sh(MAP_SECTION, of)
+	cpu.sh(MAP_SECTION, of)
 	y := f32(i32(game_routine(GROUND, {pos, layer, 0, 0, 0}))) * TARGET_PER_CELL / CELL
-	psx.sh(MAP_SECTION, section)
-	psx.scratch = saved
+	cpu.sh(MAP_SECTION, section)
+	cpu.scratch = saved
 	return y
 }
 
@@ -1410,7 +1414,7 @@ ground :: proc(of: u32, cell: [2]f32, section: u32, layer: u32 = 0) -> f32 {
 // turn from -z towards +x.
 @(private)
 exit_way :: proc(p: u32) -> [2]f32 {
-	a := f32(psx.lbu(p + 11) & 7) * math.PI / 4
+	a := f32(cpu.lbu(p + 11) & 7) * math.PI / 4
 	return {math.round(math.sin(a)), math.round(-math.cos(a))}
 }
 
@@ -1418,12 +1422,12 @@ exit_way :: proc(p: u32) -> [2]f32 {
 // neighbour drawn with it: what lies past it is the neighbour's.
 @(private)
 doorway_cell :: proc(x, z: i32) -> bool {
-	section := psx.lhu(MAP_SECTION)
+	section := cpu.lhu(MAP_SECTION)
 	if sections.key != neighbours_key(section) {
 		return false
 	}
-	for p := exit_list(section); p != 0 && psx.lhu(p) != EXIT_END; p += EXIT_SIZE {
-		if psx.lhu(p) != psx.lhu(MAP_ID) || !listed(sections.list[:sections.n], psx.lbu(p + 2)) {
+	for p := exit_list(section); p != 0 && cpu.lhu(p) != EXIT_END; p += EXIT_SIZE {
+		if cpu.lhu(p) != cpu.lhu(MAP_ID) || !listed(sections.list[:sections.n], cpu.lbu(p + 2)) {
 			continue
 		}
 		if exit_cell(p, x, z) {
@@ -1436,9 +1440,9 @@ doorway_cell :: proc(x, z: i32) -> bool {
 // Whether cell x, z is one of exit p's cells.
 @(private)
 exit_cell :: proc(p: u32, x, z: i32) -> bool {
-	at := [2]i32{i32(psx.lbu(p + 4)), i32(psx.lbu(p + 5))}
-	run := i32(psx.lbu(p + 10))
-	if psx.lbu(p + 3) & 1 != 0 {
+	at := [2]i32{i32(cpu.lbu(p + 4)), i32(cpu.lbu(p + 5))}
+	run := i32(cpu.lbu(p + 10))
+	if cpu.lbu(p + 3) & 1 != 0 {
 		return x == at.x && z >= at.y && z < at.y + run
 	}
 	return z == at.y && x >= at.x && x < at.x + run
@@ -1449,7 +1453,7 @@ exit_cell :: proc(p: u32, x, z: i32) -> bool {
 // The camera keeps its framing through it, as if no change took place.
 @(private)
 crossing_walk :: proc() -> bool {
-	walk := psx.lbu(leader_obj() + OBJ_STATE) == STATE_EXIT_WALK
+	walk := cpu.lbu(leader_obj() + OBJ_STATE) == STATE_EXIT_WALK
 	if sections.crossing || sections.walking && walk {
 		return true
 	}
@@ -1457,8 +1461,8 @@ crossing_walk :: proc() -> bool {
 	if !walk {
 		return false
 	}
-	x := i32(psx.lw(leader_obj() + OBJ_POS) + 0x8000) >> 16
-	z := i32(psx.lw(leader_obj() + OBJ_POS + 8) + 0x8000) >> 16
+	x := i32(cpu.lw(leader_obj() + OBJ_POS) + 0x8000) >> 16
+	z := i32(cpu.lw(leader_obj() + OBJ_POS + 8) + 0x8000) >> 16
 	for dz in i32(-1) ..= 1 {
 		for dx in i32(-1) ..= 1 {
 			if doorway_cell(x + dx, z + dz) {
@@ -1477,7 +1481,7 @@ wall_beyond :: proc(layer, p: u32, d: [2]f32) -> int {
 	if !ok {
 		return 0
 	}
-	x, z := i32(psx.lbu(p + 4)), i32(psx.lbu(p + 5))
+	x, z := i32(cpu.lbu(p + 4)), i32(cpu.lbu(p + 5))
 	n := 0
 	for n < MAX_WALL {
 		x += i32(d.x)
@@ -1494,7 +1498,7 @@ wall_beyond :: proc(layer, p: u32, d: [2]f32) -> int {
 // cell as an exit; 0 when none does.
 @(private = "file")
 exit_layer :: proc(of, p: u32) -> u32 {
-	x, z := i32(psx.lbu(p + 4)), i32(psx.lbu(p + 5))
+	x, z := i32(cpu.lbu(p + 4)), i32(cpu.lbu(p + 5))
 	for l in u32(0) ..< section_layers(of) {
 		g, ok := map_grid(of + l)
 		if ok && attr_at(g, x, z) >> 4 == ATTR_EXIT_KIND {
@@ -1508,9 +1512,9 @@ exit_layer :: proc(of, p: u32) -> u32 {
 // along x.
 @(private)
 exit_middle :: proc(p: u32) -> [2]f32 {
-	at := [2]f32{f32(psx.lbu(p + 4)), f32(psx.lbu(p + 5))}
-	half := (f32(psx.lbu(p + 10)) - 1) / 2
-	if psx.lbu(p + 3) & 1 != 0 {
+	at := [2]f32{f32(cpu.lbu(p + 4)), f32(cpu.lbu(p + 5))}
+	half := (f32(cpu.lbu(p + 10)) - 1) / 2
+	if cpu.lbu(p + 3) & 1 != 0 {
 		return at + {0, half}
 	}
 	return at + {half, 0}

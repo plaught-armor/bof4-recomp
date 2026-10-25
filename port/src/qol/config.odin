@@ -1,5 +1,5 @@
 // Quality-of-life features layered on the recompiled game: native
-// replacements for game functions (psx.hook_overlay) driven by a config file.
+// replacements for game functions (cpu.hook_overlay) driven by a config file.
 //
 // Settings come from bof4.ini in the working directory, or the file named by
 // BOF4_CONFIG. A missing file means defaults; a malformed value is an error.
@@ -198,12 +198,15 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
-import "ps:psx"
+import bios "ps:psx/bios"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
+import render "ps:psx/render"
 
 import "ps:core"
 
 Config :: struct {
-	window:                psx.Window_Options,
+	window:                host.Window_Options,
 	window_smooth_motion:  bool,
 	window_hardware:       bool,
 	window_smooth_effects: bool,
@@ -351,32 +354,32 @@ MAX_STICK_SPEED :: 720
 @(private)
 MAX_MOUSE_SPEED :: 4
 
-// Load the config file: before psx.platform_init, which reads the renderer
+// Load the config file: before host.platform_init, which reads the renderer
 // choice.
 boot :: proc() -> bool {
 	if !load_config() {
 		return false
 	}
 	config_boot = config
-	psx.hardware_renderer = config.window_hardware
+	render.hardware_renderer = config.window_hardware
 	return true
 }
 
-// Install every feature hook (after boot and psx.platform_init).
+// Install every feature hook (after boot and host.platform_init).
 init :: proc() -> bool {
 	masters_init()
-	psx.vblank_hook = vblank
-	psx.instant_loading = config.disc_instant_loading
-	psx.smooth_effects = config.window_smooth_effects
-	psx.smooth_textures = config.window_smooth_textures
-	psx.bloom_effects = config.window_bloom_effects
-	psx.depth_of_field = config.window_depth_of_field
-	psx.vignette = config.window_vignette
-	psx.skip_black = config.disc_skip_black
+	host.vblank_hook = vblank
+	host.instant_loading = config.disc_instant_loading
+	render.smooth_effects = config.window_smooth_effects
+	render.smooth_textures = config.window_smooth_textures
+	render.bloom_effects = config.window_bloom_effects
+	render.depth_of_field = config.window_depth_of_field
+	render.vignette = config.window_vignette
+	host.skip_black = config.disc_skip_black
 	core.audio_apply(config.audio_latency_ms)
-	psx.pad_set_rumble(1)
-	psx.mouse_drag = config.camera_mouse
-	return psx.window_apply(config.window) && encounter_init() && text_init() && camera_init() && movement_init() && save_init() && tracker_init() && popup_init() && learning_init() && combo_menu_init() && guard_init() && rewards_init() && damage_init() && ai_init() && ko_loss_init() && status_init() && victory_init() && quick_battle_init() && shake_init() && warp_init() && menu_draw_init() && button_text_init() && identify_init() && balance_init() && camp_menu_init() && setting_menu_init() && map_geometry_init() && collision_init() && sections_init() && fade_init() && inbetween_init() && interiors_init() && map_mods_init() && map_editor_init() && mouse_menus_init() && dengeki_init() && restored_init() && teacher_init() && descriptions_init() && npc_swap_init() && cinematics_init() && autoplay_init()
+	bios.pad_set_rumble(1)
+	host.mouse_drag = config.camera_mouse
+	return host.window_apply(config.window) && encounter_init() && text_init() && camera_init() && movement_init() && save_init() && tracker_init() && popup_init() && learning_init() && combo_menu_init() && guard_init() && rewards_init() && damage_init() && ai_init() && ko_loss_init() && status_init() && victory_init() && quick_battle_init() && shake_init() && warp_init() && menu_draw_init() && button_text_init() && identify_init() && balance_init() && camp_menu_init() && setting_menu_init() && map_geometry_init() && collision_init() && sections_init() && fade_init() && inbetween_init() && interiors_init() && map_mods_init() && map_editor_init() && mouse_menus_init() && dengeki_init() && restored_init() && teacher_init() && descriptions_init() && npc_swap_init() && cinematics_init() && autoplay_init()
 }
 
 // Follow the game's state once per emulated vblank.
@@ -640,7 +643,7 @@ apply_window_setting :: proc(key, value: string) -> bool {
 // leaves it unbound).
 @(private)
 parse_binding :: proc(section, key, value: string) -> bool {
-	bit := psx.pad_bit_from_name(key) or_return
+	bit := host.pad_bit_from_name(key) or_return
 	names := make([dynamic]string, context.temp_allocator)
 	for n in strings.split(value, ",", context.temp_allocator) {
 		if t := strings.trim_space(n); t != "" {
@@ -648,9 +651,9 @@ parse_binding :: proc(section, key, value: string) -> bool {
 		}
 	}
 	if section == "keys" {
-		return psx.bind_keys(bit, names[:])
+		return host.bind_keys(bit, names[:])
 	}
-	return psx.bind_buttons(bit, names[:])
+	return host.bind_buttons(bit, names[:])
 }
 
 @(private)

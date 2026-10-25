@@ -21,7 +21,10 @@ import "core:fmt"
 import "core:math"
 import "core:path/filepath"
 import sdl "vendor:sdl2"
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import gpu "ps:psx/gpu"
+import gte "ps:psx/gte"
+import host "ps:psx/host"
 
 @(private = "file")
 EDIT_BLOCK :: 0x80069800 // where a field map's data block loads (map_mods.odin)
@@ -142,25 +145,25 @@ map_editor: struct {
 }
 
 map_editor_init :: proc() -> bool {
-	map_editor.next_pad = psx.pad_hook
-	psx.pad_hook = editor_pad
-	psx.key_hook = editor_key
+	map_editor.next_pad = host.pad_hook
+	host.pad_hook = editor_pad
+	host.key_hook = editor_key
 	return true
 }
 
-// psx.pad_hook: notes the buttons; while editing the game sees only L1/R1
+// host.pad_hook: notes the buttons; while editing the game sees only L1/R1
 // (the camera turn and zoom).
 @(private = "file")
 editor_pad :: proc(held: u16) -> u16 {
 	map_editor.pad = held
 	held := held
 	if map_editor.on {
-		held &= psx.PAD_L1 | psx.PAD_R1
+		held &= host.PAD_L1 | host.PAD_R1
 	}
 	return map_editor.next_pad != nil ? map_editor.next_pad(held) : held
 }
 
-// psx.key_hook: F4 toggles the editor.
+// host.key_hook: F4 toggles the editor.
 @(private = "file")
 editor_key :: proc(k: sdl.KeyboardEvent) -> bool {
 	if k.keysym.scancode != .F4 {
@@ -182,23 +185,23 @@ say :: proc(format: string, args: ..any) {
 @(private = "file")
 can_edit :: proc() -> bool {
 	_, ok := grid_of(0)
-	return player_control() && psx.lw(MAP_BLOCK) == EDIT_BLOCK && ok && !on_world_map()
+	return player_control() && cpu.lw(MAP_BLOCK) == EDIT_BLOCK && ok && !on_world_map()
 }
 
 @(private = "file")
 editor_enter :: proc() {
 	if !can_edit() {
-		psx.osd_toast("Map editor: only on a field map with control")
+		host.osd_toast("Map editor: only on a field map with control")
 		return
 	}
 	leader := leader_obj()
 	map_editor.on = true
-	map_editor.map_id = psx.lhu(MAP_ID)
-	map_editor.section = psx.lbu(MAP_SECTION)
-	map_editor.layer = min(psx.lbu(leader + OBJ_LAYER), section_layers(map_editor.section) - 1)
+	map_editor.map_id = cpu.lhu(MAP_ID)
+	map_editor.section = cpu.lbu(MAP_SECTION)
+	map_editor.layer = min(cpu.lbu(leader + OBJ_LAYER), section_layers(map_editor.section) - 1)
 	map_editor.cursor = {
-		i32((psx.lw(leader + OBJ_POS) + 0x8000) >> 16),
-		i32((psx.lw(leader + OBJ_POS + 8) + 0x8000) >> 16),
+		i32((cpu.lw(leader + OBJ_POS) + 0x8000) >> 16),
+		i32((cpu.lw(leader + OBJ_POS + 8) + 0x8000) >> 16),
 	}
 	map_editor.exit_edit = false
 	map_editor.held_for = {}
@@ -210,12 +213,12 @@ editor_enter :: proc() {
 editor_leave :: proc(why: string) {
 	map_editor.on = false
 	map_editor.exit_edit = false
-	psx.sticks_left_blocked = false
-	psx.osd_overlay_shown = false
+	host.sticks_left_blocked = false
+	host.osd_overlay_shown = false
 	if map_editor.dirty {
-		psx.osd_toast("Map editor: unsaved edits stay until the map reloads")
+		host.osd_toast("Map editor: unsaved edits stay until the map reloads")
 	} else if why != "" {
-		psx.osd_toast(why)
+		host.osd_toast(why)
 	}
 }
 
@@ -232,21 +235,21 @@ map_editor_vblank :: proc() {
 	if !map_editor.on {
 		return
 	}
-	if psx.lhu(MAP_ID) != map_editor.map_id || psx.lw(SLOT_ENGINE) != FLD_MAIN_ID || psx.lw(MAP_BLOCK) != EDIT_BLOCK {
+	if cpu.lhu(MAP_ID) != map_editor.map_id || cpu.lw(SLOT_ENGINE) != FLD_MAIN_ID || cpu.lw(MAP_BLOCK) != EDIT_BLOCK {
 		map_editor.dirty = false
 		editor_leave("Map editor: left the map")
 		return
 	}
-	if psx.lbu(MAP_SECTION) != map_editor.section {
-		map_editor.section = psx.lbu(MAP_SECTION)
+	if cpu.lbu(MAP_SECTION) != map_editor.section {
+		map_editor.section = cpu.lbu(MAP_SECTION)
 		map_editor.layer = 0
 	}
-	psx.sticks_left_blocked = true
+	host.sticks_left_blocked = true
 	for &n, i in map_editor.held_for {
 		n = map_editor.pad & (1 << u16(i)) != 0 ? n + 1 : 0
 	}
 	// Only the field proper takes edits (not a camera turn or an event).
-	if psx.lhu(GAME_MODE) == GAME_MODE_FIELD {
+	if cpu.lhu(GAME_MODE) == GAME_MODE_FIELD {
 		editor_input()
 	}
 	draw_overlay()
@@ -283,19 +286,19 @@ bit_index :: proc(button: u16) -> int {
 @(private = "file")
 editor_input :: proc() {
 	e := &map_editor
-	if pressed(psx.PAD_START) {
+	if pressed(host.PAD_START) {
 		if path, ok := map_mods_save(); ok {
 			e.dirty = false
 			say("saved %s", filepath.base(path))
-			psx.osd_toast(fmt.tprintf("Map saved: %s", filepath.base(path)))
+			host.osd_toast(fmt.tprintf("Map saved: %s", filepath.base(path)))
 		} else {
 			say("save failed (see the console)")
 		}
 		return
 	}
-	if pressed(psx.PAD_L2) || pressed(psx.PAD_R2) {
+	if pressed(host.PAD_L2) || pressed(host.PAD_R2) {
 		n := len(Edit_Tool)
-		e.tool = Edit_Tool((int(e.tool) + (pressed(psx.PAD_R2) ? 1 : n - 1)) % n)
+		e.tool = Edit_Tool((int(e.tool) + (pressed(host.PAD_R2) ? 1 : n - 1)) % n)
 		e.exit_edit = false
 		e.message_n = 0
 		return
@@ -304,7 +307,7 @@ editor_input :: proc() {
 		exit_input()
 		return
 	}
-	if pressed(psx.PAD_SELECT) {
+	if pressed(host.PAD_SELECT) {
 		if e.tool == .Texture {
 			e.field = Texture_Field((int(e.field) + 1) % len(Texture_Field))
 		} else {
@@ -322,7 +325,7 @@ editor_input :: proc() {
 	case .Texture:
 		texture_input()
 	case .Exit:
-		if pressed(psx.PAD_CROSS) && e.exit != 0 {
+		if pressed(host.PAD_CROSS) && e.exit != 0 {
 			e.exit_edit = true
 		}
 	}
@@ -332,9 +335,9 @@ editor_input :: proc() {
 @(private = "file")
 move_cursor :: proc() {
 	steps := [4][2]i32{{0, -1}, {1, 0}, {0, 1}, {-1, 0}}
-	yaw := f64(psx.lhu(CAMERA_YAW)) * 360 / 4096
+	yaw := f64(cpu.lhu(CAMERA_YAW)) * 360 / 4096
 	q := int(math.round(yaw / 90)) & 3
-	for button, k in ([4]u16{psx.PAD_UP, psx.PAD_RIGHT, psx.PAD_DOWN, psx.PAD_LEFT}) {
+	for button, k in ([4]u16{host.PAD_UP, host.PAD_RIGHT, host.PAD_DOWN, host.PAD_LEFT}) {
 		if fired(button) {
 			map_editor.cursor += steps[(q + k) & 3]
 		}
@@ -353,7 +356,7 @@ clamp_cursor :: proc() {
 
 @(private = "file")
 edit :: proc(addr: u32, value: u8) {
-	if u8(psx.lbu(addr)) == value {
+	if u8(cpu.lbu(addr)) == value {
 		return
 	}
 	if map_mods_edit(addr, value) {
@@ -367,10 +370,10 @@ edit :: proc(addr: u32, value: u8) {
 cell_input :: proc() {
 	e := &map_editor
 	palette := PALETTE
-	if fired(psx.PAD_TRIANGLE) {
+	if fired(host.PAD_TRIANGLE) {
 		e.palette = (e.palette + 1) % len(palette)
 	}
-	if fired(psx.PAD_SQUARE) {
+	if fired(host.PAD_SQUARE) {
 		e.palette = (e.palette + len(palette) - 1) % len(palette)
 	}
 	g, ok := grid_of(e.layer)
@@ -378,8 +381,8 @@ cell_input :: proc() {
 		return
 	}
 	at := g.attrs + u32(e.cursor.y * g.w + e.cursor.x)
-	if pressed(psx.PAD_CIRCLE) {
-		attr := u8(psx.lbu(at))
+	if pressed(host.PAD_CIRCLE) {
+		attr := u8(cpu.lbu(at))
 		for p, i in palette {
 			if p == attr {
 				e.palette = i
@@ -387,7 +390,7 @@ cell_input :: proc() {
 		}
 		say("picked %02x", attr)
 	}
-	if held(psx.PAD_CROSS) {
+	if held(host.PAD_CROSS) {
 		edit(at, palette[e.palette])
 	}
 }
@@ -405,7 +408,7 @@ cursor_corners :: proc(out: ^[4]Corner) -> int {
 	c := map_editor.cursor
 	n := 0
 	if map_editor.tool == .Tile {
-		if t := tile_at(map_editor.layer, c.x >> 1, c.y >> 1); t != 0 && psx.lbu(t) & TILE_GROUND != 0 {
+		if t := tile_at(map_editor.layer, c.x >> 1, c.y >> 1); t != 0 && cpu.lbu(t) & TILE_GROUND != 0 {
 			for k in 0 ..< u32(4) {
 				out[n] = {t, k}
 				n += 1
@@ -416,7 +419,7 @@ cursor_corners :: proc(out: ^[4]Corner) -> int {
 	v := cursor_vertex()
 	for tz in v.y - 1 ..= v.y {
 		for tx in v.x - 1 ..= v.x {
-			if t := tile_at(map_editor.layer, tx, tz); t != 0 && psx.lbu(t) & TILE_GROUND != 0 {
+			if t := tile_at(map_editor.layer, tx, tz); t != 0 && cpu.lbu(t) & TILE_GROUND != 0 {
 				out[n] = {t, u32(v.x - tx) + 2 * u32(v.y - tz)}
 				n += 1
 			}
@@ -441,24 +444,24 @@ height_input :: proc() {
 	}
 	// Heights are positive up.
 	delta: i32
-	if fired(psx.PAD_TRIANGLE) {
+	if fired(host.PAD_TRIANGLE) {
 		delta += 1
 	}
-	if fired(psx.PAD_SQUARE) {
+	if fired(host.PAD_SQUARE) {
 		delta -= 1
 	}
-	if fired(psx.PAD_CROSS) {
+	if fired(host.PAD_CROSS) {
 		for c in corners[:n] {
 			edit(c.tile + 4 + c.corner, u8(e.height))
 		}
 	}
-	if pressed(psx.PAD_CIRCLE) {
-		e.height = i8(psx.lbu(corners[0].tile + 4 + corners[0].corner))
+	if pressed(host.PAD_CIRCLE) {
+		e.height = i8(cpu.lbu(corners[0].tile + 4 + corners[0].corner))
 		say("picked height %d", e.height)
 	}
 	if delta != 0 {
 		for c in corners[:n] {
-			h := i32(i8(psx.lbu(c.tile + 4 + c.corner)))
+			h := i32(i8(cpu.lbu(c.tile + 4 + c.corner)))
 			edit(c.tile + 4 + c.corner, u8(i8(clamp(h + delta, -128, 127))))
 		}
 	}
@@ -469,10 +472,10 @@ texture_input :: proc() {
 	e := &map_editor
 	b := &e.texture
 	step: i32
-	if fired(psx.PAD_TRIANGLE) {
+	if fired(host.PAD_TRIANGLE) {
 		step += 1
 	}
-	if fired(psx.PAD_SQUARE) {
+	if fired(host.PAD_SQUARE) {
 		step -= 1
 	}
 	if step != 0 {
@@ -490,16 +493,16 @@ texture_input :: proc() {
 		}
 	}
 	t := tile_at(e.layer, e.cursor.x >> 1, e.cursor.y >> 1)
-	if t == 0 || psx.lbu(t) & TILE_GROUND == 0 {
+	if t == 0 || cpu.lbu(t) & TILE_GROUND == 0 {
 		return
 	}
-	if pressed(psx.PAD_CIRCLE) {
-		b^ = {u8(psx.lbu(t)) & (TILE_FLIP | TILE_UV_TURN), u8(psx.lbu(t + 2)) & 0x3f, u8(psx.lbu(t + 3))}
+	if pressed(host.PAD_CIRCLE) {
+		b^ = {u8(cpu.lbu(t)) & (TILE_FLIP | TILE_UV_TURN), u8(cpu.lbu(t + 2)) & 0x3f, u8(cpu.lbu(t + 3))}
 		say("picked texture")
 	}
-	if held(psx.PAD_CROSS) {
-		edit(t, u8(psx.lbu(t)) &~ (TILE_FLIP | TILE_UV_TURN) | b.flags)
-		edit(t + 2, u8(psx.lbu(t + 2)) & 0xc0 | b.page)
+	if held(host.PAD_CROSS) {
+		edit(t, u8(cpu.lbu(t)) &~ (TILE_FLIP | TILE_UV_TURN) | b.flags)
+		edit(t + 2, u8(cpu.lbu(t + 2)) & 0xc0 | b.page)
 		edit(t + 3, b.cell)
 	}
 }
@@ -508,28 +511,28 @@ texture_input :: proc() {
 exit_input :: proc() {
 	e := &map_editor
 	fields := EXIT_FIELDS
-	if pressed(psx.PAD_CIRCLE) || pressed(psx.PAD_CROSS) || e.exit == 0 {
+	if pressed(host.PAD_CIRCLE) || pressed(host.PAD_CROSS) || e.exit == 0 {
 		e.exit_edit = false
 		return
 	}
-	if fired(psx.PAD_UP) {
+	if fired(host.PAD_UP) {
 		e.exit_field = (e.exit_field + len(fields) - 1) % len(fields)
 	}
-	if fired(psx.PAD_DOWN) {
+	if fired(host.PAD_DOWN) {
 		e.exit_field = (e.exit_field + 1) % len(fields)
 	}
 	f := fields[e.exit_field]
 	step: i32
-	if fired(psx.PAD_RIGHT) {
+	if fired(host.PAD_RIGHT) {
 		step += f.step
 	}
-	if fired(psx.PAD_LEFT) {
+	if fired(host.PAD_LEFT) {
 		step -= f.step
 	}
-	if fired(psx.PAD_TRIANGLE) {
+	if fired(host.PAD_TRIANGLE) {
 		step += 16 * f.step
 	}
-	if fired(psx.PAD_SQUARE) {
+	if fired(host.PAD_SQUARE) {
 		step -= 16 * f.step
 	}
 	if step == 0 {
@@ -545,24 +548,24 @@ exit_input :: proc() {
 @(private = "file")
 exit_value :: proc(exit: u32, f: Exit_Field) -> i32 {
 	if f.size == 1 {
-		return i32(psx.lbu(exit + f.at))
+		return i32(cpu.lbu(exit + f.at))
 	}
-	v := psx.lbu(exit + f.at) | psx.lbu(exit + f.at + 1) << 8
+	v := cpu.lbu(exit + f.at) | cpu.lbu(exit + f.at + 1) << 8
 	return f.signed ? i32(i16(u16(v))) : i32(v)
 }
 
 // The cells an exit covers: from its x, z, `count` along x (or z).
 @(private = "file")
 exit_covers :: proc(exit: u32, c: [2]i32) -> bool {
-	at := [2]i32{i32(psx.lbu(exit + 4)), i32(psx.lbu(exit + 5))}
-	along := psx.lbu(exit + 3) & 1 != 0 ? 1 : 0
-	n := max(i32(psx.lbu(exit + 10)), 1)
+	at := [2]i32{i32(cpu.lbu(exit + 4)), i32(cpu.lbu(exit + 5))}
+	along := cpu.lbu(exit + 3) & 1 != 0 ? 1 : 0
+	n := max(i32(cpu.lbu(exit + 10)), 1)
 	return c[1 - along] == at[1 - along] && c[along] >= at[along] && c[along] < at[along] + n
 }
 
 @(private = "file")
 exit_under :: proc(c: [2]i32) -> u32 {
-	for p := exit_list(map_editor.section); p != 0 && psx.lhu(p) != EXIT_END; p += EXIT_SIZE {
+	for p := exit_list(map_editor.section); p != 0 && cpu.lhu(p) != EXIT_END; p += EXIT_SIZE {
 		if exit_covers(p, c) {
 			return p
 		}
@@ -577,17 +580,17 @@ tile_at :: proc(layer: u32, tx, tz: i32) -> u32 {
 	if desc == 0 || tx < 0 || tz < 0 {
 		return 0
 	}
-	blk := psx.lw(MAP_BLOCK)
-	header := blk + psx.lw(blk + BLOCK_GRIDS + 4 * psx.lbu(desc))
-	if !in_ram(header) || tx >= i32(psx.lhu(header)) || tz >= i32(psx.lhu(header + 2)) {
+	blk := cpu.lw(MAP_BLOCK)
+	header := blk + cpu.lw(blk + BLOCK_GRIDS + 4 * cpu.lbu(desc))
+	if !in_ram(header) || tx >= i32(cpu.lhu(header)) || tz >= i32(cpu.lhu(header + 2)) {
 		return 0
 	}
-	row := header + psx.lw(header + 4) + 4 * u32(tz)
-	first := i32(psx.lbu(row))
-	if tx < first || tx >= first + i32(psx.lbu(row + 1)) {
+	row := header + cpu.lw(header + 4) + 4 * u32(tz)
+	first := i32(cpu.lbu(row))
+	if tx < first || tx >= first + i32(cpu.lbu(row + 1)) {
 		return 0
 	}
-	return header + psx.lw(header + 8) + 16 * (u32(psx.lhu(row + 2)) + u32(tx - first))
+	return header + cpu.lw(header + 8) + 16 * (u32(cpu.lhu(row + 2)) + u32(tx - first))
 }
 
 // ---------------------------------------------------------------- drawing
@@ -598,12 +601,12 @@ tile_at :: proc(layer: u32, tx, tz: i32) -> u32 {
 ground_y :: proc(x, z: f64) -> f64 {
 	tx, tz := i32(math.floor((x + 64) / 256)), i32(math.floor((z + 64) / 256))
 	t := tile_at(map_editor.layer, tx, tz)
-	if t == 0 || psx.lbu(t) & TILE_GROUND == 0 {
-		return f64(i32(psx.lw(LEADER_Y)) >> 9)
+	if t == 0 || cpu.lbu(t) & TILE_GROUND == 0 {
+		return f64(i32(cpu.lw(LEADER_Y)) >> 9)
 	}
 	h: [4]f64
 	for &v, k in h {
-		v = f64(i8(psx.lbu(t + 4 + u32(k)))) * 16
+		v = f64(i8(cpu.lbu(t + 4 + u32(k)))) * 16
 	}
 	dx, dz := (x + 64 - f64(tx) * 256) / 256, (z + 64 - f64(tz) * 256) / 256
 	if dx + dz < 1 {
@@ -620,18 +623,18 @@ project :: proc(p: [3]f64) -> (s: [2]f64, ok: bool) {
 	p := p + {f64(shift.x), f64(shift.y), f64(shift.z)}
 	v: [3]f64
 	for r in 0 ..< u32(3) {
-		sum := f64(i32(psx.lw(CAM_TR + 4 * r))) * 4096
+		sum := f64(i32(cpu.lw(CAM_TR + 4 * r))) * 4096
 		for i in 0 ..< u32(3) {
-			sum += f64(i16(psx.lhu(CAM_MATRIX + 6 * r + 2 * i))) * p[i]
+			sum += f64(i16(cpu.lhu(CAM_MATRIX + 6 * r + 2 * i))) * p[i]
 		}
 		v[r] = sum / 4096
 	}
 	if v.z <= 16 {
 		return {}, false
 	}
-	h := f64(i32(psx.lw(EDIT_CAM_H)))
-	screen := psx.gte_offset() + v.xy * h / v.z
-	return screen * {640 / f64(max(psx.display.w, 1)), 480 / f64(max(psx.display.h, 1))}, true
+	h := f64(i32(cpu.lw(EDIT_CAM_H)))
+	screen := gte.gte_offset() + v.xy * h / v.z
+	return screen * {640 / f64(max(gpu.display.w, 1)), 480 / f64(max(gpu.display.h, 1))}, true
 }
 
 @(private = "file")
@@ -681,8 +684,8 @@ line :: proc(pix: []u32, a, b: [2]f64, colour: u32) {
 
 @(private = "file")
 plot :: proc(pix: []u32, x, y: int, colour: u32) {
-	if x >= 0 && y >= 0 && x < psx.WINDOW_W && y < psx.WINDOW_H {
-		pix[y * psx.WINDOW_W + x] = colour
+	if x >= 0 && y >= 0 && x < host.WINDOW_W && y < host.WINDOW_H {
+		pix[y * host.WINDOW_W + x] = colour
 	}
 }
 
@@ -727,7 +730,7 @@ kind_colour :: proc(attr: u8) -> u32 {
 @(private = "file")
 draw_overlay :: proc() {
 	e := &map_editor
-	pix := psx.osd_overlay_pixels[:]
+	pix := host.osd_overlay_pixels[:]
 	for &p in pix {
 		p = 0
 	}
@@ -748,11 +751,11 @@ draw_overlay :: proc() {
 			}
 		}
 	}
-	for p := exit_list(e.section); p != 0 && psx.lhu(p) != EXIT_END; p += EXIT_SIZE {
-		at := [2]i32{i32(psx.lbu(p + 4)), i32(psx.lbu(p + 5))}
-		along := psx.lbu(p + 3) & 1 != 0 ? 1 : 0
+	for p := exit_list(e.section); p != 0 && cpu.lhu(p) != EXIT_END; p += EXIT_SIZE {
+		at := [2]i32{i32(cpu.lbu(p + 4)), i32(cpu.lbu(p + 5))}
+		along := cpu.lbu(p + 3) & 1 != 0 ? 1 : 0
 		end := at
-		end[along] += max(i32(psx.lbu(p + 10)), 1) - 1
+		end[along] += max(i32(cpu.lbu(p + 10)), 1) - 1
 		lo, _ := cell_box(at)
 		_, hi := cell_box(end)
 		outline(pix, lo, hi, p == e.exit ? COL_SELECT : COL_EXIT, 4)
@@ -773,8 +776,8 @@ draw_overlay :: proc() {
 		line3(pix, {at.x, y, at.y}, {at.x, y + 64, at.y}, COL_CURSOR)
 	}
 	draw_hud(pix)
-	psx.osd_overlay_shown = true
-	psx.osd_overlay_changed()
+	host.osd_overlay_shown = true
+	host.osd_overlay_changed()
 }
 
 // The vertex's height from a ground tile that has it, else the ground's.
@@ -782,8 +785,8 @@ draw_overlay :: proc() {
 vertex_y :: proc(v: [2]i32, at: [2]f64) -> f64 {
 	for tz in v.y - 1 ..= v.y {
 		for tx in v.x - 1 ..= v.x {
-			if t := tile_at(map_editor.layer, tx, tz); t != 0 && psx.lbu(t) & TILE_GROUND != 0 {
-				return f64(i8(psx.lbu(t + 4 + u32(v.x - tx) + 2 * u32(v.y - tz)))) * 16
+			if t := tile_at(map_editor.layer, tx, tz); t != 0 && cpu.lbu(t) & TILE_GROUND != 0 {
+				return f64(i8(cpu.lbu(t + 4 + u32(v.x - tx) + 2 * u32(v.y - tz)))) * 16
 			}
 		}
 	}
@@ -810,14 +813,14 @@ draw_hud :: proc(pix: []u32) {
 		if n == 0 {
 			lines[1] = fmt.tprintf("no ground tile  brush %d", e.height)
 		} else {
-			lines[1] = fmt.tprintf("height %d  brush %d  (%d corners)", i8(psx.lbu(corners[0].tile + 4 + corners[0].corner)), e.height, n)
+			lines[1] = fmt.tprintf("height %d  brush %d  (%d corners)", i8(cpu.lbu(corners[0].tile + 4 + corners[0].corner)), e.height, n)
 		}
 		lines[2] = "/\\ raise  [] lower  X set brush  O pick  SEL floor"
 	case .Texture:
 		b := e.texture
 		lines[1] = fmt.tprintf("brush cell %02x turn %d flip %d slot %d uv %d  [%v]", b.cell, b.flags >> 2 & 3, b.flags >> 1 & 1, b.page & 0xf, b.page >> 4 & 3, e.field)
-		if t := tile_at(e.layer, e.cursor.x >> 1, e.cursor.y >> 1); t != 0 && psx.lbu(t) & TILE_GROUND != 0 {
-			lines[1] = fmt.tprintf("%s  tile %02x %02x %02x", lines[1], psx.lbu(t), psx.lbu(t + 2), psx.lbu(t + 3))
+		if t := tile_at(e.layer, e.cursor.x >> 1, e.cursor.y >> 1); t != 0 && cpu.lbu(t) & TILE_GROUND != 0 {
+			lines[1] = fmt.tprintf("%s  tile %02x %02x %02x", lines[1], cpu.lbu(t), cpu.lbu(t + 2), cpu.lbu(t + 3))
 		}
 		lines[2] = "X paint  O pick  /\\ [] change  SEL field"
 	case .Exit:
@@ -827,7 +830,7 @@ draw_hud :: proc(pix: []u32) {
 		} else {
 			fields := EXIT_FIELDS
 			f := fields[e.exit_field]
-			lines[1] = fmt.tprintf("to %04x:%d  at %d,%d  arrive %d,%d  %s = %d", psx.lhu(e.exit), psx.lbu(e.exit + 2), psx.lbu(e.exit + 4), psx.lbu(e.exit + 5), exit_value(e.exit, fields[5]), exit_value(e.exit, fields[6]), f.name, exit_value(e.exit, f))
+			lines[1] = fmt.tprintf("to %04x:%d  at %d,%d  arrive %d,%d  %s = %d", cpu.lhu(e.exit), cpu.lbu(e.exit + 2), cpu.lbu(e.exit + 4), cpu.lbu(e.exit + 5), exit_value(e.exit, fields[5]), exit_value(e.exit, fields[6]), f.name, exit_value(e.exit, f))
 			lines[2] = e.exit_edit ? "UP/DN field  LT/RT +-1  /\\ [] +-16  O done" : "X edit fields"
 		}
 	}
@@ -839,14 +842,14 @@ draw_hud :: proc(pix: []u32) {
 	}
 	x0, y0 := 8, 8
 	for y in y0 ..< y0 + 4 * 11 + 6 {
-		for x in x0 ..< min(x0 + width * GLYPH_W + 8, psx.WINDOW_W) {
-			pix[y * psx.WINDOW_W + x] = COL_HUD
+		for x in x0 ..< min(x0 + width * GLYPH_W + 8, host.WINDOW_W) {
+			pix[y * host.WINDOW_W + x] = COL_HUD
 		}
 	}
 	for l, row in lines {
 		colour := u32(row == 2 ? COL_DIM : COL_TEXT)
 		for k in 0 ..< len(l) {
-			psx.osd_put_glyph(pix, psx.WINDOW_W, l[k], x0 + 4 + k * GLYPH_W, y0 + 4 + row * 11, colour)
+			host.osd_put_glyph(pix, host.WINDOW_W, l[k], x0 + 4 + k * GLYPH_W, y0 + 4 + row * 11, colour)
 		}
 	}
 }

@@ -11,7 +11,7 @@ The GPU packet pointer (next free packet) is at scratchpad 0x1f80006c.
 
 A packet linked twice closes a loop in the list, which the PS1's GPU DMA
 would walk for ever. It happens for a frame after an instant door's world
-switch (field.md, interiors): the port's walk (`psx/io.odin` `dma_gpu`) marks
+switch (field.md, interiors): the port's walk (`psx/io/io.odin` `dma_gpu`) marks
 each packet it visits and ends the list where it comes round (trace channel
 `dma`). Before, the walk ran to its 0x100000 packet limit and stalled the
 window for seconds.
@@ -23,7 +23,7 @@ window for seconds.
 | `SCENE_DRAW` | exe 0x801420a4 | the field scene: map, models, sprites |
 | `MAP_DRAW` | exe 0x80144800 | map tiles: floors, roofs (kind 0x3c), shadows (0x3e) |
 | tile window | exe 0x8014330c | which tiles around a point ahead of the camera are drawn: half height and half width in cells, u16 at 0x801381e4 / 0x801381e6 (24, 16), centre offset u16 at 0x801381e0 / 0x801381e2; rows go into a list of 64 entries |
-| tile corner test | exe 0x80143b84, 0x80144b5c, 0x801464c8, 0x80147d84, 0x80148b34, 0x801491ec | a tile or model part is skipped unless one of its four projected corners lies in -16..335 x -16..255; a near face spanning the screen fails it. The port's recompiler patch points skip it while `psx.world_3d` (third-person camera); the port's own tile draw (`quad_draw` in qol/map_geometry.odin) then culls with `quad_may_show` instead: a quad goes only when all four corners are behind the lens (SZ 0) or all are in front and past the same screen side |
+| tile corner test | exe 0x80143b84, 0x80144b5c, 0x801464c8, 0x80147d84, 0x80148b34, 0x801491ec | a tile or model part is skipped unless one of its four projected corners lies in -16..335 x -16..255; a near face spanning the screen fails it. The port's recompiler patch points skip it while `cpu.world_3d` (third-person camera); the port's own tile draw (`quad_draw` in qol/map_geometry.odin) then culls with `quad_may_show` instead: a quad goes only when all four corners are behind the lens (SZ 0) or all are in front and past the same screen side |
 | packet budget | exe 0x8005aa54 | the frame's map packet count, scratch u16 0x1f800076 (`SC_BUDGET`): 1024, or 1496 while byte 0x801381ea != 0. Packet buffers are 1024 x 52 bytes (0xd000) per frame parity; the draw wraps at 0x8004e800 (`SC_PACKET_WRAP` 0x80). With no cull at all, the third-person tile window's tiles behind the camera spent the whole budget before `MODELS_LIST_DRAW`, and big towns (1001) lost every placed model (houses, the pool statue) to black; with `quad_may_show`, 1001 spends 238 |
 | `LAYER_SETUP` / `LAYER_DRAW` | exe 0x80143304 / 0x80145654 | one map layer (see [field.md](field.md#sections)) |
 | `LAYER_ADD` | exe 0x8013ae34 | commit a packet run to the OT |
@@ -47,16 +47,16 @@ geometry looks the same.
 
 ## The port's renderer
 
-The port draws GPU packets in software (`psx/gpu.odin`), into VRAM exactly
+The port draws GPU packets in software (`psx/render/gpu.odin`), into VRAM exactly
 as the PS1 would (so texture pages, CLUTs and framebuffers interact the
 same) and, at the same time, into a hi-res target at `detail` = 1, 2 (the
 default) or 4 times the PS1's resolution, with sub-pixel vertices and
-perspective-correct textures. `psx/raster.odin` draws the hi-res target on
+perspective-correct textures. `psx/render/raster.odin` draws the hi-res target on
 several threads; the result is identical to drawing in order.
 
 Perspective textures use whole numbers only, so the software and GL
 renderers pick the same texels (`Persp`, `persp_setup`, `persp_coord` in
-`psx/gpu.odin`; `persp_coord` in the GL fragment shader). At triangle set-up
+`psx/render/gpu.odin`; `persp_coord` in the GL fragment shader). At triangle set-up
 each corner gets a weight w = round(2^15 * nearest depth / its depth). A
 pixel's coordinate in 256ths of a texel is floor(256 * sum(a t w) / sum(a w))
 over its edge weights a (shifted right for triangles of area 2^29 or more,
@@ -92,10 +92,10 @@ Additions, all not PS1 features:
 
 | File | What |
 |---|---|
-| `psx/see_through.odin` | per-pixel fading of what stands between camera and leader, by depth recovered from GTE projections (a vertex cache like PGXP's) |
-| `psx/depth_buffer.odin` | a depth buffer on the hi-res target under the third-person camera, so the close camera no longer shows the painter's order's mistakes |
-| `psx/portal.odin` | draw a packet range only inside (or only outside) an opening's screen shape: neighbour sections seen through doorways |
-| `psx/picture.odin` | fill a doorway with a picture drawn off screen: town interiors, and a room's door to its town (cut box) |
+| `psx/render/see_through.odin` | per-pixel fading of what stands between camera and leader, by depth recovered from GTE projections (a vertex cache like PGXP's) |
+| `psx/render/depth_buffer.odin` | a depth buffer on the hi-res target under the third-person camera, so the close camera no longer shows the painter's order's mistakes |
+| `psx/render/portal.odin` | draw a packet range only inside (or only outside) an opening's screen shape: neighbour sections seen through doorways |
+| `psx/render/picture.odin` | fill a doorway with a picture drawn off screen: town interiors, and a room's door to its town (cut box) |
 | `psx/checkpoint.odin` | frozen-time passes: run game draw code for an extra picture, then restore the machine exactly |
 | `qol/inbetween.odin` | 60 fps: an in-between picture for each repeated display frame, drawn by a frozen-time pass with poses blended between two game frames |
 
@@ -115,7 +115,7 @@ a game frame and the music and ambience stuttered with smooth motion on.
 
 ## Hardware renderer
 
-By default the hi-res target is drawn with OpenGL 4.5 (`psx/gl_target.odin`)
+By default the hi-res target is drawn with OpenGL 4.5 (`psx/render/gl_target.odin`)
 instead of the CPU rasterizer. `[window] hardware = false` in bof4.ini (the
 Display page's "GPU draw", read at start) keeps it on the CPU, and the
 environment variable `BOF4_GL=1` or `BOF4_GL=0` overrides the setting. If
@@ -163,7 +163,7 @@ How it works:
   on, keeps the plain mix for effects.
 - Glow floor: on the hi-res target a filed (sprite-like, `m.flat`) additive
   (blend mode 1) texel has 6/31 taken off each channel, saturating
-  (`GLOW_FLOOR` in psx/gpu.odin and the GL shader). The footstep dust puff's
+  (`GLOW_FLOOR` in psx/render/gpu.odin and the GL shader). The footstep dust puff's
   gradient stops at 6/31 at its quad's edge, so at the port's scale it lifted
   a hard-edged grey box out of the leader's shadow; with the floor taken off
   the puff fades out to nothing. VRAM keeps the PS1's sum.
@@ -239,10 +239,10 @@ Finer cells (4 x 4) and larger batches gave no fewer levels.
 The rest is the main thread (game code, triangle setup, checkpoint copies).
 A frozen-time pass no longer copies the 2.9 MB depth cache both ways: it
 logs each slot the pass first changes and puts those back at restore
-(`Depth_Undo`, `psx/see_through.odin`), which cut checkpoint save and
+(`Depth_Undo`, `psx/render/see_through.odin`), which cut checkpoint save and
 restore from about 7.7% to 2.7% of all samples. RAM is saved a 4 KB page
 at a time, on the pass's first write to each page (`ram_guard` in
-`psx/bus.odin`; every RAM writer, CPU stores, DMA and native code, goes
+`psx/cpu/bus.odin`; every RAM writer, CPU stores, DMA and native code, goes
 through it or `ram_touch`), so a pass copies about 70 of the 512 pages
 instead of all 2 MB both ways. Build with `-define:RAM_KEEP_CHECK=true` to
 have every restore prove that no write went around the guard. VRAM (1 MB)
@@ -290,7 +290,7 @@ default. `x86-64-v3` (AVX2) measured about 1% over baseline x86-64, and
 native (AVX-512 on a 7700X) the same as v3. `BOF4_ARCH=x86-64-v3` or
 `BOF4_ARCH=x86-64` builds a binary for other machines. Frames are identical.
 
-`texels_read` (`psx/gpu.odin`), which finds the texels a triangle reads in
+`texels_read` (`psx/render/gpu.odin`), which finds the texels a triangle reads in
 VRAM for the finer targets' clamp, works out four rows at once in f64
 lanes (`core:simd`): edge weights, span clipping and the texel at each
 row's two ends. Every value is a whole number below 2^53, so the lanes
@@ -299,7 +299,7 @@ lane with the integer `persp_coord`, as the rows read them. A build running old 
 triangle (1M+, 88% perspective) found no difference. 4.4% to 3.0% of the
 main thread, 2% fewer instructions per replay; frames identical.
 
-The GTE's RTPT (`rtpt`, `psx/gte.odin`) projects its three vertices side
+The GTE's RTPT (`rtpt`, `psx/gte/gte.odin`) projects its three vertices side
 by side in i64 lanes, with a fourth lane that repeats the third so flag
 tests need no mask. Flags are ORs, so testing all lanes at once sets the
 same bits as three single projections; MAC and IR end as the third vertex
@@ -336,7 +336,7 @@ each corner's count comes in, both measured slower and were dropped.
 copy on every pass (about 2.8% of the main thread, 5% of a pass). That
 compare is bound by memory bandwidth: it reads 4 MB, and an AVX-512
 compare measured no faster than the runtime's AVX2 one. RAM pages now
-carry versions instead (`ram_ver`, `psx/bus.odin`). The first write to a
+carry versions instead (`ram_ver`, `psx/cpu/bus.odin`). The first write to a
 page after a version is taken (`ram_armed`, the same flag ram_guard
 already tested for passes) gives the page a new number. Draw starts and
 checkpoints save the numbers, and `draw_start_load` copies only the pages
@@ -361,7 +361,7 @@ So the ordering-table walks dominate it, not the game code. A native
 rewrite of the in-between draw would save only about 0.5 ms.
 
 In-between passes draw the hi-res target alone (`hi_only_begin`,
-`psx/gpu.odin`). Their native VRAM drawing is thrown away at restore and
+`psx/render/gpu.odin`). Their native VRAM drawing is thrown away at restore and
 the picture is captured from the hi-res target, so polygons, rectangles,
 lines and picture lays skip native VRAM. Fills and moves still go to
 both. A pass that reads VRAM it left undrawn (a move or a download from a
@@ -372,7 +372,7 @@ passes nested in an in-between pass inherit this; room passes in real
 frames draw both. Whole pass: 3.3 to 2.0 ms, frames identical.
 
 The GL target keeps up to 9 GPU copies of VRAM (`gl_vram_use`,
-`psx/gl_target.odin`), each with its own shadow. A door pass swaps in its
+`psx/render/gl_target.odin`), each with its own shadow. A door pass swaps in its
 room's VRAM and names it (`vram_world`), and checkpoint restore names the
 town's again. Before this, every door pass uploaded nearly every read cell
 twice, once into the room's VRAM and once back. Uploads during passes
@@ -388,7 +388,7 @@ profile.
 
 With `BOF4_TRACE=perf`, every 1000 presents also print how often and how
 long the main thread waited for the stream workers, by cause
-(`Sync_Cause`, `psx/raster.odin`). On the baseline replay at detail 2 the
+(`Sync_Cause`, `psx/render/raster.odin`). On the baseline replay at detail 2 the
 waits come to about 0.27 s per 1000 presents, nearly all of it
 `picture_flush` reading the walk's VRAM right after a walk ends; removing
 waits does not speed things up, as the main thread then reaches the next
@@ -422,8 +422,8 @@ whole values and projects with them:
   still `tp.yaw_wrote`, so the game's own turns and door views get none).
 - `exact_set` (qol/third_person.odin) builds the view the unrounded values
   give and hands the GTE the way from the game's view to it
-  (`psx.exact_view`: a 3x3 matrix and a translation in view space).
-- `rtp`/`rtpt` (psx/gte.odin) still produce the game's whole pixels, and
+  (`gte.exact_view`: a 3x3 matrix and a translation in view space).
+- `rtp`/`rtpt` (psx/gte/gte.odin) still produce the game's whole pixels, and
   also the sixteenths of a pixel the exact view puts each vertex past them
   (signed, up to `EXACT_SLACK` pixels off). The depth cache keeps them
   (`Depth_Slot.sub`), and the hi-res raster adds them to the vertex.
@@ -434,7 +434,7 @@ whole values and projects with them:
   scaled by the sprite's scale (+16/+20, >> 16). Snapped to whole pixels
   they swam against the geometry around them (Sarai's vendors). The
   third-person sprite hook projects the object's position itself
-  (`view_full`) and asks `psx.anchor_sub` for the anchor's sixteenths past
+  (`view_full`) and asks `gte.anchor_sub` for the anchor's sixteenths past
   the whole pixel the game wrote (the exact view's when it is on), and
   files them with the sprite's packets (`see_flat_add`, `Flat.sub`); the
   GPU adds them to every corner of those packets.
@@ -469,7 +469,7 @@ than H / 2, where the GTE's divide overflows: the quotient stops at
 0x1ffff, so those corners land at about twice their view x, y from the
 screen offset whatever their depth. Unprojected as H / z, they bent the
 face's plane every frame, and its cover (leader behind the plane or not)
-flipped. `unproject` (psx/see_through.odin) takes the quotient as capped
+flipped. `unproject` (psx/render/see_through.odin) takes the quotient as capped
 for see-through, door cuts and doorway openings, and the hardware
 renderer's shader does the same.
 
@@ -550,7 +550,7 @@ per build against the pass's (`inbetween_replaying`).
 Each frame starts with a GP0 02 fill of the 320x240 draw buffer to black
 (ra 0x8016da94). The game's high camera never looks past the map's edge,
 so the black never shows; the low third-person camera does, and sees a
-void. `psx.backdrop_hook` (`psx/gpu.odin` `fill_rect`) lets qol give a
+void. `render.backdrop_hook` (`psx/render/gpu.odin` `fill_rect`) lets qol give a
 black fill one colour per target row in the hi-res target only; VRAM stays
 black, so anything reading it back is unchanged. The hardware renderer
 clears one band per run of equal rows (`gl_fill`); door tags are cleared
@@ -577,7 +577,7 @@ frame's or an in-between pass's. Roll is ignored.
 
 A sky map also hazes what stands far off, so the edge where the game stops
 drawing round the leader melts into the backdrop instead of popping.
-`backdrop` sets `psx.fog` each frame it fills a sky: `near`, `inv =
+`backdrop` sets `render.fog` each frame it fills a sky: `near`, `inv =
 1 / (far - near)`, `most` (256ths) from the map's `Sky`, and the horizon
 colour. The map's depths count from the leader's view depth in the view
 last built (`third_person_leader_depth`), so zooming out moves the fog
@@ -623,7 +623,7 @@ Look page of the options (`[window] depth_of_field`, `color_grade`,
 (`see_through` set within 8 vblanks, leader in front of the lens) and only
 on the hi-res target (detail 2 or 4). The target keeps what was drawn; the
 effects go on as the shown area is converted for the window
-(`psx/post.odin` `post_pixel`, GL `CONV_CS`), in this order: depth of
+(`psx/render/post.odin` `post_pixel`, GL `CONV_CS`), in this order: depth of
 field, glow (`bloom_effects`), colour grade, vignette.
 
 - **Depth per pixel.** Each hi-res pixel carries its view depth in the
@@ -643,7 +643,7 @@ field, glow (`bloom_effects`), colour grade, vignette.
 - **Colour grade.** `qol/grade.odin` builds a 3x3 mix plus offset in
   256ths from the map's look (saturation about luma, warmth as red up and
   blue down, contrast about 128) each time the field camera builds a view
-  (`psx.grade`, lapses after 8 vblanks). Default look 1.06 / 0 / 1.04;
+  (`render.grade`, lapses after 8 vblanks). Default look 1.06 / 0 / 1.04;
   Sarai (0x1000) 1.05 / 0.01 / 1.05; canyon (0x0414) 1.05 / 0.01 / 1.06.
   Add a map to `LOOKS` to give it its own.
 - **Vignette.** Darkens toward the corners: from 128/256 of the half
@@ -659,7 +659,7 @@ The game's ordering table was sorted for its own camera. From the
 third-person camera that order is sometimes wrong: a floor polygon filed
 after a person draws over his feet, an awning's back edge over the vendor
 under it. With see-through up (`see_begin`, hi-res target only) each walk
-of the table draws with a depth buffer (`psx/depth_buffer.odin`):
+of the table draws with a depth buffer (`psx/render/depth_buffer.odin`):
 
 - **Who takes part.** Polygons whose three corners carry projected depths
   (GTE perspective polygons) and sprites see-through filed (`see_flat_add`
@@ -710,7 +710,7 @@ of the table draws with a depth buffer (`psx/depth_buffer.odin`):
   `PORTAL_VBLANKS` frames) can cover the address a later, flat 2D prim is
   built at, and that prim then took the sprite's depth (or a `depth_fill`
   hit) and the z-test or see-through hid it. Dialogue portraits vanished in
-  third-person this way (Wyndia's dog, every talk). `psx.screen_add(lo, hi)`
+  third-person this way (Wyndia's dog, every talk). `render.screen_add(lo, hi)`
   files a packet range as screen drawing: `exec_polygon` gives prims in it
   no depth and skips the Flats. The third-person hook on `FACE_DRAW`
   (0x801516ec) files the portrait's packets. The list holds `MAX_SCREENS`
@@ -739,7 +739,7 @@ A line through a person's legs turned out not to be depth: the camera
 scales the sprite, so the seam between the upper and lower body pieces
 lands between VRAM pixels and nearest rounding reads the texel one past the
 upper piece's cell (transparent), and the ground shows. `texels_cell`
-(`psx/gpu.odin`, after `texels_read` for affine textured triangles on the
+(`psx/render/gpu.odin`, after `texels_read` for affine textured triangles on the
 hi-res target) narrows the read range for a triangle mapped straight onto
 the screen (u along x only, v along y only, exact integer cross products):
 the end where a coordinate runs out at the triangle's right or bottom edge,
@@ -748,9 +748,9 @@ the same range (`READ_OK`).
 
 ## Native 3D world (third person)
 
-While the third-person camera is in (`psx.world_3d`) the field's
+While the third-person camera is in (`cpu.world_3d`) the field's
 tiles and placed models are drawn from their view-space corners
-instead of the packet's screen positions (`psx/world.odin`). The game still
+instead of the packet's screen positions (`psx/render/world.odin`). The game still
 builds, culls and orders every packet; only where the corners land changes.
 
 - **Filing.** `quad_draw` (`qol/map_geometry.odin`) computes each quad's
@@ -799,7 +799,7 @@ builds, culls and orders every packet; only where the corners land changes.
 
 Each emulated vblank is one present. On a 60, 120 or 240 Hz display the
 presents wait for the display's vblank (vsync), and each picture stays up
-for 1, 2 or 4 refreshes (`vsync_update`, `draw` in `psx/window.odin`). Any
+for 1, 2 or 4 refreshes (`vsync_update`, `draw` in `psx/host/window.odin`). Any
 other refresh rate (144 Hz, say) keeps vsync off and sleeps to the console's
 59.94 Hz. Frames then stay up for an uneven 2 or 3 refreshes, which shows as
 judder, so set such a display to 120 Hz, or use adaptive sync, for smooth

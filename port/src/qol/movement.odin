@@ -35,7 +35,8 @@ package qol
 
 import "core:math"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 import "ps:core"
 
@@ -74,9 +75,9 @@ DEGREES_PER_DIRECTION :: 45.0
 
 @(private = "file")
 movement: struct {
-	screen_direction: psx.Func_Proc,
-	dash_held:        psx.Func_Proc,
-	stand:            psx.Func_Proc,
+	screen_direction: cpu.Func_Proc,
+	dash_held:        cpu.Func_Proc,
+	stand:            cpu.Func_Proc,
 }
 
 @(private)
@@ -91,26 +92,26 @@ movement_init :: proc() -> bool {
 // object LEADER_ID counts (object 0 may stand idle).
 @(private)
 leader_obj :: proc() -> u32 {
-	return FIELD_OBJ + u32(psx.lbu(LEADER_ID)) * FIELD_OBJ_SIZE
+	return FIELD_OBJ + u32(cpu.lbu(LEADER_ID)) * FIELD_OBJ_SIZE
 }
 
 @(private = "file")
 is_leader :: proc(obj: u32) -> bool {
-	return psx.lbu(obj + OBJ_ID) == psx.lbu(LEADER_ID)
+	return cpu.lbu(obj + OBJ_ID) == cpu.lbu(LEADER_ID)
 }
 
 // a0 = held pad bits, a1 = object.
 @(private = "file")
 screen_direction :: proc() {
-	c := &psx.cpu
-	stick := psx.sticks().left
+	c := &cpu.state
+	stick := host.sticks().left
 	if config.move_stick && stick != {} && c.r[4] & DIRECTION_BITS != 0 && is_leader(c.r[5]) {
-		yaw := f64(psx.lhu(CAMERA_YAW))
-		world := int(math.round(psx.stick_angle(stick) / DEGREES_PER_DIRECTION + yaw / YAW_PER_DIRECTION))
-		screen := (world - int((psx.lhu(CAMERA_YAW) + 0x100) >> 9)) & 7
-		c.r[4] = c.r[4] & ~u32(DIRECTION_BITS) | u32(psx.STICK_SECTORS[screen])
+		yaw := f64(cpu.lhu(CAMERA_YAW))
+		world := int(math.round(host.stick_angle(stick) / DEGREES_PER_DIRECTION + yaw / YAW_PER_DIRECTION))
+		screen := (world - int((cpu.lhu(CAMERA_YAW) + 0x100) >> 9)) & 7
+		c.r[4] = c.r[4] & ~u32(DIRECTION_BITS) | u32(host.STICK_SECTORS[screen])
 		if .Game in core.trace.active {
-			core.tracef(.Game, "move: stick %.0f deg, yaw %03x, world %d", psx.stick_angle(stick), u32(yaw), world & 7)
+			core.tracef(.Game, "move: stick %.0f deg, yaw %03x, world %d", host.stick_angle(stick), u32(yaw), world & 7)
 		}
 	}
 	movement.screen_direction()
@@ -119,14 +120,14 @@ screen_direction :: proc() {
 // a0 = object.
 @(private = "file")
 stand :: proc() {
-	obj := psx.cpu.r[4]
+	obj := cpu.state.r[4]
 	if is_leader(obj) {
 		free_stand(obj, movement.stand)
 		return
 	}
 	movement.stand()
-	if config.move_instant_start && psx.lbu(obj + OBJ_SUBSTATE) == SUBSTATE_TURNING && psx.lbu(obj + OBJ_TURN) != 0 && is_leader(obj) {
-		psx.sb(obj + OBJ_TURN, 0)
+	if config.move_instant_start && cpu.lbu(obj + OBJ_SUBSTATE) == SUBSTATE_TURNING && cpu.lbu(obj + OBJ_TURN) != 0 && is_leader(obj) {
+		cpu.sb(obj + OBJ_TURN, 0)
 		if .Game in core.trace.active {
 			core.tracef(.Game, "move: instant start")
 		}
@@ -136,27 +137,27 @@ stand :: proc() {
 // a0 = object; v0 = nonzero to run.
 @(private = "file")
 dash_held :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	obj := c.r[4]
 	if !is_leader(obj) {
 		movement.dash_held()
 		return
 	}
-	stick := psx.sticks().left
+	stick := host.sticks().left
 	tilt := math.sqrt(stick.x * stick.x + stick.y * stick.y)
-	pad := psx.lbu(obj + OBJ_PAD)
-	dash := psx.lbu(DASH_MASK)
+	pad := cpu.lbu(obj + OBJ_PAD)
+	dash := cpu.lbu(DASH_MASK)
 	if config.move_stick && tilt != 0 {
 		switch {
 		case f64(tilt) >= config.move_run_tilt:
-			psx.sb(obj + OBJ_PAD, pad | dash)
-		case psx.lbu(OPTION_DASH_AUTO) != 0:
+			cpu.sb(obj + OBJ_PAD, pad | dash)
+		case cpu.lbu(OPTION_DASH_AUTO) != 0:
 			// Undo Auto: a light tilt walks unless the button is held.
-			psx.sb(obj + OBJ_PAD, pad ~ dash)
+			cpu.sb(obj + OBJ_PAD, pad ~ dash)
 		}
 	}
 	movement.dash_held()
-	psx.sb(obj + OBJ_PAD, pad)
+	cpu.sb(obj + OBJ_PAD, pad)
 	if .Game in core.trace.active {
 		core.tracef(.Game, "move: tilt %.2f, run %v", tilt, c.r[2] != 0)
 	}

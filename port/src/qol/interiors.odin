@@ -34,7 +34,7 @@
 // the streets round the room and through its see-through walls).
 //
 // A room models a black curtain past its doorway for the town outside; the
-// pass leaves it out (psx.blacks_all_begin). The exit cells on either side
+// pass leaves it out (render.blacks_all_begin). The exit cells on either side
 // need not sit square on the doorway as the maps model it (Sarai 0204: the
 // town's doorway sits 0.17 of the opening's width off its exit cells, the
 // room's curtain not at all), so the room slides along the opening (`along`)
@@ -68,6 +68,13 @@ import "core:mem"
 import "core:time"
 
 import "ps:psx"
+import bios "ps:psx/bios"
+import cpu "ps:psx/cpu"
+import gpu "ps:psx/gpu"
+import host "ps:psx/host"
+import io "ps:psx/io"
+import render "ps:psx/render"
+import spu "ps:psx/spu"
 
 import "ps:core"
 
@@ -280,11 +287,11 @@ World :: struct {
 	key:       [3]u32, // map, section, map data block
 	used:      u64, // vblank last drawn or noted
 	start:     ^psx.Draw_Start,
-	vram:      ^[psx.VRAM_W * psx.VRAM_H]u16,
+	vram:      ^[render.VRAM_W * render.VRAM_H]u16,
 	// Registers at the field draw and at the main loop's DrawOTagEnv, and
 	// the scene render's return address.
-	regs:      psx.Cpu,
-	main:      psx.Cpu,
+	regs:      cpu.Cpu,
+	main:      cpu.Cpu,
 	scene_ret: u32,
 	ready:     bool,
 	// The town's game frame its people were last stepped for, and the
@@ -294,9 +301,9 @@ World :: struct {
 	// The end of the map data block the visit loaded (MAP_DATA up).
 	map_end:   u32,
 	// Sound RAM, of which the map's sound bank [bank[0], bank[1]) is kept.
-	sound:     ^[psx.SPU_RAM_SIZE]u8,
+	sound:     ^[spu.SPU_RAM_SIZE]u8,
 	bank:      [2]u32,
-	// The sound slots whose sounds loop (psx.voice_loops) when noted: the
+	// The sound slots whose sounds loop (spu.voice_loops) when noted: the
 	// lasting ones, which entering the world starts again.
 	lasting:   bit_set[0 ..< SOUND_SLOTS; u32],
 	// The story when noted (story_key): a later one may place its people
@@ -305,7 +312,7 @@ World :: struct {
 	// The GPU's draw state and display start when noted: the frame's draw
 	// buffer and the one shown, which the game's double buffering goes on
 	// from.
-	gpu:       psx.Draw_State,
+	gpu:       render.Draw_State,
 	disp:      [2]i32,
 	// The game's own camera fields that the third-person camera keeps
 	// written over (third_person_game_fields), as they stood when noted.
@@ -333,7 +340,7 @@ Door :: struct {
 	// View units the room is slid along the opening, from its first corner
 	// toward its second; the picture's index in the town frame, and how far
 	// across the opening the town's doorway back reached in the frame before
-	// (psx.picture_span).
+	// (render.picture_span).
 	along:   f32,
 	pic:     int,
 	// Where the room slides to once settled; the last reading's place and
@@ -344,7 +351,7 @@ Door :: struct {
 	agreed:  int,
 	// How far the picture's opening is moved out from `quad` toward the
 	// front: onto the doorway's dark back when a frame found it standing
-	// before the plane, and none on it (psx.picture_off). Sarai's tavern (0201.2) models
+	// before the plane, and none on it (render.picture_off). Sarai's tavern (0201.2) models
 	// its back a tile before the far side of its exit cells.
 	inset:   f32,
 	// The inset the picture `pic` was added with.
@@ -352,13 +359,13 @@ Door :: struct {
 	back:    [2]f32,
 	back_ok: bool,
 	// A room's door to the town it stands in: its picture is drawn with
-	// the room's building left out (psx.cut_begin), and the town with the
+	// the room's building left out (render.cut_begin), and the town with the
 	// building is laid over the room as the party walks in (door_cover).
 	around:  bool,
 	box:     [2][2]f32, // the room's floor, lo and hi x, z (view units)
 	pixels:  []u16,
-	// The picture at the hi-res target's resolution (psx.picture_take).
-	hi:      psx.Picture_Hi,
+	// The picture at the hi-res target's resolution (render.picture_take).
+	hi:      render.Picture_Hi,
 	w, h:    i32,
 	drawn:   bool,
 	// The view (CAM_MATRIX words) and projection the picture was drawn
@@ -368,15 +375,15 @@ Door :: struct {
 	// The in-between picture's own drawing of the room (doors_between_draw)
 	// and whether the in-between pass running shows it.
 	between:    []u16,
-	between_hi: psx.Picture_Hi,
+	between_hi: render.Picture_Hi,
 	between_on: bool,
 	// A room's door to its town, just walked in through: the town drawn
-	// with the room's building (psx.cover_add), whether it was, and its
-	// doorway on the picture (psx.curtain_hole).
+	// with the room's building (render.cover_add), whether it was, and its
+	// doorway on the picture (render.curtain_hole).
 	cover:       []u16,
-	cover_hi:    psx.Picture_Hi,
+	cover_hi:    render.Picture_Hi,
 	cover_drawn: bool,
-	cover_hole:  psx.Cover_Hole,
+	cover_hole:  render.Cover_Hole,
 }
 
 // A pass draws another map: hooks that keep this map's state stand aside.
@@ -389,7 +396,7 @@ cover_pass: bool
 
 @(private = "file")
 interiors: struct {
-	layer_draw, field_draw, draw_otag_env, view_build, follower_fade: psx.Func_Proc,
+	layer_draw, field_draw, draw_otag_env, view_build, follower_fade: cpu.Func_Proc,
 	checkpoint: ^psx.Checkpoint,
 	worlds:     [MAX_WORLDS]World,
 	// The visit being noted: its key, field frames seen, and the world
@@ -459,7 +466,7 @@ interiors: struct {
 	// projection: the frames after warp it on to the room's camera
 	// (door_warp), which has moved on since.
 	first_cover:    []u16,
-	first_cover_hi: psx.Picture_Hi,
+	first_cover_hi: render.Picture_Hi,
 	first_cover_wh: [2]i32,
 	first_cover_due: bool,
 	first_cover_view: [8]u32,
@@ -493,43 +500,43 @@ Preload :: struct {
 Preload_Share :: struct {
 	done:      b32,
 	key:       [3]u32,
-	regs:      psx.Cpu,
-	main:      psx.Cpu,
+	regs:      cpu.Cpu,
+	main:      cpu.Cpu,
 	scene_ret: u32,
 	map_end:   u32,
 	bank:      [2]u32,
 	lasting:   bit_set[0 ..< SOUND_SLOTS; u32],
 	story:     u64,
-	gpu:       psx.Draw_State,
+	gpu:       render.Draw_State,
 	disp:      [2]i32,
 	camera:    [THIRD_PERSON_FIELDS]u32,
 	start:     psx.Draw_Start,
-	vram:      [psx.VRAM_W * psx.VRAM_H]u16,
-	sound:     [psx.SPU_RAM_SIZE]u8,
+	vram:      [render.VRAM_W * render.VRAM_H]u16,
+	sound:     [spu.SPU_RAM_SIZE]u8,
 }
 
 @(private)
 interiors_init :: proc() -> bool {
 	ok: bool
-	interiors.layer_draw, ok = psx.hook(LAYER_DRAW, interiors_layer_draw)
+	interiors.layer_draw, ok = cpu.hook(LAYER_DRAW, interiors_layer_draw)
 	if !ok {
 		return false
 	}
-	interiors.draw_otag_env, ok = psx.hook(DRAW_OTAG_ENV, interiors_draw_otag_env)
+	interiors.draw_otag_env, ok = cpu.hook(DRAW_OTAG_ENV, interiors_draw_otag_env)
 	if !ok {
 		return false
 	}
-	interiors.view_build, ok = psx.hook(VIEW_BUILD, interiors_view_build)
+	interiors.view_build, ok = cpu.hook(VIEW_BUILD, interiors_view_build)
 	if !ok {
 		return false
 	}
 	interiors.field_draw = hook_field(FIELD_DRAW, interiors_field_draw) or_return
 	interiors.follower_fade = hook_field(FOLLOWER_FADE, interiors_follower_fade) or_return
-	psx.dma_cdrom_hook = interiors_dma_cdrom
-	psx.dma_spu_hook = interiors_dma_spu
+	spu.dma_cdrom_hook = interiors_dma_cdrom
+	spu.dma_spu_hook = interiors_dma_spu
 	interiors.checkpoint = new(psx.Checkpoint)
 	for &l in interiors.loads {
-		l.share = (^Preload_Share)(psx.preload_shared(size_of(Preload_Share)))
+		l.share = (^Preload_Share)(host.preload_shared(size_of(Preload_Share)))
 		if l.share == nil {
 			return false
 		}
@@ -539,7 +546,7 @@ interiors_init :: proc() -> bool {
 
 @(private = "file")
 map_key :: proc() -> [3]u32 {
-	return {psx.lhu(MAP_ID), psx.lhu(MAP_SECTION), psx.lw(MAP_BLOCK)}
+	return {cpu.lhu(MAP_ID), cpu.lhu(MAP_SECTION), cpu.lw(MAP_BLOCK)}
 }
 
 // What the doors are found for: the map, and its exit list, which a map's
@@ -553,7 +560,7 @@ doors_key :: proc() -> [4]u32 {
 // The field draw of a real frame: note the map's world once it settled.
 @(private = "file")
 interiors_field_draw :: proc() {
-	if !psx.events_frozen && psx.lw(psx.cpu.r[31]) == JAL_SCENE_DRAW {
+	if !io.events_frozen && cpu.lw(cpu.state.r[31]) == JAL_SCENE_DRAW {
 		if w := interiors.entering; w != nil && (!interiors.enter_dark || screen_fade() >= 1) {
 			interiors.entering = nil
 			world_enter(w)
@@ -576,7 +583,7 @@ world_note :: proc() {
 		// its people where they stood, and the way back goes on from there.
 		// The world stays ready: its own passes run only from other worlds.
 		w := world_slot(key)
-		if interiors.renote && interiors.noting == nil && !psx.preload_child && w.key == key && w.ready {
+		if interiors.renote && interiors.noting == nil && !io.preload_child && w.key == key && w.ready {
 			world_take(w, key)
 			interiors.noting = w
 		}
@@ -586,7 +593,7 @@ world_note :: proc() {
 	if key[0] & WORLD_MAP_MASK == WORLD_MAP {
 		return
 	}
-	if psx.hold_picture > 0 || screen_fade() > 0 {
+	if host.hold_picture > 0 || screen_fade() > 0 {
 		interiors.frames = 0
 		return
 	}
@@ -610,23 +617,23 @@ world_note :: proc() {
 // registers at the main loop's DrawOTagEnv (World.main).
 @(private = "file")
 world_take :: proc(w: ^World, key: [3]u32) {
-	w.key, w.used = key, psx.vblanks()
+	w.key, w.used = key, cpu.vblanks()
 	w.map_end = interiors.load_end
 	w.bank = interiors.bank
 	w.story = story_key()
 	w.lasting = {}
 	for i in 0 ..< SOUND_SLOTS {
 		at := SOUND_SLOT + SOUND_SLOT_SIZE * u32(i)
-		if psx.lbu(at) != 0 && psx.voice_loops(int(psx.lbu(at + 2))) {
+		if cpu.lbu(at) != 0 && spu.voice_loops(int(cpu.lbu(at + 2))) {
 			w.lasting += {i}
 		}
 	}
-	copy(w.sound[w.bank[0]:w.bank[1]], psx.sound_ram()[w.bank[0]:w.bank[1]])
+	copy(w.sound[w.bank[0]:w.bank[1]], spu.sound_ram()[w.bank[0]:w.bank[1]])
 	psx.draw_start_save(w.start)
-	w.vram^ = psx.vram
-	w.regs = psx.cpu
-	w.gpu, w.disp = psx.gpu, {psx.display.x, psx.display.y}
-	w.scene_ret = psx.cpu.r[31] + 8
+	w.vram^ = render.vram
+	w.regs = cpu.state
+	w.gpu, w.disp = render.gpu, {gpu.display.x, gpu.display.y}
+	w.scene_ret = cpu.state.r[31] + 8
 	w.camera = third_person_game_fields()
 }
 
@@ -634,8 +641,8 @@ world_take :: proc(w: ^World, key: [3]u32) {
 world_alloc :: proc(w: ^World) {
 	if w.start == nil {
 		w.start = new(psx.Draw_Start)
-		w.vram = new([psx.VRAM_W * psx.VRAM_H]u16)
-		w.sound = new([psx.SPU_RAM_SIZE]u8)
+		w.vram = new([render.VRAM_W * render.VRAM_H]u16)
+		w.sound = new([spu.SPU_RAM_SIZE]u8)
 	}
 }
 
@@ -669,8 +676,8 @@ world_find :: proc(m, section: u32) -> ^World {
 // pictures to the GPU.
 @(private = "file")
 interiors_layer_draw :: proc() {
-	section := psx.lhu(MAP_SECTION)
-	if interior_pass || psx.lbu(DRAW_LAYER) != section || psx.lw(SLOT_ENGINE) != FLD_MAIN_ID {
+	section := cpu.lhu(MAP_SECTION)
+	if interior_pass || cpu.lbu(DRAW_LAYER) != section || cpu.lw(SLOT_ENGINE) != FLD_MAIN_ID {
 		interiors.layer_draw()
 		return
 	}
@@ -679,15 +686,15 @@ interiors_layer_draw :: proc() {
 		interiors.doors_key = key
 		doors_find(section)
 	}
-	if !psx.events_frozen {
+	if !io.events_frozen {
 		for i in u32(0) ..< 8 {
-			interiors.view[i] = psx.lw(CAM_MATRIX + 4 * i)
+			interiors.view[i] = cpu.lw(CAM_MATRIX + 4 * i)
 		}
-		interiors.h, _ = psx.gte_projection()
+		interiors.h, _ = render.gte_projection()
 		interiors.want = DOOR_PICTURES && interiors.n_doors > 0
 	} else if inbetween_replaying {
 		for i in u32(0) ..< 8 {
-			interiors.between_view[i] = psx.lw(CAM_MATRIX + 4 * i)
+			interiors.between_view[i] = cpu.lw(CAM_MATRIX + 4 * i)
 		}
 	}
 	if !DOOR_PICTURES {
@@ -697,43 +704,43 @@ interiors_layer_draw :: proc() {
 	redrawn := 0
 	tr: [3]u32
 	for i in u32(0) ..< 3 {
-		tr[i] = psx.lw(CAM_TR + 4 * i)
+		tr[i] = cpu.lw(CAM_TR + 4 * i)
 	}
 	for &d in interiors.doors[:interiors.n_doors] {
 		// An in-between picture (smooth motion) shows the doors the real
 		// frame showed, its rooms drawn again from its own camera before its
 		// walk (doors_between_draw): its walk measures nothing, and its
 		// pictures are gone with the pass, so their indices are not kept.
-		if psx.events_frozen {
+		if io.events_frozen {
 			if a, out := door_cover(), door_out(); max(a, out) > 0 && d.around && d.cover_drawn {
 				quad, front := door_inset(&d)
 				n := linalg.normalize0(linalg.cross(quad[1] - quad[0], quad[3] - quad[0]))
 				warp := door_warp(&d, tr, n, linalg.dot(n, quad[0]))
-				psx.cover_add(d.cover, &d.cover_hi, d.w, d.h, door_view(quad, tr), view_point(front, tr), &d.cover_hole, max(a, out), warp, out <= a)
+				render.cover_add(d.cover, &d.cover_hi, d.w, d.h, door_view(quad, tr), view_point(front, tr), &d.cover_hole, max(a, out), warp, out <= a)
 			}
 			d.between_on = inbetween_replaying && d.drawn && d.pic >= 0 && redrawn < MAX_DOOR_PASSES
 			if d.between_on {
 				redrawn += 1
 				interiors.between_want = true
 				quad, front := door_inset(&d)
-				psx.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.between, &d.between_hi, d.w, d.h)
+				render.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.between, &d.between_hi, d.w, d.h)
 			} else if d.drawn && d.pic >= 0 {
 				quad, front := door_inset(&d)
 				n := linalg.normalize0(linalg.cross(quad[1] - quad[0], quad[3] - quad[0]))
 				warp := door_warp(&d, tr, n, linalg.dot(n, quad[0]))
-				psx.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.pixels, &d.hi, d.w, d.h, warp)
+				render.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.pixels, &d.hi, d.w, d.h, warp)
 			}
 			continue
 		}
 		// The town may draw its layer more than once a frame: keep the
 		// last back seen until a pass measures against it.
-		back, on := psx.picture_span(d.pic)
+		back, on := render.picture_span(d.pic)
 		if on {
 			d.back, d.back_ok = back, true
 		}
 		// Moved only when no back stood on the plane: a wall before it
 		// beside a back on it (Sarai 0204.2) is not one.
-		if off, ok := psx.picture_off(d.pic); ok && !on && d.pic_inset == 0 && d.inset == 0 {
+		if off, ok := render.picture_off(d.pic); ok && !on && d.pic_inset == 0 && d.inset == 0 {
 			d.inset = off
 			if .Game in core.trace.active {
 				core.tracef(.Game, "interiors: %04x.%d inset %v", d.world[0], d.world[1], d.inset)
@@ -742,12 +749,12 @@ interiors_layer_draw :: proc() {
 		d.pic = -1
 		if a, out := door_cover(), door_out(); max(a, out) > 0 && d.around && d.cover_drawn && world_find(d.world[0], d.world[1]) != nil {
 			quad, front := door_inset(&d)
-			psx.cover_add(d.cover, &d.cover_hi, d.w, d.h, door_view(quad, tr), view_point(front, tr), &d.cover_hole, max(a, out), sided = out <= a)
+			render.cover_add(d.cover, &d.cover_hi, d.w, d.h, door_view(quad, tr), view_point(front, tr), &d.cover_hole, max(a, out), sided = out <= a)
 		}
 		if d.drawn && world_find(d.world[0], d.world[1]) != nil {
 			d.pic_inset = d.inset
 			quad, front := door_inset(&d)
-			d.pic = psx.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.pixels, &d.hi, d.w, d.h)
+			d.pic = render.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.pixels, &d.hi, d.w, d.h)
 		}
 	}
 	interiors.layer_draw()
@@ -776,13 +783,13 @@ door_to :: proc(m, section: u32) -> bool {
 // off, as far as the camera moved in a vblank or two.
 @(private = "file")
 door_warp :: proc(d: ^Door, tr: [3]u32, n: [3]f32, dist: f32) -> matrix[3, 3]f32 {
-	h, of := psx.gte_projection()
+	h, of := render.gte_projection()
 	ra, rb: matrix[3, 3]f32
 	for i in 0 ..< 3 {
 		for j in 0 ..< 3 {
 			k := i * 3 + j
 			ra[i, j] = f32(i16(d.pic_view[k / 2] >> (16 * u32(k % 2)))) / 4096
-			rb[i, j] = f32(i16(psx.lhu(CAM_MATRIX + u32(2 * k)))) / 4096
+			rb[i, j] = f32(i16(cpu.lhu(CAM_MATRIX + u32(2 * k)))) / 4096
 		}
 	}
 	ta := [3]f32{f32(i32(d.pic_view[5])), f32(i32(d.pic_view[6])), f32(i32(d.pic_view[7]))}
@@ -822,16 +829,16 @@ door_inset :: proc(d: ^Door) -> (quad: [4][3]f32, front: [3]f32) {
 doors_find :: proc(section: u32) {
 	interiors.n_doors = 0
 	defer interiors.first_cover_due = false
-	m := psx.lhu(MAP_ID)
+	m := cpu.lhu(MAP_ID)
 	p := exit_list(section)
-	for ; p != 0 && psx.lhu(p) != EXIT_END && interiors.n_doors < MAX_DOORS; p += EXIT_SIZE {
-		to := psx.lhu(p)
+	for ; p != 0 && cpu.lhu(p) != EXIT_END && interiors.n_doors < MAX_DOORS; p += EXIT_SIZE {
+		to := cpu.lhu(p)
 		if to == m || to < FIRST_MAP || to & WORLD_MAP_MASK == WORLD_MAP {
 			continue
 		}
 		d := &interiors.doors[interiors.n_doors]
-		cell := [2]f32{f32(psx.lbu(p + 4)), f32(psx.lbu(p + 5))}
-		arrive := [2]f32{f32(i16(psx.lhu(p + 6))), f32(i16(psx.lhu(p + 8)))} / TARGET_PER_CELL
+		cell := [2]f32{f32(cpu.lbu(p + 4)), f32(cpu.lbu(p + 5))}
+		arrive := [2]f32{f32(i16(cpu.lhu(p + 6))), f32(i16(cpu.lhu(p + 8)))} / TARGET_PER_CELL
 		here := exit_middle(p)
 		// The ground a cell in from the exit, where the party walks up to
 		// it: a room's exit cells may lie past its floor.
@@ -843,9 +850,9 @@ doors_find :: proc(section: u32) {
 			between = make([]u16, PICTURE_W * PICTURE_H)
 			cover = make([]u16, PICTURE_W * PICTURE_H)
 		}
-		psx.picture_hi_clear(&hi)
-		psx.picture_hi_clear(&between_hi)
-		psx.picture_hi_clear(&cover_hi)
+		render.picture_hi_clear(&hi)
+		render.picture_hi_clear(&between_hi)
+		render.picture_hi_clear(&cover_hi)
 		// The picture's opening is the far side of the exit cells, a tile
 		// in from the wall's face, a room door tall: the doorway's dark back
 		// gives way to the room, while its sides and the wall above stay.
@@ -854,7 +861,7 @@ doors_find :: proc(section: u32) {
 		quad[3].y = quad[0].y + ROOM_DOOR_HEIGHT
 		d^ = {
 			around = m & TOWN_MAPS == 0 && to & TOWN_MAPS != 0 && !door_around(),
-			world  = {to, psx.lbu(p + 2)},
+			world  = {to, cpu.lbu(p + 2)},
 			exit   = p,
 			quad   = quad,
 			front  = door_front(p, quad),
@@ -870,7 +877,7 @@ doors_find :: proc(section: u32) {
 			cover_hi   = cover_hi,
 			pic    = -1,
 		}
-		if slide, ok := interiors.settled[{u32(m), u32(to), u32(psx.lbu(p + 2))}]; ok {
+		if slide, ok := interiors.settled[{u32(m), u32(to), u32(cpu.lbu(p + 2))}]; ok {
 			d.goal, d.settled = linalg.dot(slide, linalg.normalize0(quad[1] - quad[0])), true
 		}
 		d.along = d.goal
@@ -884,7 +891,7 @@ doors_find :: proc(section: u32) {
 		}
 		if d.around && interiors.first_cover_due {
 			copy(d.cover, interiors.first_cover)
-			psx.picture_hi_copy(&d.cover_hi, &interiors.first_cover_hi)
+			render.picture_hi_copy(&d.cover_hi, &interiors.first_cover_hi)
 			d.w, d.h = interiors.first_cover_wh[0], interiors.first_cover_wh[1]
 			d.pic_view, d.pic_h = interiors.first_cover_view, interiors.first_cover_h
 			d.cover_drawn = true
@@ -950,7 +957,7 @@ door_around :: proc() -> bool {
 }
 
 // How much of the town with the room's building is laid over the room
-// (psx.cover_add): all of it as the party walks in through an instant door,
+// (render.cover_add): all of it as the party walks in through an instant door,
 // then easing out over COVER_TAIL. The game's camera holds it for
 // COVER_VBLANKS; the third-person lens, trailing the leader, until it comes
 // over the room's floor (door_lens_in): out there it sees the building, and
@@ -960,7 +967,7 @@ door_cover :: proc() -> f32 {
 	if !DOOR_PICTURES || interiors.cover_at == 0 {
 		return 0
 	}
-	now := inbetween_replaying ? inbetween_vblank : f64(psx.vblanks())
+	now := inbetween_replaying ? inbetween_vblank : f64(cpu.vblanks())
 	from := f64(interiors.cover_at) + COVER_VBLANKS
 	if config.camera_third_person && third_person_keeps() {
 		if interiors.cover_in == 0 && door_lens_in() {
@@ -993,11 +1000,11 @@ door_out :: proc() -> f32 {
 			continue
 		}
 		way := exit_way(d.exit)
-		at := [2]f32{f32(i32(psx.lw(leader_obj() + OBJ_POS))), f32(i32(psx.lw(leader_obj() + OBJ_POS + 8)))} / 0x10000
+		at := [2]f32{f32(i32(cpu.lw(leader_obj() + OBJ_POS))), f32(i32(cpu.lw(leader_obj() + OBJ_POS + 8)))} / 0x10000
 		off := at - (d.here + 0.5)
 		past := linalg.dot(off, way)
 		across := abs(linalg.dot(off, [2]f32{-way.y, way.x}))
-		if across > f32(psx.lbu(d.exit + 10)) / 2 + 0.5 {
+		if across > f32(cpu.lbu(d.exit + 10)) / 2 + 0.5 {
 			return 0
 		}
 		t := clamp(past / OUT_RAMP + 1, 0, 1)
@@ -1037,19 +1044,19 @@ door_lens_in :: proc() -> bool {
 // in sight; while it sends a room's frame, finish noting that world.
 @(private = "file")
 interiors_draw_otag_env :: proc() {
-	if psx.cpu.r[31] == MAIN_DRAW_RET && !psx.events_frozen {
+	if cpu.state.r[31] == MAIN_DRAW_RET && !io.events_frozen {
 		if w := interiors.noting; w != nil {
 			interiors.noting = nil
 			if w.key == map_key() {
-				w.main = psx.cpu
+				w.main = cpu.state
 				w.ready = true
-				if psx.preload_child {
+				if io.preload_child {
 					preload_hand_back(w)
 				}
 			}
 		}
 		// The doors' passes still run: the next frame shows their pictures.
-		if interiors.want && !psx.preload_child {
+		if interiors.want && !io.preload_child {
 			interiors.want = false
 			doors_draw()
 		}
@@ -1105,7 +1112,7 @@ doors_between_draw :: proc() {
 		w := world_find(d.world[0], d.world[1])
 		if w == nil || !door_pass(&d, w, true) {
 			copy(d.between, d.pixels)
-			psx.picture_hi_copy(&d.between_hi, &d.hi)
+			render.picture_hi_copy(&d.between_hi, &d.hi)
 		}
 	}
 }
@@ -1115,7 +1122,7 @@ doors_between_draw :: proc() {
 @(private = "file")
 door_seen :: proc(d: ^Door) -> bool {
 	tr := [3]u32{interiors.view[5], interiors.view[6], interiors.view[7]}
-	_, of := psx.gte_projection()
+	_, of := render.gte_projection()
 	h := f32(interiors.h)
 	lo, hi := [2]f32{max(f32), max(f32)}, [2]f32{min(f32), min(f32)}
 	for c in d.quad {
@@ -1134,7 +1141,7 @@ door_seen :: proc(d: ^Door) -> bool {
 // screen in front of the lens.
 @(private = "file")
 door_whole :: proc(quad: [4][3]f32) -> bool {
-	_, of := psx.gte_projection()
+	_, of := render.gte_projection()
 	h := f32(interiors.h)
 	for v in quad {
 		if v.z < 16 {
@@ -1174,27 +1181,27 @@ town_matrix :: proc(i, j: int) -> i16 {
 // its own picture (`cover`, door_cover).
 @(private = "file")
 door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool {
-	main := psx.cpu
-	frame := psx.lw(GAME_FRAME)
-	town := [2]u32{u32(psx.lhu(MAP_ID)), u32(psx.lhu(MAP_SECTION))}
-	target := [3]i32{i32(i16(psx.lhu(CAM_TARGET))), i32(i16(psx.lhu(CAM_TARGET + 2))), i32(i16(psx.lhu(CAM_TARGET + 4)))}
+	main := cpu.state
+	frame := cpu.lw(GAME_FRAME)
+	town := [2]u32{u32(cpu.lhu(MAP_ID)), u32(cpu.lhu(MAP_SECTION))}
+	target := [3]i32{i32(i16(cpu.lhu(CAM_TARGET))), i32(i16(cpu.lhu(CAM_TARGET + 2))), i32(i16(cpu.lhu(CAM_TARGET + 4)))}
 	if !psx.checkpoint_save(interiors.checkpoint) {
 		return false
 	}
 	defer psx.checkpoint_restore(interiors.checkpoint)
-	psx.pictures_clear()
+	render.pictures_clear()
 	psx.draw_start_load(w.start)
-	psx.vram = w.vram^
-	psx.vram_world(u32(mem.ptr_sub(w, &interiors.worlds[0])) + 1)
-	w.used = psx.vblanks()
+	render.vram = w.vram^
+	render.vram_world(u32(mem.ptr_sub(w, &interiors.worlds[0])) + 1)
+	w.used = cpu.vblanks()
 	interior_pass, cover_pass = true, cover
 	defer interior_pass, cover_pass = false, false
 	// A room seen through a door is not fogged.
-	fog := psx.fog
-	psx.fog.on = false
-	defer psx.fog = fog
+	fog := render.fog
+	render.fog.on = false
+	defer render.fog = fog
 	interiors.door = d
-	psx.cpu = w.regs
+	cpu.state = w.regs
 	if d.dy_from != w.key {
 		section := w.key[1]
 		g := ground(section, d.there, section)
@@ -1203,42 +1210,42 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 	}
 	// The town's frame count; then its projection, and the room's blocks
 	// are picked around the town's target moved into its frame.
-	psx.sw(GAME_FRAME, frame)
+	cpu.sw(GAME_FRAME, frame)
 	if w.stepped != frame && !between {
 		w.stepped = frame
 		room_step(w)
 	}
-	psx.sw(CAM_H, interiors.h)
+	cpu.sw(CAM_H, interiors.h)
 	shift := door_shift(d) * TARGET_PER_CELL / VIEW_PER_CELL
-	psx.sh(CAM_TARGET, u32(target.x - i32(shift.x)))
-	psx.sh(CAM_TARGET + 2, u32(target.y - i32(shift.y)))
-	psx.sh(CAM_TARGET + 4, u32(target.z - i32(shift.z)))
+	cpu.sh(CAM_TARGET, u32(target.x - i32(shift.x)))
+	cpu.sh(CAM_TARGET + 2, u32(target.y - i32(shift.y)))
+	cpu.sh(CAM_TARGET + 4, u32(target.z - i32(shift.z)))
 	for i in u32(0) ..< PARTY_COUNT {
 		at := PARTY_OBJ + PARTY_OBJ_SIZE * i
-		psx.sb(at, psx.lbu(at) &~ OBJ_SHOWN)
+		cpu.sb(at, cpu.lbu(at) &~ OBJ_SHOWN)
 	}
-	psx.call(FIELD_DRAW)
-	psx.cpu.r[29] = w.regs.r[29]
+	cpu.call(FIELD_DRAW)
+	cpu.state.r[29] = w.regs.r[29]
 	game_call(SCENE_DRAW, w.scene_ret)
-	psx.cpu = w.main
+	cpu.state = w.main
 	game_call(FRAME_END, FRAME_END_RET)
-	psx.cpu = w.main
-	psx.cpu.r[31] = PASS_DRAW_RET
+	cpu.state = w.main
+	cpu.state.r[31] = PASS_DRAW_RET
 	tr := [3]u32{interiors.view[5], interiors.view[6], interiors.view[7]}
 	quad: [4][3]f32
 	for c, k in d.quad {
 		quad[k] = town_view_point(c, tr)
 	}
-	psx.blacks_all_begin(quad, town_view_point(d.front, tr))
+	render.blacks_all_begin(quad, town_view_point(d.front, tr))
 	// The town's doorway the party walked in through, where the pass draws
-	// it: the cover's opening (psx.curtain_hole).
+	// it: the cover's opening (render.curtain_hole).
 	if cover && interiors.enter_ok {
 		shift := door_shift(d)
 		at: [4][3]f32
 		for c, k in interiors.enter_quad {
 			at[k] = town_view_point(c + shift, tr)
 		}
-		psx.picture_blank_add(at, town_view_point(interiors.enter_front + shift, tr), PICTURE_W, PICTURE_H)
+		render.picture_blank_add(at, town_view_point(interiors.enter_front + shift, tr), PICTURE_W, PICTURE_H)
 	}
 	if d.around && !cover {
 		rot: [3][3]f32
@@ -1247,30 +1254,30 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 				rot[i][j] = f32(town_matrix(i, j)) / 4096
 			}
 		}
-		psx.cut_begin(rot, {f32(i32(tr[0])), f32(i32(tr[1])), f32(i32(tr[2]))}, d.box[0], d.box[1], d.ground * VIEW_PER_CELL / TARGET_PER_CELL + AROUND_ABOVE)
+		render.cut_begin(rot, {f32(i32(tr[0])), f32(i32(tr[1])), f32(i32(tr[2]))}, d.box[0], d.box[1], d.ground * VIEW_PER_CELL / TARGET_PER_CELL + AROUND_ABOVE)
 	}
 	interiors.draw_otag_env()
-	psx.cut_end()
+	render.cut_end()
 	// The back and the curtain are measured only with the whole opening on
 	// screen: one cut by the screen's edge or the lens (the camera at the
 	// doorway) measures part of either, which slid the room by more than a
 	// tile from one frame to the next.
-	curtain, seen := psx.blacks_all_end()
-	hole := psx.curtain_hole(quad)
+	curtain, seen := render.blacks_all_end()
+	hole := render.curtain_hole(quad)
 	env := w.main.r[5]
-	x, y := i32(i16(psx.lh(env))), i32(i16(psx.lh(env + 2)))
-	d.w = min(i32(i16(psx.lh(env + 4))), PICTURE_W)
-	d.h = min(i32(i16(psx.lh(env + 6))), PICTURE_H)
+	x, y := i32(i16(cpu.lh(env))), i32(i16(cpu.lh(env + 2)))
+	d.w = min(i32(i16(cpu.lh(env + 4))), PICTURE_W)
+	d.h = min(i32(i16(cpu.lh(env + 6))), PICTURE_H)
 	if between {
-		psx.picture_take(x, y, d.w, d.h, d.between, &d.between_hi)
-		psx.cpu = main
+		render.picture_take(x, y, d.w, d.h, d.between, &d.between_hi)
+		cpu.state = main
 		return true
 	}
 	if cover {
-		psx.picture_take(x, y, d.w, d.h, d.cover, &d.cover_hi)
+		render.picture_take(x, y, d.w, d.h, d.cover, &d.cover_hi)
 		d.cover_drawn, d.cover_hole = true, hole
 		d.pic_view, d.pic_h = interiors.view, f32(interiors.h)
-		psx.cpu = main
+		cpu.state = main
 		return true
 	}
 	if seen && d.back_ok && !d.settled && door_whole(quad) {
@@ -1294,10 +1301,10 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 	if abs(d.goal - d.along) < 1 {
 		d.along = d.goal
 	}
-	psx.picture_take(x, y, d.w, d.h, d.pixels, &d.hi)
+	render.picture_take(x, y, d.w, d.h, d.pixels, &d.hi)
 	d.drawn = true
 	d.pic_view, d.pic_h = interiors.view, f32(interiors.h)
-	psx.cpu = main
+	cpu.state = main
 	return true
 }
 
@@ -1307,21 +1314,21 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 // pass draws from.
 @(private = "file")
 room_step :: proc(w: ^World) {
-	regs := psx.cpu.r
-	seed := psx.rand_seed()
-	psx.set_rand_seed(w.rand)
+	regs := cpu.state.r
+	seed := bios.rand_seed()
+	bios.set_rand_seed(w.rand)
 	for i in u32(0) ..< PARTY_COUNT {
 		at := PARTY_OBJ + PARTY_OBJ_SIZE * i + OBJ_POS
-		psx.sw(at, psx.lw(at) + AWAY)
+		cpu.sw(at, cpu.lw(at) + AWAY)
 	}
-	psx.call(NPC_UPDATE)
+	cpu.call(NPC_UPDATE)
 	for i in u32(0) ..< PARTY_COUNT {
 		at := PARTY_OBJ + PARTY_OBJ_SIZE * i + OBJ_POS
-		psx.sw(at, psx.lw(at) - AWAY)
+		cpu.sw(at, cpu.lw(at) - AWAY)
 	}
-	w.rand = psx.rand_seed()
-	psx.set_rand_seed(seed)
-	psx.cpu.r = regs
+	w.rand = bios.rand_seed()
+	bios.set_rand_seed(seed)
+	cpu.state.r = regs
 	psx.draw_start_take_ram(w.start)
 	psx.draw_start_load(w.start)
 }
@@ -1350,15 +1357,15 @@ interiors_follower_fade :: proc() {
 	// Walked in through an instant door, they were in sight all along: the
 	// fade runs out now, each follower in a step. One still on the leader
 	// waits there; the wait that finds none left ends the task.
-	task, ra, sp := psx.cpu.r[4], psx.cpu.r[31], psx.cpu.r[29]
+	task, ra, sp := cpu.state.r[4], cpu.state.r[31], cpu.state.r[29]
 	for _ in 0 ..< 2 * PARTY_COUNT + 2 {
-		before := psx.lbu(task + FADE_STATE)
+		before := cpu.lbu(task + FADE_STATE)
 		if before == FADE_STEP {
-			psx.sb(task + FADE_COUNT, FADE_COUNT_LAST)
+			cpu.sb(task + FADE_COUNT, FADE_COUNT_LAST)
 		}
-		psx.cpu.r[4], psx.cpu.r[29], psx.cpu.r[31] = task, sp, ra
+		cpu.state.r[4], cpu.state.r[29], cpu.state.r[31] = task, sp, ra
 		interiors.follower_fade()
-			if before == FADE_WAIT && psx.lbu(task + FADE_STATE) != FADE_STEP {
+			if before == FADE_WAIT && cpu.lbu(task + FADE_STATE) != FADE_STEP {
 			return
 		}
 	}
@@ -1370,34 +1377,34 @@ interiors_follower_fade :: proc() {
 // set down may not yet.
 @(private = "file")
 followers_shown :: proc() {
-	regs, hi, lo := psx.cpu.r, psx.cpu.hi, psx.cpu.lo
+	regs, hi, lo := cpu.state.r, cpu.state.hi, cpu.state.lo
 	gaits: [PARTY_COUNT]u32
 	for &g, i in gaits {
 		at := PARTY_OBJ + PARTY_OBJ_SIZE * u32(i)
-		g = psx.lbu(at + OBJ_GAIT_ANIM)
-		psx.sb(at + OBJ_GAIT_ANIM, GAIT_WALK)
+		g = cpu.lbu(at + OBJ_GAIT_ANIM)
+		cpu.sb(at + OBJ_GAIT_ANIM, GAIT_WALK)
 	}
 	defer {
-		psx.cpu.r, psx.cpu.hi, psx.cpu.lo = regs, hi, lo
+		cpu.state.r, cpu.state.hi, cpu.state.lo = regs, hi, lo
 		for g, i in gaits {
-			psx.sb(PARTY_OBJ + PARTY_OBJ_SIZE * u32(i) + OBJ_GAIT_ANIM, g)
+			cpu.sb(PARTY_OBJ + PARTY_OBJ_SIZE * u32(i) + OBJ_GAIT_ANIM, g)
 		}
 	}
 	for i in u32(0) ..< MODEL_OBJ_COUNT {
 		task := MODEL_OBJS + MODEL_OBJ_SIZE * i
-		state := psx.lbu(task + FADE_STATE)
-		if psx.lbu(task) == 0 || psx.lbu(task + OBJ_KIND) != KIND_FOLLOWER_FADE || (state != FADE_WAIT && state != FADE_STEP) {
+		state := cpu.lbu(task + FADE_STATE)
+		if cpu.lbu(task) == 0 || cpu.lbu(task + OBJ_KIND) != KIND_FOLLOWER_FADE || (state != FADE_WAIT && state != FADE_STEP) {
 			continue
 		}
-		psx.cpu.r[4], psx.cpu.r[31] = task, FADE_RET
+		cpu.state.r[4], cpu.state.r[31] = task, FADE_RET
 		interiors_follower_fade()
 	}
 }
 
 @(private = "file")
 interiors_view_build :: proc() {
-	a0 := psx.cpu.r[4]
-	center := [3]f32{f32(i16(psx.lhu(a0))), f32(i16(psx.lhu(a0 + 2))), f32(i16(psx.lhu(a0 + 4)))}
+	a0 := cpu.state.r[4]
+	center := [3]f32{f32(i16(cpu.lhu(a0))), f32(i16(cpu.lhu(a0 + 2))), f32(i16(cpu.lhu(a0 + 4)))}
 	interiors.view_build()
 	if !interior_pass || interiors.door == nil {
 		return
@@ -1406,20 +1413,20 @@ interiors_view_build :: proc() {
 	tr := [3]u32{interiors.view[5], interiors.view[6], interiors.view[7]}
 	moved := town_view_point(shift, tr)
 	for i in u32(0) ..< 5 {
-		psx.sw(CAM_MATRIX + 4 * i, interiors.view[i])
+		cpu.sw(CAM_MATRIX + 4 * i, interiors.view[i])
 	}
 	for i in u32(0) ..< 3 {
-		psx.sw(CAM_TR + 4 * i, u32(i32(moved[i])))
+		cpu.sw(CAM_TR + 4 * i, u32(i32(moved[i])))
 	}
-	regs := psx.cpu.r
-	psx.cpu.r[4] = CAM_MATRIX
-	psx.call(SET_ROT)
-	psx.cpu.r[4] = CAM_MATRIX
-	psx.call(SET_TRANS)
-	psx.cpu.r = regs
-	psx.gte_set_h(interiors.h)
+	regs := cpu.state.r
+	cpu.state.r[4] = CAM_MATRIX
+	cpu.call(SET_ROT)
+	cpu.state.r[4] = CAM_MATRIX
+	cpu.call(SET_TRANS)
+	cpu.state.r = regs
+	render.gte_set_h(interiors.h)
 	if !cover_pass {
-		psx.see_through.on = false
+		render.see_through.on = false
 	}
 }
 
@@ -1450,7 +1457,7 @@ AREA_SET_RET :: 0x801d5c04
 // once per town visit.
 @(private = "file")
 preload_step :: proc() {
-	if psx.preload_child {
+	if io.preload_child {
 		return
 	}
 	free: ^Preload
@@ -1466,7 +1473,7 @@ preload_step :: proc() {
 		return
 	}
 	key := doors_key()
-	if !interiors.noted || interiors.doors_key != key || interior_pass || psx.hold_picture > 0 {
+	if !interiors.noted || interiors.doors_key != key || interior_pass || host.hold_picture > 0 {
 		return
 	}
 	if interiors.tried_key != key {
@@ -1475,7 +1482,7 @@ preload_step :: proc() {
 	// The untried door without a room nearest the leader goes first: the
 	// one the party is most likely to walk into next.
 	lead := leader_obj() + OBJ_POS
-	at := [2]f32{f32(i32(psx.lw(lead)) >> 16), f32(i32(psx.lw(lead + 8)) >> 16)}
+	at := [2]f32{f32(i32(cpu.lw(lead)) >> 16), f32(i32(cpu.lw(lead + 8)) >> 16)}
 	pick, best := -1, max(f32)
 	for d, i in interiors.doors[:interiors.n_doors] {
 		if interiors.tried[i] || world_find(d.world[0], d.world[1]) != nil || preload_of(d.world) != nil {
@@ -1491,7 +1498,7 @@ preload_step :: proc() {
 		interiors.tried[i] = true
 		free.share.done = false
 		free.door = d.world
-		pid, ok := psx.preload_fork()
+		pid, ok := host.preload_fork()
 		if !ok {
 			return
 		}
@@ -1500,7 +1507,7 @@ preload_step :: proc() {
 			preload_enter(d)
 			return
 		}
-		free.pid, free.since = pid, psx.vblanks()
+		free.pid, free.since = pid, cpu.vblanks()
 		if .Game in core.trace.active {
 			core.tracef(.Game, "interiors: loading %04x.%d in the background", d.world[0], d.world[1])
 		}
@@ -1512,14 +1519,14 @@ preload_step :: proc() {
 // field draw go on; the game loads the room on the frames that follow.
 @(private = "file")
 preload_enter :: proc(d: ^Door) {
-	c := &psx.cpu
+	c := &cpu.state
 	saved := c^
 	c.r[29] -= 0x18
 	c.r[4] = d.world[0]
 	c.r[5] = d.world[1]
-	c.r[6] = psx.lhu(d.exit + 6)
-	c.r[7] = psx.lhu(d.exit + 8)
-	psx.sw(c.r[29] + 16, psx.lbu(d.exit + 11))
+	c.r[6] = cpu.lhu(d.exit + 6)
+	c.r[7] = cpu.lhu(d.exit + 8)
+	cpu.sw(c.r[29] + 16, cpu.lbu(d.exit + 11))
 	game_call(MAP_REQUEST, MAP_REQUEST_RET)
 	cycles := c.cycles
 	c^ = saved
@@ -1541,7 +1548,7 @@ preload_hand_back :: proc(w: ^World) {
 	sh.start = w.start^
 	sh.vram = w.vram^
 	sh.done = true
-	psx.preload_exit()
+	host.preload_exit()
 }
 
 // The background load running for the room `key`, nil none.
@@ -1560,12 +1567,12 @@ preload_of :: proc(key: [2]u32) -> ^Preload {
 @(private = "file")
 preload_poll :: proc(l: ^Preload) {
 	sh := l.share
-	ended := psx.preload_ended(l.pid)
-	if !ended && !sh.done && psx.vblanks() - l.since < PRELOAD_LIMIT {
+	ended := host.preload_ended(l.pid)
+	if !ended && !sh.done && cpu.vblanks() - l.since < PRELOAD_LIMIT {
 		return
 	}
 	if !ended {
-		psx.preload_kill(l.pid)
+		host.preload_kill(l.pid)
 	}
 	l.pid = 0
 	if !sh.done {
@@ -1576,7 +1583,7 @@ preload_poll :: proc(l: ^Preload) {
 	}
 	w := world_slot(sh.key)
 	world_alloc(w)
-	w.key, w.used, w.stepped, w.rand = sh.key, psx.vblanks(), 0, sh.key[0] ~ 0x9e3779b9
+	w.key, w.used, w.stepped, w.rand = sh.key, cpu.vblanks(), 0, sh.key[0] ~ 0x9e3779b9
 	w.regs, w.main, w.scene_ret = sh.regs, sh.main, sh.scene_ret
 	w.map_end, w.bank, w.lasting, w.story = sh.map_end, sh.bank, sh.lasting, sh.story
 	w.gpu, w.disp, w.camera = sh.gpu, sh.disp, sh.camera
@@ -1586,7 +1593,7 @@ preload_poll :: proc(l: ^Preload) {
 	w.vram^ = sh.vram
 	w.ready = true
 	if .Game in core.trace.active {
-		core.tracef(.Game, "interiors: background load of %04x.%d done in %d vblanks", sh.key[0], sh.key[1], psx.vblanks() - l.since)
+		core.tracef(.Game, "interiors: background load of %04x.%d done in %d vblanks", sh.key[0], sh.key[1], cpu.vblanks() - l.since)
 	}
 }
 
@@ -1597,7 +1604,7 @@ preload_poll :: proc(l: ^Preload) {
 @(private = "file")
 preload_wait :: proc(l: ^Preload) -> ^World {
 	start := time.tick_now()
-	for !l.share.done && !psx.preload_ended(l.pid) && time.tick_since(start) < PRELOAD_WAIT {
+	for !l.share.done && !host.preload_ended(l.pid) && time.tick_since(start) < PRELOAD_WAIT {
 		time.sleep(time.Millisecond)
 	}
 	if .Game in core.trace.active {
@@ -1685,7 +1692,7 @@ interiors_dma_spu :: proc(addr, size: u32) {
 // the screen is faded to black when `dark`.
 @(private)
 door_enter :: proc(m, section: u32, dark: bool) -> bool {
-	if !config.field_instant_doors || psx.preload_child {
+	if !config.field_instant_doors || io.preload_child {
 		return false
 	}
 	w := world_find(m, section)
@@ -1704,7 +1711,7 @@ door_enter :: proc(m, section: u32, dark: bool) -> bool {
 	}
 	interiors.entering = w
 	interiors.enter_dark, interiors.dark_held = dark, false
-	interiors.arrival = {u32(psx.lhu(ARRIVE_X)), u32(psx.lhu(ARRIVE_Z)), u32(psx.lbu(ARRIVE_DIRECTION))}
+	interiors.arrival = {u32(cpu.lhu(ARRIVE_X)), u32(cpu.lhu(ARRIVE_Z)), u32(cpu.lbu(ARRIVE_DIRECTION))}
 	interiors.enter_shift, interiors.enter_ok = {}, false
 	for &d in interiors.doors[:interiors.n_doors] {
 		if d.world == {m, section} {
@@ -1740,7 +1747,7 @@ door_walked_through :: proc() -> bool {
 // the story as it stands, or still loading.
 @(private = "file")
 door_ready :: proc(m, section: u32) -> bool {
-	if !config.field_instant_doors || psx.preload_child || !door_to(m, section) {
+	if !config.field_instant_doors || io.preload_child || !door_to(m, section) {
 		return false
 	}
 	if w := world_find(m, section); w != nil {
@@ -1759,15 +1766,15 @@ door_exit_at :: proc(x, z: i32) -> (p: u32, way: [2]f32, ok: bool) {
 	if interiors.doors_key != doors_key() {
 		return
 	}
-	for e := exit_list(u32(psx.lhu(MAP_SECTION))); e != 0 && psx.lhu(e) != EXIT_END; e += EXIT_SIZE {
-		at := [2]i32{i32(psx.lbu(e + 4)), i32(psx.lbu(e + 5))}
-		n := i32(psx.lbu(e + 10))
-		along := psx.lbu(e + 3) & 1 != 0 ? z - at.y : x - at.x
-		beside := psx.lbu(e + 3) & 1 != 0 ? x - at.x : z - at.y
+	for e := exit_list(u32(cpu.lhu(MAP_SECTION))); e != 0 && cpu.lhu(e) != EXIT_END; e += EXIT_SIZE {
+		at := [2]i32{i32(cpu.lbu(e + 4)), i32(cpu.lbu(e + 5))}
+		n := i32(cpu.lbu(e + 10))
+		along := cpu.lbu(e + 3) & 1 != 0 ? z - at.y : x - at.x
+		beside := cpu.lbu(e + 3) & 1 != 0 ? x - at.x : z - at.y
 		if beside != 0 || along < 0 || along >= n {
 			continue
 		}
-		if door_ready(u32(psx.lhu(e)), u32(psx.lbu(e + 2))) {
+		if door_ready(u32(cpu.lhu(e)), u32(cpu.lbu(e + 2))) {
 			return e, exit_way(e), true
 		}
 	}
@@ -1782,16 +1789,16 @@ door_exit_at :: proc(x, z: i32) -> (p: u32, way: [2]f32, ok: bool) {
 // would.
 @(private)
 door_through :: proc(p: u32) {
-	c := &psx.cpu
+	c := &cpu.state
 	ra, sp := c.r[31], c.r[29]
 	defer c.r[29], c.r[31] = sp, ra
-	m, section := u32(psx.lhu(p)), u32(psx.lbu(p + 2))
-	psx.sh(KEPT_YAW, u32(psx.lhu(CAMERA_YAW)))
+	m, section := u32(cpu.lhu(p)), u32(cpu.lbu(p + 2))
+	cpu.sh(KEPT_YAW, u32(cpu.lhu(CAMERA_YAW)))
 	c.r[4], c.r[5] = m, section
 	game_call(AREA_SET, AREA_SET_RET)
 	c.r[29] = sp - 0x18
-	psx.sw(c.r[29] + 16, u32(psx.lbu(p + 11)))
-	c.r[4], c.r[5], c.r[6], c.r[7] = m, section, u32(i32(i16(psx.lhu(p + 6)))), u32(i32(i16(psx.lhu(p + 8))))
+	cpu.sw(c.r[29] + 16, u32(cpu.lbu(p + 11)))
+	c.r[4], c.r[5], c.r[6], c.r[7] = m, section, u32(i32(i16(cpu.lhu(p + 6)))), u32(i32(i16(cpu.lhu(p + 8))))
 	interiors.through = true
 	game_call(MAP_REQUEST, MAP_REQUEST_RET)
 	interiors.through = interiors.entering != nil
@@ -1810,14 +1817,14 @@ SCRIPT_AREA_SET_RET :: 0x801ddfe0
 SCRIPT_REQUEST_RET :: 0x801de044
 
 script_request :: proc(m, section: u32, x, z: i32, facing: u32) {
-	c := &psx.cpu
+	c := &cpu.state
 	regs := c.r
 	defer c.r = regs
 	c.r[4], c.r[5] = m, section
 	game_call(AREA_SET, SCRIPT_AREA_SET_RET)
-	psx.sh(KEPT_YAW, u32(psx.lhu(CAMERA_YAW)))
+	cpu.sh(KEPT_YAW, u32(cpu.lhu(CAMERA_YAW)))
 	c.r[29] = regs[29] - 0x18
-	psx.sw(c.r[29] + 16, facing)
+	cpu.sw(c.r[29] + 16, facing)
 	c.r[4], c.r[5], c.r[6], c.r[7] = m, section, u32(x), u32(z)
 	game_call(MAP_REQUEST, SCRIPT_REQUEST_RET)
 }
@@ -1839,7 +1846,7 @@ story_key :: proc() -> u64 {
 				skip ||= a >= s[0] && a < s[1]
 			}
 			if !skip {
-				h^ = (h^ ~ u64(psx.ram[a - RAM_BASE])) * 0x100000001b3
+				h^ = (h^ ~ u64(cpu.ram[a - RAM_BASE])) * 0x100000001b3
 			}
 		}
 	}
@@ -1858,15 +1865,15 @@ story_key :: proc() -> u64 {
 @(private = "file")
 arrive :: proc(at: Party_At) {
 	x, z, direction := interiors.arrival[0], interiors.arrival[1], interiors.arrival[2]
-	psx.sh(ARRIVE_X, x)
-	psx.sh(ARRIVE_Z, z)
-	psx.sb(ARRIVE_DIRECTION, direction)
-	psx.sh(ARRIVE_POS, x)
-	psx.sh(ARRIVE_POS + 4, z)
-	psx.cpu.r[4] = ARRIVE_POS
-	psx.call(GROUND_HEIGHT)
-	height := psx.cpu.r[2]
-	psx.sh(ARRIVE_POS + 2, height & 0xffff)
+	cpu.sh(ARRIVE_X, x)
+	cpu.sh(ARRIVE_Z, z)
+	cpu.sb(ARRIVE_DIRECTION, direction)
+	cpu.sh(ARRIVE_POS, x)
+	cpu.sh(ARRIVE_POS + 4, z)
+	cpu.state.r[4] = ARRIVE_POS
+	cpu.call(GROUND_HEIGHT)
+	height := cpu.state.r[2]
+	cpu.sh(ARRIVE_POS + 2, height & 0xffff)
 	if interiors.through {
 		interiors.through = false
 		shift := interiors.enter_shift
@@ -1874,27 +1881,27 @@ arrive :: proc(at: Party_At) {
 			obj := PARTY_OBJ + PARTY_OBJ_SIZE * i
 			for k in u32(0) ..< 3 {
 				v := u32(at.pos[i][k] - i32(math.round(shift[k] * 256)))
-				psx.sw(obj + OBJ_POS + 4 * k, v)
-				psx.sw(obj + OBJ_TARGET + 4 * k, v)
+				cpu.sw(obj + OBJ_POS + 4 * k, v)
+				cpu.sw(obj + OBJ_TARGET + 4 * k, v)
 			}
-			psx.sb(obj + OBJ_DIRECTION, at.direction[i])
+			cpu.sb(obj + OBJ_DIRECTION, at.direction[i])
 		}
 		through_clamp()
 		for k in u32(0) ..< 3 {
-			psx.sh(CAM_TARGET + 2 * k, u32(i32(at.target[k]) - i32(math.round(shift[k]))) & 0xffff)
+			cpu.sh(CAM_TARGET + 2 * k, u32(i32(at.target[k]) - i32(math.round(shift[k]))) & 0xffff)
 		}
 		return
 	}
 	for i in u32(0) ..< PARTY_COUNT {
 		at := PARTY_OBJ + PARTY_OBJ_SIZE * i
-		psx.sw(at + OBJ_POS, x << 8)
-		psx.sw(at + OBJ_POS + 4, u32(i32(i16(height))) << 8)
-		psx.sw(at + OBJ_POS + 8, z << 8)
-		psx.sb(at + OBJ_DIRECTION, direction)
+		cpu.sw(at + OBJ_POS, x << 8)
+		cpu.sw(at + OBJ_POS + 4, u32(i32(i16(height))) << 8)
+		cpu.sw(at + OBJ_POS + 8, z << 8)
+		cpu.sb(at + OBJ_DIRECTION, direction)
 	}
-	psx.sh(CAM_TARGET, x)
-	psx.sh(CAM_TARGET + 2, height & 0xffff)
-	psx.sh(CAM_TARGET + 4, z)
+	cpu.sh(CAM_TARGET, x)
+	cpu.sh(CAM_TARGET + 2, height & 0xffff)
+	cpu.sh(CAM_TARGET + 4, z)
 }
 
 // Keep the party, walked through, inside the run of cells of the exit it
@@ -1910,24 +1917,24 @@ THROUGH_CELL :: 0x10000
 THROUGH_MARGIN :: 0x5000
 @(private = "file")
 through_clamp :: proc() {
-	left_section := u32(psx.lbu(LEFT_MAP + 6)) & 0xf
-	p := exit_to(u32(psx.lhu(MAP_SECTION)), u32(psx.lhu(LEFT_MAP)), left_section)
+	left_section := u32(cpu.lbu(LEFT_MAP + 6)) & 0xf
+	p := exit_to(u32(cpu.lhu(MAP_SECTION)), u32(cpu.lhu(LEFT_MAP)), left_section)
 	if p == 0 {
 		return
 	}
-	k := psx.lbu(p + 3) & 1 != 0 ? u32(2) : 0
-	first := i32(psx.lbu(p + (k == 0 ? 4 : 5))) * THROUGH_CELL
-	last := first + i32(psx.lbu(p + 10)) * THROUGH_CELL
-	v := i32(psx.lw(PARTY_OBJ + OBJ_POS + 4 * k))
+	k := cpu.lbu(p + 3) & 1 != 0 ? u32(2) : 0
+	first := i32(cpu.lbu(p + (k == 0 ? 4 : 5))) * THROUGH_CELL
+	last := first + i32(cpu.lbu(p + 10)) * THROUGH_CELL
+	v := i32(cpu.lw(PARTY_OBJ + OBJ_POS + 4 * k))
 	d := clamp(v, first + THROUGH_MARGIN, last - THROUGH_MARGIN) - v
 	if d == 0 || last - first <= 2 * THROUGH_MARGIN {
 		return
 	}
 	for i in u32(0) ..< PARTY_COUNT {
 		obj := PARTY_OBJ + PARTY_OBJ_SIZE * i
-		v := u32(i32(psx.lw(obj + OBJ_POS + 4 * k)) + d)
-		psx.sw(obj + OBJ_POS + 4 * k, v)
-		psx.sw(obj + OBJ_TARGET + 4 * k, v)
+		v := u32(i32(cpu.lw(obj + OBJ_POS + 4 * k)) + d)
+		cpu.sw(obj + OBJ_POS + 4 * k, v)
+		cpu.sw(obj + OBJ_TARGET + 4 * k, v)
 	}
 	if .Game in core.trace.active {
 		core.tracef(.Game, "interiors: walked-through party moved %.2f cells into the exit", f32(d) / THROUGH_CELL)
@@ -1948,12 +1955,12 @@ party_at :: proc() -> (at: Party_At) {
 	for i in u32(0) ..< PARTY_COUNT {
 		obj := PARTY_OBJ + PARTY_OBJ_SIZE * i
 		for k in u32(0) ..< 3 {
-			at.pos[i][k] = i32(psx.lw(obj + OBJ_POS + 4 * k))
+			at.pos[i][k] = i32(cpu.lw(obj + OBJ_POS + 4 * k))
 		}
-		at.direction[i] = u32(psx.lbu(obj + OBJ_DIRECTION))
+		at.direction[i] = u32(cpu.lbu(obj + OBJ_DIRECTION))
 	}
 	for k in u32(0) ..< 3 {
-		at.target[k] = i16(psx.lhu(CAM_TARGET + 2 * k))
+		at.target[k] = i16(cpu.lhu(CAM_TARGET + 2 * k))
 	}
 	return
 }
@@ -1961,19 +1968,19 @@ party_at :: proc() -> (at: Party_At) {
 // Note the map left, as the map setup does before it places the party.
 @(private = "file")
 left :: proc() {
-	psx.sh(LEFT_MAP, u32(psx.lhu(FIELD_MAP)))
-	psx.sh(LEFT_MAP + 2, u32(i32(psx.lw(PARTY_OBJ + OBJ_POS)) >> 8))
-	psx.sh(LEFT_MAP + 4, u32(i32(psx.lw(PARTY_OBJ + OBJ_POS + 8)) >> 8))
-	psx.sb(LEFT_MAP + 6, u32(psx.lbu(MAP_SECTION)) | u32(psx.lbu(PARTY_OBJ + 0x18)) << 4)
+	cpu.sh(LEFT_MAP, u32(cpu.lhu(FIELD_MAP)))
+	cpu.sh(LEFT_MAP + 2, u32(i32(cpu.lw(PARTY_OBJ + OBJ_POS)) >> 8))
+	cpu.sh(LEFT_MAP + 4, u32(i32(cpu.lw(PARTY_OBJ + OBJ_POS + 8)) >> 8))
+	cpu.sb(LEFT_MAP + 6, u32(cpu.lbu(MAP_SECTION)) | u32(cpu.lbu(PARTY_OBJ + 0x18)) << 4)
 }
 
 // Stop the sounds playing, as a map load does.
 @(private = "file")
 sounds_stop :: proc() {
 	for i in u32(0) ..< SOUND_SLOTS {
-		if psx.lbu(SOUND_SLOT + SOUND_SLOT_SIZE * i) != 0 {
-			psx.cpu.r[4] = i
-			psx.call(SOUND_STOP)
+		if cpu.lbu(SOUND_SLOT + SOUND_SLOT_SIZE * i) != 0 {
+			cpu.state.r[4] = i
+			cpu.call(SOUND_STOP)
 		}
 	}
 }
@@ -1989,10 +1996,10 @@ sounds_resume :: proc(w: ^World) {
 		if int(i) not_in w.lasting || w.start.ram[at] == 0 {
 			continue
 		}
-		psx.cpu.r[4] = u32((^u16le)(&w.start.ram[at + 4])^)
-		psx.cpu.r[5] = u32(w.start.ram[at + 6])
-		psx.cpu.r[6] = u32((^u32le)(&w.start.ram[at + 0x10])^)
-		psx.call(SOUND_PLAY)
+		cpu.state.r[4] = u32((^u16le)(&w.start.ram[at + 4])^)
+		cpu.state.r[5] = u32(w.start.ram[at + 6])
+		cpu.state.r[6] = u32((^u32le)(&w.start.ram[at + 0x10])^)
+		cpu.call(SOUND_PLAY)
 	}
 }
 
@@ -2001,16 +2008,16 @@ sounds_resume :: proc(w: ^World) {
 @(private = "file")
 world_enter :: proc(w: ^World) {
 	take :: proc(w: ^World, from, to: u32) {
-		copy(psx.mem_slice(from, to - from), w.start.ram[from - RAM_BASE:to - RAM_BASE])
+		copy(cpu.mem_slice(from, to - from), w.start.ram[from - RAM_BASE:to - RAM_BASE])
 	}
 	at := party_at()
 	left()
 	sounds_stop()
 	voices: [SOUND_VOICES[1] - SOUND_VOICES[0]]u8
 	slots: [SOUND_SLOTS * SOUND_SLOT_SIZE]u8
-	copy(voices[:], psx.ram[SOUND_VOICES[0] - RAM_BASE:])
-	copy(slots[:], psx.ram[SOUND_SLOT - RAM_BASE:])
-	yaw := u32(psx.lhu(KEPT_YAW))
+	copy(voices[:], cpu.ram[SOUND_VOICES[0] - RAM_BASE:])
+	copy(slots[:], cpu.ram[SOUND_SLOT - RAM_BASE:])
+	yaw := u32(cpu.lhu(KEPT_YAW))
 	// At the black of a script's request (enter_dark), the game's fade out
 	// still waits for its end, on the stack the world's replaces: its frame
 	// is kept, so it ends there, and the game goes on to set the map up as
@@ -2019,13 +2026,13 @@ world_enter :: proc(w: ^World) {
 	fade_sp := fade_frame()
 	keep := interiors.enter_dark && fade_sp != 0
 	if keep {
-		copy(fading[:], psx.mem_slice(fade_sp, FADE_FRAME))
+		copy(fading[:], cpu.mem_slice(fade_sp, FADE_FRAME))
 	}
 	for r in MAP_LOCAL {
 		take(w, r[0], r[1])
 	}
 	if keep {
-		copy(psx.mem_slice(fade_sp, FADE_FRAME), fading[:])
+		copy(cpu.mem_slice(fade_sp, FADE_FRAME), fading[:])
 	}
 	take(w, MAP_DATA, w.map_end)
 	// The room's ground below the town's: a door pass finds it (Door.dy),
@@ -2037,10 +2044,10 @@ world_enter :: proc(w: ^World) {
 		interiors.enter_shift.y = interiors.enter_ground - ground(section, interiors.enter_there, section)
 	}
 	third_person_game_fields_put(w.camera)
-	copy(psx.mem_slice(SOUND_VOICES[0], u32(len(voices))), voices[:])
-	copy(psx.mem_slice(SOUND_SLOT, u32(len(slots))), slots[:])
-	psx.sh(KEPT_YAW, yaw)
-	copy(psx.sound_ram()[w.bank[0]:w.bank[1]], w.sound[w.bank[0]:w.bank[1]])
+	copy(cpu.mem_slice(SOUND_VOICES[0], u32(len(voices))), voices[:])
+	copy(cpu.mem_slice(SOUND_SLOT, u32(len(slots))), slots[:])
+	cpu.sh(KEPT_YAW, yaw)
+	copy(spu.sound_ram()[w.bank[0]:w.bank[1]], w.sound[w.bank[0]:w.bank[1]])
 	interiors.bank = w.bank
 	take(w, FIELD_STATE, FIELD_STATE + 2)
 	take(w, FIELD_MODE, FIELD_MODE + 1)
@@ -2048,20 +2055,20 @@ world_enter :: proc(w: ^World) {
 	sounds_resume(w)
 	arrive(at)
 	crossing_turn()
-	psx.cpu.r = w.regs.r
-	psx.cpu.hi, psx.cpu.lo = w.regs.hi, w.regs.lo
+	cpu.state.r = w.regs.r
+	cpu.state.hi, cpu.state.lo = w.regs.hi, w.regs.lo
 	// The GPU goes on from where the world was noted: drawing into its
 	// frame's buffer, showing the other. Both take the picture shown now,
 	// which stays until the noted frame is up: the rest of it runs from
 	// the world's field draw, into the world's own ordering table and
 	// buffer (MAP_LOCAL), with no hold. The camera goes on through the door
 	// (sections.odin map_request), so the room's frames carry it on.
-	shown := psx.display
+	shown := gpu.display
 	if interiors.first_cover == nil {
 		interiors.first_cover = make([]u16, PICTURE_W * PICTURE_H)
 	}
 	interiors.first_cover_wh = {min(shown.w, PICTURE_W), min(shown.h, PICTURE_H)}
-	psx.picture_take(shown.x, shown.y, interiors.first_cover_wh[0], interiors.first_cover_wh[1], interiors.first_cover, &interiors.first_cover_hi)
+	render.picture_take(shown.x, shown.y, interiors.first_cover_wh[0], interiors.first_cover_wh[1], interiors.first_cover, &interiors.first_cover_hi)
 	interiors.first_cover_due = !interiors.enter_dark
 	interiors.first_cover_view = interiors.view
 	moved := town_view_point(interiors.enter_shift * VIEW_PER_CELL / TARGET_PER_CELL, {interiors.view[5], interiors.view[6], interiors.view[7]})
@@ -2069,17 +2076,17 @@ world_enter :: proc(w: ^World) {
 		interiors.first_cover_view[5 + i] = u32(i32(moved[i]))
 	}
 	interiors.first_cover_h = f32(interiors.h)
-	psx.move_image(shown.x, shown.y, w.disp.x, w.disp.y, shown.w, shown.h)
-	psx.vram_replace(w.vram, {w.disp.x, w.disp.y, shown.w, shown.h})
-	psx.move_image(w.disp.x, w.disp.y, w.gpu.x1, w.gpu.y1, shown.w, shown.h)
-	psx.gpu = w.gpu
-	psx.display_start(w.disp.x, w.disp.y)
-	interiors.cover_at, interiors.cover_in = interiors.enter_dark ? 0 : psx.vblanks(), 0
+	render.move_image(shown.x, shown.y, w.disp.x, w.disp.y, shown.w, shown.h)
+	render.vram_replace(w.vram, {w.disp.x, w.disp.y, shown.w, shown.h})
+	render.move_image(w.disp.x, w.disp.y, w.gpu.x1, w.gpu.y1, shown.w, shown.h)
+	render.gpu = w.gpu
+	gpu.display_start(w.disp.x, w.disp.y)
+	interiors.cover_at, interiors.cover_in = interiors.enter_dark ? 0 : cpu.vblanks(), 0
 	followers_shown()
 	for &d in interiors.doors[:interiors.n_doors] {
 		d.cover_drawn = false
 	}
-	w.used = psx.vblanks()
+	w.used = cpu.vblanks()
 	interiors.load_end = w.map_end
 	inbetween_world_switch()
 	if .Game in core.trace.active {

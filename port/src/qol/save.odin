@@ -29,7 +29,8 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import bios "ps:psx/bios"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -86,8 +87,8 @@ ICON_SIZE :: 0x80
 
 @(private = "file")
 save: struct {
-	map_kind:   psx.Func_Proc,
-	field:      psx.Func_Proc,
+	map_kind:   cpu.Func_Proc,
+	field:      cpu.Func_Proc,
 	// Map of the last autosave, and the map and vblank where the current
 	// stretch of player control began.
 	saved_map:  u32,
@@ -118,7 +119,7 @@ save_init :: proc() -> bool {
 
 @(private = "file")
 map_kind :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	ra := c.r[31]
 	map_id := c.r[4]
 	save.map_kind()
@@ -134,12 +135,12 @@ map_kind :: proc() {
 @(private = "file")
 field_tick :: proc() {
 	save.field()
-	map_id := u32(psx.lhu(FIELD_MAP))
+	map_id := u32(cpu.lhu(FIELD_MAP))
 	in_control :=
-		psx.lhu(GAME_MODE) == GAME_MODE_FIELD &&
-		psx.lbu(LEADER_OBJ + OBJ_STATE) == STATE_PLAYER_CONTROL &&
+		cpu.lhu(GAME_MODE) == GAME_MODE_FIELD &&
+		cpu.lbu(LEADER_OBJ + OBJ_STATE) == STATE_PLAYER_CONTROL &&
 		map_id != NO_MAP
-	now := psx.vblanks()
+	now := cpu.vblanks()
 	if !in_control {
 		save.control_on = NO_MAP
 		return
@@ -165,7 +166,7 @@ autosave :: proc(map_id: u32) {
 	number := config.autosave_slot - 1
 	build_save(number)
 	name := fmt.tprintf(SAVE_NAME, number)
-	if !psx.card_write_file(psx.CARD_SLOT_2, name, save.data[:]) {
+	if !bios.card_write_file(bios.CARD_SLOT_2, name, save.data[:]) {
 		fmt.eprintfln("autosave: writing %s to the slot 2 card failed", name)
 		return
 	}
@@ -178,17 +179,17 @@ autosave :: proc(map_id: u32) {
 // leaving the emulated machine as it was.
 @(private = "file")
 build_save :: proc(number: int) {
-	regs, hi, lo := psx.cpu.r, psx.cpu.hi, psx.cpu.lo
-	slot_ram := psx.mem_slice(SLOT_MENU, SAVE_EMI_SIZE)
-	region := psx.mem_slice(GAME_REGION, GAME_REGION_SIZE)
+	regs, hi, lo := cpu.state.r, cpu.state.hi, cpu.state.lo
+	slot_ram := cpu.mem_slice(SLOT_MENU, SAVE_EMI_SIZE)
+	region := cpu.mem_slice(GAME_REGION, GAME_REGION_SIZE)
 	copy(save.slot_ram[:], slot_ram)
 	copy(save.region[:], region)
-	screen_slot := psx.lbu(SAVE_SCREEN_SLOT)
+	screen_slot := cpu.lbu(SAVE_SCREEN_SLOT)
 
 	copy(slot_ram, SAVE_EMI)
-	psx.sb(SAVE_SCREEN_SLOT, u32(number))
-	psx.call(SAVE_BUILD)
-	buf := psx.mem_slice(SAVE_BUFFER, SAVE_SIZE)
+	cpu.sb(SAVE_SCREEN_SLOT, u32(number))
+	cpu.call(SAVE_BUILD)
+	buf := cpu.mem_slice(SAVE_BUFFER, SAVE_SIZE)
 	icons := SAVE_ICONS
 	copy(buf[SAVE_ICON:SAVE_ICON + ICON_SIZE], icons[number * ICON_SIZE:][:ICON_SIZE])
 	x: u8 = 0
@@ -200,6 +201,6 @@ build_save :: proc(number: int) {
 
 	copy(slot_ram, save.slot_ram[:])
 	copy(region, save.region[:])
-	psx.sb(SAVE_SCREEN_SLOT, u32(screen_slot))
-	psx.cpu.r, psx.cpu.hi, psx.cpu.lo = regs, hi, lo
+	cpu.sb(SAVE_SCREEN_SLOT, u32(screen_slot))
+	cpu.state.r, cpu.state.hi, cpu.state.lo = regs, hi, lo
 }

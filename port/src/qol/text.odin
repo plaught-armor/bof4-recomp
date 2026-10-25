@@ -20,7 +20,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -39,12 +39,12 @@ Text_State :: enum u8 {
 
 @(private = "file")
 text: struct {
-	original: psx.Func_Proc,
+	original: cpu.Func_Proc,
 }
 
 @(private)
 text_init :: proc() -> bool {
-	original, ok := psx.hook(TEXT_TICK, text_tick)
+	original, ok := cpu.hook(TEXT_TICK, text_tick)
 	if !ok {
 		fmt.eprintf("qol: text tick %08x not found\n", TEXT_TICK)
 		return false
@@ -55,23 +55,23 @@ text_init :: proc() -> bool {
 
 @(private = "file")
 text_tick :: proc() {
-	box := psx.lw(TEXT_BOX)
-	if box == 0 || !text_wants_press(Text_State(psx.lbu(box))) {
+	box := cpu.lw(TEXT_BOX)
+	if box == 0 || !text_wants_press(Text_State(cpu.lbu(box))) {
 		text.original()
 		return
 	}
 	if .Game in core.trace.active {
-		core.tracef(.Game, "text: box %08x state %d, confirm pressed", box, psx.lbu(box))
+		core.tracef(.Game, "text: box %08x state %d, confirm pressed", box, cpu.lbu(box))
 	}
-	pressed := psx.lhu(PAD_PRESSED)
-	psx.sh(PAD_PRESSED, pressed | psx.lhu(CONFIRM_MASK))
+	pressed := cpu.lhu(PAD_PRESSED)
+	cpu.sh(PAD_PRESSED, pressed | cpu.lhu(CONFIRM_MASK))
 	text.original()
-	psx.sh(PAD_PRESSED, pressed)
+	cpu.sh(PAD_PRESSED, pressed)
 }
 
 @(private = "file")
 text_wants_press :: proc(state: Text_State) -> bool {
-	held := psx.lhu(PAD_HELD) & psx.lhu(CONFIRM_MASK) != 0
+	held := cpu.lhu(PAD_HELD) & cpu.lhu(CONFIRM_MASK) != 0
 	#partial switch state {
 	case .Printing, .Char_Delay:
 		return config.text_instant || (config.text_hold_to_advance && held)

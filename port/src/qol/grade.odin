@@ -1,4 +1,4 @@
-// Colour grade of the third-person field ([window] color_grade, psx.grade):
+// Colour grade of the third-person field ([window] color_grade, render.grade):
 // each map's look, as a saturation, a warmth (red up and blue down by as
 // much) and a contrast about the middle grey, made into the 3x3 mix and
 // offset the conversion applies (psx/post.odin). Set with every view the
@@ -6,7 +6,8 @@
 package qol
 
 import "core:math"
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import render "ps:psx/render"
 
 
 @(private = "file")
@@ -31,23 +32,23 @@ LOOKS := [?]struct {
 @(private = "file")
 LUMA :: [3]f32{0.299, 0.587, 0.114}
 
-// Set psx.grade for the map loaded, or turn it off.
+// Set render.grade for the map loaded, or turn it off.
 @(private)
 grade_update :: proc() {
 	if !config.window_color_grade {
-		psx.grade.on = false
+		render.grade.on = false
 		return
 	}
 	look := LOOK_DEFAULT
-	id := u16(psx.lhu(MAP_ID))
+	id := u16(cpu.lhu(MAP_ID))
 	for l in LOOKS {
 		if l.map_id == id {
 			look = l.look
 		}
 	}
-	g := psx.Grade {
+	g := render.Grade {
 		on    = true,
-		stamp = psx.vblanks(),
+		stamp = cpu.vblanks(),
 	}
 	gain := [3]f32{1 + look.warmth, 1, 1 - look.warmth} * look.contrast
 	s := look.saturation
@@ -59,5 +60,5 @@ grade_update :: proc() {
 		}
 		g.add[r] = i32(math.round(128 * (1 - look.contrast) * 256))
 	}
-	psx.grade = g
+	render.grade = g
 }

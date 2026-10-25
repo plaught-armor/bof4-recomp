@@ -20,7 +20,8 @@ package qol
 import "core:fmt"
 import "core:strings"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import render "ps:psx/render"
 
 import "ps:core"
 
@@ -180,15 +181,15 @@ Dog :: struct {
 
 @(private = "file")
 teacher: struct {
-	message_text: psx.Func_Proc,
-	spawn:        psx.Func_Proc,
-	field:        psx.Func_Proc,
+	message_text: cpu.Func_Proc,
+	spawn:        cpu.Func_Proc,
+	field:        cpu.Func_Proc,
 	dog:          Dog,
 }
 
 @(private)
 teacher_init :: proc() -> bool {
-	teacher.message_text = psx.hook(MESSAGE_TEXT, message_text) or_return
+	teacher.message_text = cpu.hook(MESSAGE_TEXT, message_text) or_return
 	teacher.spawn = hook_field(SPAWN, spawn) or_return
 	teacher.field = hook_game_mode(MODE_FIELD, field_tick) or_return
 	return true
@@ -199,7 +200,7 @@ teacher_init :: proc() -> bool {
 added_stop :: proc() -> (Stop, bool) {
 	if config.field_teacher {
 		for s in STOPS {
-			if s.added && u32(s.map_id) == psx.lhu(MAP_ID) && u32(s.section) == psx.lbu(MAP_SECTION) {
+			if s.added && u32(s.map_id) == cpu.lhu(MAP_ID) && u32(s.section) == cpu.lbu(MAP_SECTION) {
 				return s, true
 			}
 		}
@@ -227,7 +228,7 @@ spawn :: proc() {
 		u8(DOG_MESSAGE & 0xff), u8(DOG_MESSAGE >> 8), 0, 0xff,
 	}
 	for b, i in record {
-		psx.sb(RECORD_AT + u32(i), u32(b))
+		cpu.sb(RECORD_AT + u32(i), u32(b))
 	}
 	game_routine(SPAWN_LIST, {RECORD_AT, 0, 0, 0, 0})
 	dog_hold()
@@ -241,9 +242,9 @@ spawn :: proc() {
 dog_hold :: proc() {
 	for i in u32(0) ..< NPC_COUNT {
 		npc := NPCS + i * NPC_SIZE
-		if psx.lbu(npc) != 0 && psx.lhu(npc + NPC_MESSAGE) == DOG_MESSAGE {
-			psx.sw(npc + NPC_SCRIPT, 0)
-			psx.sb(npc + NPC_MODE, psx.lbu(npc + NPC_MODE) | NPC_STAY)
+		if cpu.lbu(npc) != 0 && cpu.lhu(npc + NPC_MESSAGE) == DOG_MESSAGE {
+			cpu.sw(npc + NPC_SCRIPT, 0)
+			cpu.sb(npc + NPC_MODE, cpu.lbu(npc + NPC_MODE) | NPC_STAY)
 		}
 	}
 }
@@ -332,43 +333,43 @@ dog_read_disc :: proc(d: ^Dog) -> bool {
 // the map spawns, VRAM may still hold the last map's.
 @(private = "file")
 sprite_add :: proc(s: Stop) -> bool {
-	n := psx.lw(SPRITE_TABLE)
-	if psx.lw(SPRITE_TABLE_PTR) != SPRITE_TABLE + 4 || n >= TABLE_MAX {
+	n := cpu.lw(SPRITE_TABLE)
+	if cpu.lw(SPRITE_TABLE_PTR) != SPRITE_TABLE + 4 || n >= TABLE_MAX {
 		return false
 	}
 	slot := u32(0)
 	for i in 0 ..< n {
 		entry := SPRITE_TABLE + 4 + i * 8
-		if psx.lhu(entry) == DOG_SPRITE {
+		if cpu.lhu(entry) == DOG_SPRITE {
 			return true
 		}
-		slot = max(slot, psx.lbu(entry + 2) + 1)
+		slot = max(slot, cpu.lbu(entry + 2) + 1)
 	}
-	if slot >= SPRITE_SLOTS || psx.lw(ANIM_TABLE_PTR) != ANIM_TABLE {
+	if slot >= SPRITE_SLOTS || cpu.lw(ANIM_TABLE_PTR) != ANIM_TABLE {
 		return false
 	}
 	// A slot past the town's CLUTs, which the map's load leaves zero (VRAM
 	// may still hold the last map's until the game uploads them).
 	for c in u32(0) ..< COLOURS {
-		if psx.lhu(SPRITE_CLUTS + slot * 32 + c * 2) != 0 {
+		if cpu.lhu(SPRITE_CLUTS + slot * 32 + c * 2) != 0 {
 			return false
 		}
 	}
 	sheet_put(s, slot)
 	for i in 0 ..< n {
-		psx.sw(ANIM_AT + i * 4, psx.lw(ANIM_TABLE + i * 4) + ANIM_TABLE - ANIM_AT)
+		cpu.sw(ANIM_AT + i * 4, cpu.lw(ANIM_TABLE + i * 4) + ANIM_TABLE - ANIM_AT)
 	}
-	psx.sw(ANIM_AT + n * 4, BANK_AT - ANIM_AT)
+	cpu.sw(ANIM_AT + n * 4, BANK_AT - ANIM_AT)
 	for b, i in teacher.dog.bank[:teacher.dog.bank_size] {
-		psx.sb(BANK_AT + u32(i), u32(b))
+		cpu.sb(BANK_AT + u32(i), u32(b))
 	}
-	psx.sw(ANIM_TABLE_PTR, ANIM_AT)
+	cpu.sw(ANIM_TABLE_PTR, ANIM_AT)
 	entry := SPRITE_TABLE + 4 + n * 8
-	psx.sh(entry, DOG_SPRITE)
-	psx.sh(entry + 2, slot)
-	psx.sh(entry + 4, u32(s.page) | u32(s.v) << 8)
-	psx.sh(entry + 6, 0)
-	psx.sw(SPRITE_TABLE, n + 1)
+	cpu.sh(entry, DOG_SPRITE)
+	cpu.sh(entry + 2, slot)
+	cpu.sh(entry + 4, u32(s.page) | u32(s.v) << 8)
+	cpu.sh(entry + 6, 0)
+	cpu.sw(SPRITE_TABLE, n + 1)
 	return true
 }
 
@@ -379,13 +380,13 @@ sheet_holds :: proc(s: Stop, slot: u32) -> bool {
 	x, y, cx, cy := sheet_at(s, slot)
 	for row in 0 ..< DOG_ROWS {
 		for h in 0 ..< DOG_HALFWORDS {
-			if psx.vram_at(x + i32(h), y + i32(row))^ != d.sheet[row][h] {
+			if render.vram_at(x + i32(h), y + i32(row))^ != d.sheet[row][h] {
 				return false
 			}
 		}
 	}
 	for c in 0 ..< COLOURS {
-		if psx.vram_at(cx + i32(c), cy)^ != d.clut[c] {
+		if render.vram_at(cx + i32(c), cy)^ != d.clut[c] {
 			return false
 		}
 	}
@@ -398,12 +399,12 @@ sheet_put :: proc(s: Stop, slot: u32) {
 	x, y, cx, cy := sheet_at(s, slot)
 	for row in 0 ..< DOG_ROWS {
 		for h in 0 ..< DOG_HALFWORDS {
-			psx.vram_put(x + i32(h), y + i32(row), d.sheet[row][h])
+			render.vram_put(x + i32(h), y + i32(row), d.sheet[row][h])
 		}
 	}
 	for c in 0 ..< COLOURS {
-		psx.vram_put(cx + i32(c), cy, d.clut[c])
-		psx.sh(SPRITE_CLUTS + slot * 32 + u32(c) * 2, u32(d.clut[c]))
+		render.vram_put(cx + i32(c), cy, d.clut[c])
+		cpu.sh(SPRITE_CLUTS + slot * 32 + u32(c) * 2, u32(d.clut[c]))
 	}
 }
 
@@ -421,7 +422,7 @@ sheet_at :: proc(s: Stop, slot: u32) -> (x, y, clut_x, clut_y: i32) {
 field_tick :: proc() {
 	teacher.field()
 	s, ok := added_stop()
-	if !ok || psx.lhu(GAME_MODE) != GAME_MODE_FIELD || teacher.dog.state != .Read {
+	if !ok || cpu.lhu(GAME_MODE) != GAME_MODE_FIELD || teacher.dog.state != .Read {
 		return
 	}
 	dog_hold()
@@ -429,20 +430,20 @@ field_tick :: proc() {
 	for y in 0 ..< FACE_H {
 		for h in 0 ..< FACE_HALFWORDS {
 			vx, vy := i32(FACE_CELL_X + h), i32(FACE_CELL_Y + y)
-			if psx.vram_at(vx, vy)^ != face.texels[y][h] {
-				psx.vram_put(vx, vy, face.texels[y][h])
+			if render.vram_at(vx, vy)^ != face.texels[y][h] {
+				render.vram_put(vx, vy, face.texels[y][h])
 			}
 		}
 	}
 	for c in 0 ..< COLOURS {
-		if psx.vram_at(i32(FACE_CLUT_X + c), FACE_CLUT_Y)^ != face.clut[c] {
-			psx.vram_put(i32(FACE_CLUT_X + c), FACE_CLUT_Y, face.clut[c])
+		if render.vram_at(i32(FACE_CLUT_X + c), FACE_CLUT_Y)^ != face.clut[c] {
+			render.vram_put(i32(FACE_CLUT_X + c), FACE_CLUT_Y, face.clut[c])
 		}
 	}
-	for i in 0 ..< min(psx.lw(SPRITE_TABLE), TABLE_MAX) {
+	for i in 0 ..< min(cpu.lw(SPRITE_TABLE), TABLE_MAX) {
 		entry := SPRITE_TABLE + 4 + i * 8
-		if psx.lhu(entry) == DOG_SPRITE && psx.lhu(entry + 4) == u32(s.page) | u32(s.v) << 8 {
-			slot := psx.lbu(entry + 2)
+		if cpu.lhu(entry) == DOG_SPRITE && cpu.lhu(entry + 4) == u32(s.page) | u32(s.v) << 8 {
+			slot := cpu.lbu(entry + 2)
 			if !sheet_holds(s, slot) {
 				sheet_put(s, slot)
 			}
@@ -455,12 +456,12 @@ message_text :: proc() {
 	if config.field_teacher {
 		stops := STOPS
 		for s, i in stops {
-			if u32(s.message) == psx.cpu.r[4] & 0xffff && u32(s.map_id) == psx.lhu(MAP_ID) &&
-			   u32(s.section) == psx.lbu(MAP_SECTION) {
+			if u32(s.message) == cpu.state.r[4] & 0xffff && u32(s.map_id) == cpu.lhu(MAP_ID) &&
+			   u32(s.section) == cpu.lbu(MAP_SECTION) {
 				if .Game in core.trace.active {
 					core.tracef(.Game, "combo dog talks at stop %d", i)
 				}
-				psx.cpu.r[2] = lesson_text(s)
+				cpu.state.r[2] = lesson_text(s)
 				return
 			}
 		}
@@ -534,7 +535,7 @@ lesson_text :: proc(s: Stop) -> u32 {
 	put :: proc(at: ^u32, bytes: ..u8) {
 		for b in bytes {
 			assert(at^ < TEXT_AT + TEXT_MAX, "combo dog text too long")
-			psx.sb(at^, u32(b))
+			cpu.sb(at^, u32(b))
 			at^ += 1
 		}
 	}

@@ -11,8 +11,10 @@ port/src/
 ```
 
 The emulated PS1 the recompiled code runs on, plus its host features, is
-ps-recomp's `psx` package (`ps-recomp/psx/`, imported as `ps:psx`); the
-`psx/` paths in these docs are in it.
+ps-recomp's `psx` packages (`ps-recomp/psx/`): one per subsystem (`cpu`,
+`gte`, `io`, `spu`, `mdec`, `gpu`, `render`, `host`, `bios`, imported as
+`ps:psx/cpu` and so on) under the top `psx` (`ps:psx`). The `psx/` paths in
+these docs are in it.
 
 ## How the game's code runs
 
@@ -20,7 +22,7 @@ ps-recomp's `recomp` is a static recompiler, run with the options in
 `tools/recomp.tsv`. It reads the executable and every
 code overlay (`overlays/`, see [overlays.md](overlays.md)) and turns each MIPS
 function into an Odin procedure working on the emulated CPU registers
-(`psx.cpu.r[0..31]`) and memory bus (`psx.lw`, `psx.sw`, `psx.lbu`, ...).
+(`cpu.state.r[0..31]`) and memory bus (`cpu.lw`, `cpu.sw`, `cpu.lbu`, ...).
 Function boundaries come from `tools/funcs.tsv` (exported from Ghidra with
 `tools/ghidra/ExportFunctions.java`).
 
@@ -32,13 +34,13 @@ tools/bof4tools setup
 odin build ps-recomp/recomp -o:speed -out:recomp && ./recomp tools/recomp.tsv
 ```
 
-Every call the game makes goes through `psx.call(addr)` (`psx/cpu.odin`):
+Every call the game makes goes through `cpu.call(addr)` (`psx/cpu/cpu.odin`):
 
 1. Executable functions are looked up in a flat table indexed by address.
 2. Overlay functions are looked up by address among the overlays that can
    load there, picking the one whose code is resident in RAM right now.
 3. BIOS calls (`0xa0`, `0xb0`, `0xc0`) go to the high-level BIOS in
-   `psx/bios.odin`.
+   `psx/bios/bios.odin`.
 4. Anything else falls back to the MIPS interpreter (`psx/interp.odin`) and is
    reported once on stderr as `interpreting 0x... (ra 0x...) at present N`. If
    you see one of those, the function is missing from `funcs.tsv`: add it and
@@ -58,14 +60,14 @@ emulated time. They used to charge the game's cycles path by path, and in a
 busy town that drawing was most of the frame: Sarai needed three vblanks
 per game frame (20 fps walking, against 30 in rooms). Free, it fits in two.
 Replays of recordings from before 2026-10-22 charge them again
-(`psx.charge_native`, from the record's `T` entries) until the replay ends.
+(`host.charge_native`, from the record's `T` entries) until the replay ends.
 
 `BOF4_CLOCK=<n>` (testing only) multiplies every scheduled event delay and
 timer divider by n, so the game's code gets n times the cycles between
 vblanks while audio and timers keep their real rates (`clock_mul` in
-`psx/io.odin`).
+`psx/io/io.odin`).
 
-The SPU mixes on a thread of its own (`spu_mixer` in `psx/spu.odin`): the
+The SPU mixes on a thread of its own (`spu_mixer` in `psx/spu/spu.odin`): the
 sound event only counts 32-sample batches due, and anything that reads or
 changes SPU or CD audio state (registers, sound RAM, SPU DMA, XA sectors,
 a fork) first calls `spu_sync`, which waits for the thread and mixes what
@@ -73,7 +75,7 @@ is left. Each batch therefore sees exactly the state it would have at its
 event, and the audio comes out byte for byte the same (checked with
 `BOF4_AUDIO_DUMP`). With the sound RAM IRQ enabled, and in forked children,
 batches mix on the machine's thread at their event. A mod that touches SPU
-state from outside `psx/` must go through `spu_sync` or `psx.sound_ram()`
+state from outside `psx/` must go through `spu_sync` or `spu.sound_ram()`
 (which syncs).
 
 ## Patch points
@@ -91,18 +93,18 @@ change its arguments or results, or skip it.
 
 ```odin
 // Executable function
-original, ok := psx.hook(0x8014307c, my_view_build)
+original, ok := cpu.hook(0x8014307c, my_view_build)
 
 // Function inside an overlay: address, load slot, overlay id
-original, ok := psx.hook_overlay(0x801d1298, 0x801cc800, 15, my_step)
+original, ok := cpu.hook_overlay(0x801d1298, 0x801cc800, 15, my_step)
 ```
 
 Inside a hook the arguments are in the MIPS registers: `a0..a3` are
-`psx.cpu.r[4..7]`, further arguments on the emulated stack at `sp+16`
-(`psx.cpu.r[29]`), the result in `v0` (`r[2]`). Read and write game memory
-with `psx.lw/lh/lhu/lb/lbu` and `psx.sw/sh/sb`.
+`cpu.state.r[4..7]`, further arguments on the emulated stack at `sp+16`
+(`cpu.state.r[29]`), the result in `v0` (`r[2]`). Read and write game memory
+with `cpu.lw/lh/lhu/lb/lbu` and `cpu.sw/sh/sb`.
 
-Hooks on one address chain: the original `psx.hook` returns is whatever was
+Hooks on one address chain: the original `cpu.hook` returns is whatever was
 installed before, so the hook installed last runs first. The order on the
 shared draw and frame routines follows the `init` chain in `qol/config.odin`
 and is listed in `qol/game.odin`.
@@ -126,7 +128,7 @@ fade_init :: proc() -> bool {
 }
 
 fade_step :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	speed := i32(i16(c.r[5]))
 	c.r[5] = u32(clamp(speed, -FADE_SPEED_MAX, FADE_SPEED_MAX))
 	fade.step() // the game's own function, with the capped speed
@@ -134,27 +136,27 @@ fade_step :: proc() {
 ```
 
 To call a game function from Odin, set up the argument registers and
-`psx.call(addr)`. Some functions check their return address; `game_call` in
+`cpu.call(addr)`. Some functions check their return address; `game_call` in
 `qol/encounter.odin` calls one as if from a given `jal`.
 
 Other hook points the emulation layer offers:
 
 | Hook | When it runs |
 |---|---|
-| `psx.vblank_hook` | once per emulated vblank (60 Hz); `qol/config.odin` `vblank` fans out to features |
-| `psx.pad_hook` | each pad read: takes and returns the held button mask |
-| `psx.read_start_hook` | a CD read starts, with its LBA (used to spot which file loads) |
-| `psx.card_read_hook` | a memory card file is read (save patching, e.g. `BOF4_WARP`) |
-| `psx.dma_spu_hook` | after a DMA upload to sound RAM, with its SPU address and size |
+| `host.vblank_hook` | once per emulated vblank (60 Hz); `qol/config.odin` `vblank` fans out to features |
+| `host.pad_hook` | each pad read: takes and returns the held button mask |
+| `spu.read_start_hook` | a CD read starts, with its LBA (used to spot which file loads) |
+| `bios.card_read_hook` | a memory card file is read (save patching, e.g. `BOF4_WARP`) |
+| `spu.dma_spu_hook` | after a DMA upload to sound RAM, with its SPU address and size |
 
 ## Worlds: switching maps without a load
 
 `qol/interiors.odin` keeps whole maps as worlds: the map's RAM, VRAM, its
 sound effect bank in SPU RAM and the CPU registers, noted at the map's field
-draw. Rooms not visited yet are loaded by a forked child (`psx/preload.odin`)
+draw. Rooms not visited yet are loaded by a forked child (`psx/host/preload.odin`)
 and handed back through shared memory. With instant doors the machine enters
 a noted world in place of a disc load: `psx.draw_start_enter` resumes the
-world's frame, `psx.vram_replace` swaps the VRAM, and the global state
+world's frame, `render.vram_replace` swaps the VRAM, and the global state
 (party, flags, save region) stays. Map load side effects the game does on
 its own (the left-map record, stopping and restarting sounds, the arrival
 point) are redone by hand; [field.md](field.md) lists them. A world noted
@@ -167,7 +169,7 @@ battle, so each picture is shown more than once. With `[window] smooth_motion`,
 the port draws an in-between picture for every repeat (`qol/inbetween.odin`):
 it saves RAM and VRAM (`psx/checkpoint.odin`), blends camera and object
 positions part of the way (with P vblanks per game frame, the k'th repeat k/P
-of the way), re-runs the game's draw code, then restores everything. During that pass `psx.events_frozen` is true.
+of the way), re-runs the game's draw code, then restores everything. During that pass `io.events_frozen` is true.
 
 When the passes run: each game frame records its poses into a small ring of
 notes, and the frame's send queues the in-between pictures for the vblanks
@@ -242,7 +244,7 @@ every feature's `*_init`, which installs its hooks. To add a feature:
 
 The port's own text (menus, popups) is drawn with the game's font and window
 routines (`qol/menu_draw.odin`, `qol/popup.odin`), and host overlays (the
-minimap) with `psx/osd.odin`.
+minimap) with `psx/host/osd.odin`.
 
 ## Building
 

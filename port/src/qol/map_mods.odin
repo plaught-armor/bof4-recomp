@@ -25,7 +25,8 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import spu "ps:psx/spu"
 
 @(private = "file")
 MAP_DATA :: 0x80069800
@@ -72,8 +73,8 @@ map_mods_init :: proc() -> bool {
 	if map_mods.dir == "" {
 		map_mods.dir = "maps"
 	}
-	map_mods.next = psx.dma_cdrom_hook
-	psx.dma_cdrom_hook = map_mods_dma
+	map_mods.next = spu.dma_cdrom_hook
+	spu.dma_cdrom_hook = map_mods_dma
 	return true
 }
 
@@ -180,12 +181,12 @@ hex_bytes :: proc(s: string) -> (out: []u8, ok: bool) {
 @(private = "file")
 map_mods_dma :: proc(addr, size: u32) {
 	if addr == MAP_DATA {
-		id := psx.r16(MAP_REQUESTED)
+		id := cpu.r16(MAP_REQUESTED)
 		map_mods.active = map_mods_block(id)
 		map_mods.patch = map_mods_patch(id)
 	}
 	if addr == OVERLAY {
-		map_mods.patch = map_mods_patch(psx.r16(MAP_REQUESTED))
+		map_mods.patch = map_mods_patch(cpu.r16(MAP_REQUESTED))
 		map_mods.overlay_end, map_mods.overlay_done = addr + size, false
 	} else if addr > OVERLAY && addr < OVERLAY_END && addr <= map_mods.overlay_end + SECTOR {
 		map_mods.overlay_end = max(map_mods.overlay_end, addr + size)
@@ -193,18 +194,18 @@ map_mods_dma :: proc(addr, size: u32) {
 	blk := map_mods.active
 	if blk != nil && addr + size > MAP_DATA && addr < MAP_DATA + u32(len(blk)) {
 		if addr == MAP_DATA {
-			copy(psx.mem_slice(MAP_DATA, u32(len(blk))), blk)
+			copy(cpu.mem_slice(MAP_DATA, u32(len(blk))), blk)
 		} else {
 			from := max(addr, MAP_DATA)
 			to := min(addr + size, MAP_DATA + u32(len(blk)))
-			copy(psx.mem_slice(from, to - from), blk[from - MAP_DATA:to - MAP_DATA])
+			copy(cpu.mem_slice(from, to - from), blk[from - MAP_DATA:to - MAP_DATA])
 		}
 	}
 	if p := map_mods.patch; p != nil {
 		if addr + size > MAP_DATA && addr < MAP_DATA_END {
 			for at, b in p.block {
 				if MAP_DATA + at >= addr && MAP_DATA + at < addr + size {
-					psx.sb(MAP_DATA + at, u32(b))
+					cpu.sb(MAP_DATA + at, u32(b))
 				}
 			}
 		}
@@ -239,13 +240,13 @@ overlay_patch :: proc(p: ^Map_Patch) {
 	}
 	map_mods.overlay_done = true
 	for at, e in p.overlay {
-		if u8(psx.lbu(OVERLAY + at)) != e.vanilla {
-			fmt.eprintfln("maps: %04x overlay at +%x is %02x, the patch's vanilla %02x: overlay patch left out", psx.r16(MAP_REQUESTED), at, psx.lbu(OVERLAY + at), e.vanilla)
+		if u8(cpu.lbu(OVERLAY + at)) != e.vanilla {
+			fmt.eprintfln("maps: %04x overlay at +%x is %02x, the patch's vanilla %02x: overlay patch left out", cpu.r16(MAP_REQUESTED), at, cpu.lbu(OVERLAY + at), e.vanilla)
 			return
 		}
 	}
 	for at, e in p.overlay {
-		psx.sb(OVERLAY + at, u32(e.edited))
+		cpu.sb(OVERLAY + at, u32(e.edited))
 	}
 }
 
@@ -256,7 +257,7 @@ overlay_patch :: proc(p: ^Map_Patch) {
 // for an address in neither.
 @(private)
 map_mods_edit :: proc(addr: u32, value: u8) -> bool {
-	p := map_mods_patch(psx.r16(MAP_ID), true)
+	p := map_mods_patch(cpu.r16(MAP_ID), true)
 	switch {
 	case addr >= MAP_DATA && addr < MAP_DATA_END:
 		p.block[addr - MAP_DATA] = value
@@ -264,7 +265,7 @@ map_mods_edit :: proc(addr: u32, value: u8) -> bool {
 		at := addr - OVERLAY
 		e, seen := p.overlay[at]
 		if !seen {
-			e.vanilla = u8(psx.lbu(addr))
+			e.vanilla = u8(cpu.lbu(addr))
 		}
 		e.edited = value
 		if e.edited == e.vanilla {
@@ -275,14 +276,14 @@ map_mods_edit :: proc(addr: u32, value: u8) -> bool {
 	case:
 		return false
 	}
-	psx.sb(addr, u32(value))
+	cpu.sb(addr, u32(value))
 	return true
 }
 
 // Write the loaded map's patch to `<dir>/<map>.edit`; returns the path.
 @(private)
 map_mods_save :: proc() -> (path: string, ok: bool) {
-	id := psx.r16(MAP_ID)
+	id := cpu.r16(MAP_ID)
 	p := map_mods_patch(id, true)
 	b := strings.builder_make(context.temp_allocator)
 	fmt.sbprintfln(&b, "# Map %04x, written by the map editor (F4).", id)

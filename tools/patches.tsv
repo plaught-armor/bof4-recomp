@@ -3,11 +3,11 @@
 # function that a whole-function hook cannot reach.
 # A map tile or model part is skipped unless one of its projected corners
 # lies on screen, which drops near faces that span it with every corner off
-# it; psx.world_3d skips the test.
+# it; cpu.world_3d skips the test.
 at	cond	target	note
-0x80143B84	psx.world_3d	0x80143C64	LAYER_SETUP floor
-0x80144B5C	psx.world_3d	0x80144C3C	MAP_DRAW
-0x801464C8	psx.world_3d	0x801465A8	MODEL_DRAW
-0x80147D84	psx.world_3d	0x80147E64	f_8014756c model faces
-0x80148B34	psx.world_3d	0x80148C14	f_8014829c model faces
-0x801491EC	psx.world_3d	0x801492CC	f_80148efc
+0x80143B84	cpu.world_3d	0x80143C64	LAYER_SETUP floor
+0x80144B5C	cpu.world_3d	0x80144C3C	MAP_DRAW
+0x801464C8	cpu.world_3d	0x801465A8	MODEL_DRAW
+0x80147D84	cpu.world_3d	0x80147E64	f_8014756c model faces
+0x80148B34	cpu.world_3d	0x80148C14	f_8014829c model faces
+0x801491EC	cpu.world_3d	0x801492CC	f_80148efc

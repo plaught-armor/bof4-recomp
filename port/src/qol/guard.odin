@@ -12,7 +12,7 @@ package qol
 
 import "core:fmt"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -37,12 +37,12 @@ GUARD_AP_PART :: 5
 
 @(private = "file")
 guard: struct {
-	round_end: psx.Func_Proc,
+	round_end: cpu.Func_Proc,
 }
 
 @(private)
 guard_init :: proc() -> bool {
-	original, ok := psx.hook_overlay(ROUND_END, SLOT_ENGINE, ROUND_ID, round_end)
+	original, ok := cpu.hook_overlay(ROUND_END, SLOT_ENGINE, ROUND_ID, round_end)
 	if !ok {
 		fmt.eprintf("qol: battle function %08x not found\n", ROUND_END)
 		return false
@@ -59,17 +59,17 @@ round_end :: proc() {
 	}
 	guarding: [PARTY_COUNT]bool
 	for member in u32(0) ..< PARTY_COUNT {
-		guarding[member] = psx.lhu(party_combatant(member) + GUARD_FLAGS) & GUARDING != 0
+		guarding[member] = cpu.lhu(party_combatant(member) + GUARD_FLAGS) & GUARDING != 0
 	}
 	guard.round_end()
 	for member in u32(0) ..< PARTY_COUNT {
 		p := party_combatant(member)
-		if !guarding[member] || psx.lhu(p + GUARD_FLAGS) & GUARDING != 0 || psx.lw(p + COMBATANT_HP) == 0 {
+		if !guarding[member] || cpu.lhu(p + GUARD_FLAGS) & GUARDING != 0 || cpu.lw(p + COMBATANT_HP) == 0 {
 			continue
 		}
-		ap, ap_max := psx.lw(p + COMBATANT_AP), psx.lw(p + COMBATANT_AP_MAX)
+		ap, ap_max := cpu.lw(p + COMBATANT_AP), cpu.lw(p + COMBATANT_AP_MAX)
 		gained := min(ap + (ap_max + GUARD_AP_PART - 1) / GUARD_AP_PART, ap_max)
-		psx.sw(p + COMBATANT_AP, max(ap, gained))
+		cpu.sw(p + COMBATANT_AP, max(ap, gained))
 		if .Game in core.trace.active {
 			core.tracef(.Game, "guard: member %d AP %d -> %d of %d", member, ap, max(ap, gained), ap_max)
 		}

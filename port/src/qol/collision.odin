@@ -11,7 +11,9 @@
 // backward branches, as in map_geometry.odin.
 package qol
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import gte "ps:psx/gte"
+import io "ps:psx/io"
 
 GROUND_CORE :: 0x8014a9cc // scratch position and layer descriptor: v0 = s16 ground y (units of 1/256), 0 off the grid
 GROUND_LIGHT :: 0x801381e9 // u8 brightness of the ground last found, 128 on unlit layers
@@ -70,18 +72,18 @@ SCG_POINT :: 0xc0 // s16 x, z of the position / 32
 SCG_AREAS :: 0xc4 // i32 NCLIP of (p, b, c), (p, c, a), (p, a, b), then (a, b, c)
 
 collision: struct {
-	core:       psx.Func_Proc, // the game's GROUND_CORE
-	attr:       psx.Func_Proc, // ATTR_LOOKUP
-	attr_write: psx.Func_Proc, // ATTR_WRITE
-	passable:   psx.Func_Proc, // PASSABLE
+	core:       cpu.Func_Proc, // the game's GROUND_CORE
+	attr:       cpu.Func_Proc, // ATTR_LOOKUP
+	attr_write: cpu.Func_Proc, // ATTR_WRITE
+	passable:   cpu.Func_Proc, // PASSABLE
 }
 
 collision_init :: proc() -> bool {
 	ok: bool
-	collision.core = psx.hook(GROUND_CORE, ground_core) or_return
-	collision.attr = psx.hook(ATTR_LOOKUP, attr_lookup) or_return
-	collision.attr_write = psx.hook(ATTR_WRITE, attr_write) or_return
-	collision.passable, ok = psx.hook_overlay(PASSABLE, SLOT_ENGINE, FLD_ID, passable)
+	collision.core = cpu.hook(GROUND_CORE, ground_core) or_return
+	collision.attr = cpu.hook(ATTR_LOOKUP, attr_lookup) or_return
+	collision.attr_write = cpu.hook(ATTR_WRITE, attr_write) or_return
+	collision.passable, ok = cpu.hook_overlay(PASSABLE, SLOT_ENGINE, FLD_ID, passable)
 	return ok
 }
 
@@ -90,15 +92,15 @@ collision_init :: proc() -> bool {
 @(private = "file")
 attr_lookup :: proc() {
 	if !map_geometry.check {
-		psx.cpu.r[2] = attr_lookup_native(psx.cpu.r[4], psx.cpu.r[5], psx.cpu.r[6])
+		cpu.state.r[2] = attr_lookup_native(cpu.state.r[4], cpu.state.r[5], cpu.state.r[6])
 		return
 	}
 	// The game's pass changes the argument registers; the native one reads them
 	// as they came in.
 	@(static) args: [3]u32
-	args = {psx.cpu.r[4], psx.cpu.r[5], psx.cpu.r[6]}
+	args = {cpu.state.r[4], cpu.state.r[5], cpu.state.r[6]}
 	map_check_draw(collision.attr, proc() {
-		psx.cpu.r[2] = attr_lookup_native(args[0], args[1], args[2])
+		cpu.state.r[2] = attr_lookup_native(args[0], args[1], args[2])
 	}, nil, "attr", result = true)
 }
 
@@ -106,35 +108,35 @@ attr_lookup :: proc() {
 attr_lookup_native :: proc(x, z, layer: u32) -> u32 {
 	events()
 	spend(0x801537f0, 0x80153824)
-	desc := block_entry(DESC_LOOKUP, 3, 0xc4, (u32(psx.r8(ATTR_LAYER_BASE)) + layer) & 255)
+	desc := block_entry(DESC_LOOKUP, 3, 0xc4, (u32(cpu.r8(ATTR_LAYER_BASE)) + layer) & 255)
 	spend(0x80153828, 0x80153834)
-	grid := block_entry(GRID_LOOKUP, 0, 4, u32(psx.r8(desc)))
+	grid := block_entry(GRID_LOOKUP, 0, 4, u32(cpu.r8(desc)))
 	spend(0x80153838, 0x80153850)
-	across := u32(psx.r16(grid)) * 2
+	across := u32(cpu.r16(grid)) * 2
 	if x & 255 >= across {
 		spend(0x801538a0, 0x801538c0)
 		return ATTR_OFF_GRID
 	}
 	spend(0x80153854, 0x80153868)
-	if z & 255 >= u32(psx.r16(grid + 2)) * 2 {
+	if z & 255 >= u32(cpu.r16(grid + 2)) * 2 {
 		spend(0x801538a4, 0x801538c0)
 		return ATTR_OFF_GRID
 	}
 	spend(0x8015386c, 0x80153874)
-	attrs := block_entry(ATTRS_LOOKUP, 2, 0xa4, u32(psx.r8(desc + 1)))
+	attrs := block_entry(ATTRS_LOOKUP, 2, 0xa4, u32(cpu.r8(desc + 1)))
 	spend(0x80153878, 0x8015389c)
 	spend(0x801538a4, 0x801538c0)
-	return u32(psx.r8(attrs + (z & 255) * across + (x & 255)))
+	return u32(cpu.r8(attrs + (z & 255) * across + (x & 255)))
 }
 
 @(private = "file")
 attr_write :: proc() {
 	if !map_geometry.check {
-		attr_write_native(psx.cpu.r[4], psx.cpu.r[5], psx.cpu.r[6], psx.cpu.r[7])
+		attr_write_native(cpu.state.r[4], cpu.state.r[5], cpu.state.r[6], cpu.state.r[7])
 		return
 	}
 	@(static) args: [4]u32
-	args = {psx.cpu.r[4], psx.cpu.r[5], psx.cpu.r[6], psx.cpu.r[7]}
+	args = {cpu.state.r[4], cpu.state.r[5], cpu.state.r[6], cpu.state.r[7]}
 	map_check_draw(collision.attr_write, proc() {
 		attr_write_native(args[0], args[1], args[2], args[3])
 	}, nil, "attr write")
@@ -144,28 +146,28 @@ attr_write :: proc() {
 attr_write_native :: proc(x, z, layer, value: u32) {
 	events()
 	spend(0x801538c4, 0x801538f8)
-	desc := block_entry(DESC_LOOKUP, 3, 0xc4, (u32(psx.r8(ATTR_LAYER_BASE)) + layer) & 255)
+	desc := block_entry(DESC_LOOKUP, 3, 0xc4, (u32(cpu.r8(ATTR_LAYER_BASE)) + layer) & 255)
 	spend(0x801538fc, 0x80153908)
-	grid := block_entry(GRID_LOOKUP, 0, 4, u32(psx.r8(desc)))
+	grid := block_entry(GRID_LOOKUP, 0, 4, u32(cpu.r8(desc)))
 	spend(0x8015390c, 0x80153914)
-	attrs := block_entry(ATTRS_LOOKUP, 2, 0xa4, u32(psx.r8(desc + 1)))
+	attrs := block_entry(ATTRS_LOOKUP, 2, 0xa4, u32(cpu.r8(desc + 1)))
 	spend(0x80153918, 0x80153954)
-	psx.w8(attrs + (z & 255) * u32(psx.r16(grid)) * 2 + (x & 255), u8(value))
+	cpu.w8(attrs + (z & 255) * u32(cpu.r16(grid)) * 2 + (x & 255), u8(value))
 }
 
 @(private = "file")
 ground_core :: proc() {
 	if !map_geometry.check {
-		psx.cpu.r[2] = u32(ground_core_native())
+		cpu.state.r[2] = u32(ground_core_native())
 		return
 	}
-	@(static) everything: [psx.SCRATCH_SIZE]u32
+	@(static) everything: [cpu.SCRATCH_SIZE]u32
 	if everything[1] == 0 {
 		for &o, i in everything {
 			o = u32(i)
 		}
 	}
-	map_check_draw(collision.core, proc() {psx.cpu.r[2] = u32(ground_core_native())}, everything[:], "ground", result = true)
+	map_check_draw(collision.core, proc() {cpu.state.r[2] = u32(ground_core_native())}, everything[:], "ground", result = true)
 }
 
 // The ground under cell (x, z) of section `desc` (a layer descriptor), as
@@ -174,21 +176,21 @@ ground_core :: proc() {
 // emulated clock and the pending interrupts are as they were.
 @(private)
 ground_probe :: proc(desc: u32, x, z: i32) -> i32 {
-	@(static) scratch: [psx.SCRATCH_SIZE]u8
-	scratch = psx.scratch
-	gte := psx.gte_save()
-	light := psx.r8(GROUND_LIGHT)
-	cycles, next := psx.cpu.cycles, psx.next_event
-	psx.next_event = psx.EVENT_OFF
+	@(static) scratch: [cpu.SCRATCH_SIZE]u8
+	scratch = cpu.scratch
+	saved_gte := gte.gte_save()
+	light := cpu.r8(GROUND_LIGHT)
+	cycles, next := cpu.state.cycles, cpu.next_event
+	cpu.next_event = io.EVENT_OFF
 	sc_w16(SCG_POS, u16(i16(x << 8)))
 	sc_w16(SCG_POS + 2, 0)
 	sc_w16(SCG_POS + 4, u16(i16(z << 8)))
-	psx.w32(psx.SCRATCH_BASE + SCG_DESC, desc)
+	cpu.w32(cpu.SCRATCH_BASE + SCG_DESC, desc)
 	y := ground_core_native()
-	psx.scratch = scratch
-	psx.gte_load(gte)
-	psx.w8(GROUND_LIGHT, light)
-	psx.cpu.cycles, psx.next_event = cycles, next
+	cpu.scratch = scratch
+	gte.gte_load(saved_gte)
+	cpu.w8(GROUND_LIGHT, light)
+	cpu.state.cycles, cpu.next_event = cycles, next
 	return y
 }
 
@@ -196,34 +198,34 @@ ground_probe :: proc(desc: u32, x, z: i32) -> i32 {
 sc_s16 :: #force_inline proc(o: u32) -> i32 {return i32(i16(sc_u16(o)))}
 
 @(private = "file")
-ram_s8 :: #force_inline proc(addr: u32) -> i32 {return i32(i8(psx.r8(addr)))}
+ram_s8 :: #force_inline proc(addr: u32) -> i32 {return i32(i8(cpu.r8(addr)))}
 
 @(private = "file")
 ground_core_native :: proc() -> i32 {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	events()
 	desc := sc_u32(SCG_DESC)
-	sc_w16(SCG_LIT, u16(psx.r8(desc + 3) & 1))
+	sc_w16(SCG_LIT, u16(cpu.r8(desc + 3) & 1))
 	spend(0x8014a9cc, 0x8014aa04)
-	grid := block_entry(GRID_LOOKUP, 0, 4, u32(psx.r8(desc)))
+	grid := block_entry(GRID_LOOKUP, 0, 4, u32(cpu.r8(desc)))
 	spend(0x8014aa08, 0x8014aa3c)
 	sc_w32(SCG_GRID, grid)
 	sc_w16(SCG_POS, sc_u16(SCG_POS) + 128)
 	sc_w16(SCG_POS + 4, sc_u16(SCG_POS + 4) + 128)
 	sc_w32(SCG_PLACED, desc + 4)
-	if psx.r8(desc + 2) != 0 {
+	if cpu.r8(desc + 2) != 0 {
 		i: u32 = 0
 		for {
 			spend(0x8014aa40, 0x8014aa58)
 			at := sc_u32(SCG_PLACED)
-			if psx.r8(at + 2) & PLACED_WALK != 0 && ground_model(at) {
+			if cpu.r8(at + 2) & PLACED_WALK != 0 && ground_model(at) {
 				spend(0x8014b074, 0x8014b098)
 				return sc_s16(SCG_HEIGHT)
 			}
 			spend(0x8014aef0, 0x8014af14)
 			i += 1
 			sc_w32(SCG_PLACED, at + 12)
-			if i & 255 >= u32(psx.r8(sc_u32(SCG_DESC) + 2)) {
+			if i & 255 >= u32(cpu.r8(sc_u32(SCG_DESC) + 2)) {
 				break
 			}
 			events()
@@ -237,30 +239,30 @@ ground_core_native :: proc() -> i32 {
 	sc_w16(SCG_LOCAL + 4, row)
 	sc_w16(SCG_FRAC, sc_u16(SCG_POS) & 511)
 	sc_w16(SCG_FRAC_Z, sc_u16(SCG_POS + 4) & 511)
-	if col >= psx.r16(grid) {
+	if col >= cpu.r16(grid) {
 		spend(0x8014b084, 0x8014b098)
 		return 0
 	}
 	spend(0x8014af78, 0x8014af8c)
-	if row >= psx.r16(grid + 2) {
+	if row >= cpu.r16(grid + 2) {
 		spend(0x8014b06c, 0x8014b070)
 		spend(0x8014b084, 0x8014b098)
 		return 0
 	}
 	spend(0x8014af90, 0x8014afbc)
-	row_at := grid + psx.r32(grid + 4) + u32(i32(i16(row)) << 2)
+	row_at := grid + cpu.r32(grid + 4) + u32(i32(i16(row)) << 2)
 	sc_w32(SCG_ROW, row_at)
-	first := i32(psx.r8(row_at))
+	first := i32(cpu.r8(row_at))
 	x := i32(i16(col))
 	tile: u32
 	if x < first {
 		spend(0x8014b008, 0x8014b018)
 	} else {
 		spend(0x8014afc0, 0x8014afd4)
-		if x < first + i32(psx.r8(row_at + 1)) {
+		if x < first + i32(cpu.r8(row_at + 1)) {
 			spend(0x8014afd8, 0x8014b004)
 			spend(0x8014b00c, 0x8014b018)
-			tile = grid + psx.r32(grid + 8) + u32(psx.r16(row_at + 2)) << 4 + u32(x) << 4 - u32(first) << 4
+			tile = grid + cpu.r32(grid + 8) + u32(cpu.r16(row_at + 2)) << 4 + u32(x) << 4 - u32(first) << 4
 		} else {
 			spend(0x8014b008, 0x8014b018)
 		}
@@ -279,7 +281,7 @@ ground_core_native :: proc() -> i32 {
 		return sc_s16(SCG_HEIGHT)
 	}
 	spend(0x8014b03c, 0x8014b054)
-	if psx.r8(sc_u32(SCG_TILE)) & TILE_GROUND == 0 {
+	if cpu.r8(sc_u32(SCG_TILE)) & TILE_GROUND == 0 {
 		spend(0x8014b064, 0x8014b070)
 		spend(0x8014b084, 0x8014b098)
 		return 0
@@ -296,16 +298,16 @@ ground_core_native :: proc() -> i32 {
 // for the later cases' turn compares.
 @(private = "file")
 ground_model :: proc(at: u32) -> bool {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	spend(0x8014aa5c, 0x8014aa94)
 	for i in u32(0) ..< 12 {
-		sc[SCG_MODEL + i] = psx.r8(at + i)
+		sc[SCG_MODEL + i] = cpu.r8(at + i)
 	}
 	group := block_entry(0x801497dc, 1, 0x24, u32(sc[SCG_MODEL]))
 	spend(0x8014aa98, 0x8014ab10)
 	sc_w32(SCG_GROUP, group)
 	for i in u32(0) ..< 4 {
-		sc_w16(SCG_BOX + 2 * i, u16(i16(i8(psx.r8(group + 4 + i)))) << 8)
+		sc_w16(SCG_BOX + 2 * i, u16(i16(i8(cpu.r8(group + 4 + i)))) << 8)
 	}
 	sc_w16(SCG_ORIGIN, sc_u16(SCG_MODEL + 4) << 5)
 	sc_w16(SCG_ORIGIN + 2, sc_u16(SCG_MODEL + 6) << 4)
@@ -335,7 +337,7 @@ ground_model :: proc(at: u32) -> bool {
 			for i in u32(0) ..< 8 {
 				sc[SCG_LOCAL + i] = sc[SCG_POS + i]
 			}
-			hit := model_polys(psx.SCRATCH_BASE + SCG_MODEL, group)
+			hit := model_polys(cpu.SCRATCH_BASE + SCG_MODEL, group)
 			spend(0x8014abe4, 0x8014abf0)
 			if hit {
 				return true
@@ -360,7 +362,7 @@ ground_model :: proc(at: u32) -> bool {
 			sc_w16(SCG_LOCAL, ux + uz - pz)
 			sc_w16(SCG_LOCAL + 2, py)
 			sc_w16(SCG_LOCAL + 4, uz + px - ux)
-			hit := model_polys(psx.SCRATCH_BASE + SCG_MODEL, group)
+			hit := model_polys(cpu.SCRATCH_BASE + SCG_MODEL, group)
 			spend(0x8014ace4, 0x8014acf0)
 			if hit {
 				return true
@@ -385,7 +387,7 @@ ground_model :: proc(at: u32) -> bool {
 			sc_w16(SCG_LOCAL, ux + ux - px)
 			sc_w16(SCG_LOCAL + 2, py)
 			sc_w16(SCG_LOCAL + 4, uz + uz - pz)
-			hit := model_polys(psx.SCRATCH_BASE + SCG_MODEL, group)
+			hit := model_polys(cpu.SCRATCH_BASE + SCG_MODEL, group)
 			spend(0x8014ade0, 0x8014adec)
 			if hit {
 				return true
@@ -410,7 +412,7 @@ ground_model :: proc(at: u32) -> bool {
 			sc_w16(SCG_LOCAL, ux + pz - uz)
 			sc_w16(SCG_LOCAL + 2, py)
 			sc_w16(SCG_LOCAL + 4, uz + ux - px)
-			hit := model_polys(psx.SCRATCH_BASE + SCG_MODEL, group)
+			hit := model_polys(cpu.SCRATCH_BASE + SCG_MODEL, group)
 			spend(0x8014aee0, 0x8014aeec)
 			if hit {
 				return true
@@ -424,12 +426,12 @@ ground_model :: proc(at: u32) -> bool {
 // count at group + 2) under SCG_LOCAL; a hit sets SCG_HEIGHT.
 @(private = "file")
 model_polys :: proc(placed, group: u32) -> bool {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	events()
 	spend(0x8014b6a8, 0x8014b710)
-	sc_w16(SCG_FRAC, sc_u16(SCG_LOCAL) - psx.r16(placed + 4) << 5)
-	sc_w16(SCG_FRAC_Z, sc_u16(SCG_LOCAL + 4) - psx.r16(placed + 8) << 5)
-	if psx.r16(group + 2) == 0 {
+	sc_w16(SCG_FRAC, sc_u16(SCG_LOCAL) - cpu.r16(placed + 4) << 5)
+	sc_w16(SCG_FRAC_Z, sc_u16(SCG_LOCAL + 4) - cpu.r16(placed + 8) << 5)
+	if cpu.r16(group + 2) == 0 {
 		spend(0x8014b7e8, 0x8014b810)
 		return false
 	}
@@ -439,15 +441,15 @@ model_polys :: proc(placed, group: u32) -> bool {
 	i: u16 = 0
 	for {
 		spend(0x8014b71c, 0x8014b738)
-		sc_w32(SCG_VERTS + 4, psx.r32(poly + 4))
+		sc_w32(SCG_VERTS + 4, cpu.r32(poly + 4))
 		sc_w32(SCG_COLOURS + 4, GREY)
 		hit := false
 		if sc[SCG_VERTS + 7] & 1 == 0 {
 			spend(0x8014b73c, 0x8014b760)
 			sc_w32(SCG_COLOURS, GREY)
-			sc_w32(SCG_VERTS, psx.r32(poly))
+			sc_w32(SCG_VERTS, cpu.r32(poly))
 			sc_w32(SCG_COLOURS + 8, GREY)
-			sc_w32(SCG_VERTS + 8, psx.r32(poly + 8))
+			sc_w32(SCG_VERTS + 8, cpu.r32(poly + 8))
 			triangle(SCG_VERTS, SCG_VERTS + 4, SCG_VERTS + 8)
 			spend(0x8014b764, 0x8014b770)
 			hit = sc_u16(SCG_HIT) != 0
@@ -459,7 +461,7 @@ model_polys :: proc(placed, group: u32) -> bool {
 				sc_w32(SCG_COLOURS, GREY)
 				sc_w32(SCG_COLOURS + 4, GREY)
 				sc_w32(SCG_COLOURS + 8, GREY)
-				sc_w32(SCG_VERTS + 12, psx.r32(poly + 12))
+				sc_w32(SCG_VERTS + 12, cpu.r32(poly + 12))
 				triangle(SCG_VERTS + 12, SCG_VERTS + 8, SCG_VERTS + 4)
 				spend(0x8014b7a8, 0x8014b7b4)
 				hit = sc_u16(SCG_HIT) != 0
@@ -467,14 +469,14 @@ model_polys :: proc(placed, group: u32) -> bool {
 		}
 		if hit {
 			spend(0x8014b7b8, 0x8014b7cc)
-			sc_w16(SCG_HEIGHT, sc_u16(SCG_TRI_Y) + psx.r16(placed + 6) << 5)
+			sc_w16(SCG_HEIGHT, sc_u16(SCG_TRI_Y) + cpu.r16(placed + 6) << 5)
 			spend(0x8014b7ec, 0x8014b810)
 			return true
 		}
 		spend(0x8014b7d0, 0x8014b7e4)
 		i += 1
 		poly += 24
-		if i >= psx.r16(group + 2) {
+		if i >= cpu.r16(group + 2) {
 			break
 		}
 		events()
@@ -488,35 +490,35 @@ model_polys :: proc(placed, group: u32) -> bool {
 // triangle above the running SCG_HEIGHT (from -32768) ends the search.
 @(private = "file")
 tile_polys :: proc() -> bool {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	events()
 	sc_w16(SCG_HIT, 0)
 	sc_w16(SCG_HEIGHT, 0x8000)
 	spend(0x8014b09c, 0x8014b0d4)
-	grid := block_entry(GRID_LOOKUP, 0, 4, u32(psx.r8(sc_u32(SCG_DESC))))
+	grid := block_entry(GRID_LOOKUP, 0, 4, u32(cpu.r8(sc_u32(SCG_DESC))))
 	spend(0x8014b0d8, 0x8014b0f4)
 	sc_w32(SCG_GRID, grid)
 	tile := sc_u32(SCG_TILE)
 	count: u32
 	poly: u32
-	if psx.r8(tile) & TILE_GROUND != 0 {
+	if cpu.r8(tile) & TILE_GROUND != 0 {
 		spend(0x8014b0f8, 0x8014b114)
-		index := u16(psx.r8(tile + 1)) + u16(psx.r8(tile + 2) & 0xc0) << 2
+		index := u16(cpu.r8(tile + 1)) + u16(cpu.r8(tile + 2) & 0xc0) << 2
 		sc_w16(SCG_REF_INDEX, index)
 		if index == REF_NONE {
 			spend(0x8014b14c, 0x8014b158)
-			poly = grid + psx.r32(grid + 16)
+			poly = grid + cpu.r32(grid + 16)
 		} else {
 			spend(0x8014b118, 0x8014b148)
-			ref := grid + psx.r32(grid + 12) + u32(index) * 4
+			ref := grid + cpu.r32(grid + 12) + u32(index) * 4
 			sc_w32(SCG_REF, ref)
-			count = u32(psx.r16(ref))
-			poly = grid + psx.r32(grid + 16) + u32(psx.r16(ref + 2)) << 5
+			count = u32(cpu.r16(ref))
+			poly = grid + cpu.r32(grid + 16) + u32(cpu.r16(ref + 2)) << 5
 		}
 	} else {
 		spend(0x8014b170, 0x8014b188)
-		poly = grid + psx.r32(grid + 16) + u32(psx.r16(tile + 2)) << 5
-		count = u32(psx.r16(tile)) >> 1
+		poly = grid + cpu.r32(grid + 16) + u32(cpu.r16(tile + 2)) << 5
+		count = u32(cpu.r16(tile)) >> 1
 	}
 	spend(0x8014b18c, 0x8014b190)
 	if count != 0 {
@@ -524,7 +526,7 @@ tile_polys :: proc() -> bool {
 		i: u32 = 0
 		for {
 			spend(0x8014b198, 0x8014b1b4)
-			sc_w32(SCG_VERTS + 4, psx.r32(poly + 4))
+			sc_w32(SCG_VERTS + 4, cpu.r32(poly + 4))
 			flags := sc[SCG_VERTS + 7]
 			if flags & 4 == 0 {
 				spend(0x8014b1b8, 0x8014b1bc)
@@ -552,13 +554,13 @@ tile_polys :: proc() -> bool {
 // Both triangles of one tile polygon; true when one is above SCG_HEIGHT.
 @(private = "file")
 tile_poly :: proc(poly: u32) -> bool {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	spend(0x8014b1c0, 0x8014b1fc)
-	sc_w32(SCG_COLOURS, u32(psx.r16(poly + 0x18)))
-	sc_w32(SCG_COLOURS + 4, u32(psx.r16(poly + 0x1a)))
-	sc_w32(SCG_COLOURS + 8, u32(psx.r16(poly + 0x1c)))
-	sc_w32(SCG_VERTS, psx.r32(poly))
-	sc_w32(SCG_VERTS + 8, psx.r32(poly + 8))
+	sc_w32(SCG_COLOURS, u32(cpu.r16(poly + 0x18)))
+	sc_w32(SCG_COLOURS + 4, u32(cpu.r16(poly + 0x1a)))
+	sc_w32(SCG_COLOURS + 8, u32(cpu.r16(poly + 0x1c)))
+	sc_w32(SCG_VERTS, cpu.r32(poly))
+	sc_w32(SCG_VERTS + 8, cpu.r32(poly + 8))
 	triangle(SCG_VERTS, SCG_VERTS + 4, SCG_VERTS + 8)
 	spend(0x8014b200, 0x8014b20c)
 	if sc_u16(SCG_HIT) != 0 {
@@ -572,10 +574,10 @@ tile_poly :: proc(poly: u32) -> bool {
 		return false
 	}
 	spend(0x8014b240, 0x8014b270)
-	sc_w32(SCG_COLOURS, u32(psx.r16(poly + 0x1e)))
-	sc_w32(SCG_COLOURS + 4, u32(psx.r16(poly + 0x1a)))
-	sc_w32(SCG_COLOURS + 8, u32(psx.r16(poly + 0x1c)))
-	sc_w32(SCG_VERTS + 12, psx.r32(poly + 12))
+	sc_w32(SCG_COLOURS, u32(cpu.r16(poly + 0x1e)))
+	sc_w32(SCG_COLOURS + 4, u32(cpu.r16(poly + 0x1a)))
+	sc_w32(SCG_COLOURS + 8, u32(cpu.r16(poly + 0x1c)))
+	sc_w32(SCG_VERTS + 12, cpu.r32(poly + 12))
 	triangle(SCG_VERTS + 12, SCG_VERTS + 8, SCG_VERTS + 4)
 	spend(0x8014b274, 0x8014b280)
 	if sc_u16(SCG_HIT) != 0 {
@@ -591,7 +593,7 @@ tile_poly :: proc(poly: u32) -> bool {
 // at SCG_COLOURS. Sets SCG_HIT.
 @(private = "file")
 triangle :: proc(a, b, c: u32) {
-	sc := &psx.scratch
+	sc := &cpu.scratch
 	NCLIP :: 0x1400006
 	events()
 	sc_w16(SCG_XZ, u16(i16(i8(sc[a]))))
@@ -602,11 +604,11 @@ triangle :: proc(a, b, c: u32) {
 	sc_w16(SCG_XZ + 10, u16(i16(i8(sc[c + 2]))))
 	pa, pb, pc := sc_u32(SCG_XZ), sc_u32(SCG_XZ + 4), sc_u32(SCG_XZ + 8)
 	area := proc(s0, s1, s2: u32) -> i32 {
-		psx.gte_write(12, s0)
-		psx.gte_write(14, s2)
-		psx.gte_write(13, s1)
-		psx.gte_cmd(NCLIP)
-		return i32(psx.gte_read(24))
+		gte.gte_write(12, s0)
+		gte.gte_write(14, s2)
+		gte.gte_write(13, s1)
+		gte.gte_cmd(NCLIP)
+		return i32(gte.gte_read(24))
 	}
 	whole := area(pa, pb, pc)
 	sc_w32(SCG_AREAS + 12, u32(whole))
@@ -657,7 +659,7 @@ triangle :: proc(a, b, c: u32) {
 	sc_w16(SCG_TRI_Y, u16(y))
 	if sc_u16(SCG_LIT) == 0 {
 		spend(0x8014b690, 0x8014b6a4)
-		psx.w8(GROUND_LIGHT, 128)
+		cpu.w8(GROUND_LIGHT, 128)
 	} else {
 		spend(0x8014b53c, 0x8014b640)
 		spend(0x8014b648, 0x8014b650)
@@ -691,7 +693,7 @@ ground_light :: proc(l: [3]i32, light: i32) {
 	sc_w32(SCG_COLOURS, u32(light))
 	sc_w32(SCG_COLOURS + 4, u32(l[1] - l[0]))
 	sc_w32(SCG_COLOURS + 8, u32(l[2] - l[0]))
-	psx.w8(GROUND_LIGHT, u8(light))
+	cpu.w8(GROUND_LIGHT, u8(light))
 }
 
 // 0x8014b89c: the ground tile's heightfield quad, split along the diagonal
@@ -727,11 +729,11 @@ heightfield :: proc() {
 	}
 	if !lit {
 		spend(0x8014bc2c, 0x8014bc38)
-		psx.w8(GROUND_LIGHT, 128)
+		cpu.w8(GROUND_LIGHT, 128)
 		return
 	}
 	for i in u32(0) ..< 3 {
-		sc_w32(SCG_COLOURS + 4 * i, u32(psx.r16(tile + colours[i])))
+		sc_w32(SCG_COLOURS + 4 * i, u32(cpu.r16(tile + colours[i])))
 	}
 	l := colour_levels()
 	ground_light(l, ((l[1] - l[0]) * wx + (l[2] - l[0]) * wz) >> 9 + l[0])
@@ -747,12 +749,12 @@ heightfield :: proc() {
 // leg may differ by at most one unit (heights_meet).
 @(private = "file")
 passable :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	@(static) args: [5]u32 // from, to, flags and the caller's $sp and $ra
 	args = {c.r[4], c.r[5], c.r[6], c.r[29], c.r[31]}
 	// The GROUND and NEXT_POS calls inside leave $sp and $ra at their frames.
 	run :: proc() {
-		c := &psx.cpu
+		c := &cpu.state
 		c.r[29] = args[3]
 		c.r[2] = passable_native(args[0], args[1], args[2]) ? 1 : 0
 		c.r[29], c.r[31] = args[3], args[4]
@@ -767,9 +769,9 @@ passable :: proc() {
 @(private = "file")
 passable_native :: proc(from, to, flags: u32) -> bool {
 	events()
-	c := &psx.cpu
+	c := &cpu.state
 	sp := c.r[29]
-	psx.w32(sp, from) // the game keeps a0 in its argument slot
+	cpu.w32(sp, from) // the game keeps a0 in its argument slot
 	frame := sp - 104
 	allow :: proc() -> bool {
 		spend(0x801d64c8, 0x801d64f8)
@@ -785,12 +787,12 @@ passable_native :: proc(from, to, flags: u32) -> bool {
 		return ok
 	}
 	spend(0x801d60f8, 0x801d6140)
-	if psx.r16(FIELD_FLAGS) & STEP_ANY != 0 {
+	if cpu.r16(FIELD_FLAGS) & STEP_ANY != 0 {
 		return allow()
 	}
-	fx, fz := i32(i16(psx.r16(from + 2))), i32(i16(psx.r16(from + 10)))
-	tx, tz := i32(i16(psx.r16(to + 2))), i32(i16(psx.r16(to + 10)))
-	from_layer, to_layer := u32(psx.r8(from + 12)), u32(psx.r8(to + 12))
+	fx, fz := i32(i16(cpu.r16(from + 2))), i32(i16(cpu.r16(from + 10)))
+	tx, tz := i32(i16(cpu.r16(to + 2))), i32(i16(cpu.r16(to + 10)))
+	from_layer, to_layer := u32(cpu.r8(from + 12)), u32(cpu.r8(to + 12))
 	spend(0x801d6144, 0x801d617c)
 	a := attr_lookup_native(u32(fx), u32(fz), from_layer)
 	spend(0x801d6180, 0x801d6198)
@@ -887,9 +889,9 @@ passable_native :: proc(from, to, flags: u32) -> bool {
 	c.r[29] = sp
 	spend(0x801d635c, 0x801d6370)
 	layer := from_layer
-	if psx.r32(out) == psx.r32(from) {
+	if cpu.r32(out) == cpu.r32(from) {
 		spend(0x801d6374, 0x801d6384)
-		if psx.r32(to + 8) == psx.r32(out + 8) {
+		if cpu.r32(to + 8) == cpu.r32(out + 8) {
 			spend(0x801d6388, 0x801d6390)
 			layer = to_layer
 		} else {
@@ -917,11 +919,11 @@ passable_native :: proc(from, to, flags: u32) -> bool {
 	}
 	spend(0x801d640c, 0x801d641c)
 	layer = from_layer
-	if psx.r32(to) != psx.r32(out) {
+	if cpu.r32(to) != cpu.r32(out) {
 		spend(0x801d6448, 0x801d6458)
 	} else {
 		spend(0x801d6420, 0x801d6438)
-		if psx.r32(from + 8) != psx.r32(out + 8) {
+		if cpu.r32(from + 8) != cpu.r32(out + 8) {
 			spend(0x801d644c, 0x801d6458)
 		} else {
 			spend(0x801d643c, 0x801d6444)
@@ -1008,7 +1010,7 @@ edge_open :: proc(a, b: u32) -> bool {
 		return shut()
 	}
 	spend(0x801d5cb8, 0x801d5ccc)
-	if psx.r16(FIELD_FLAGS) & STEP_A4_WALL != 0 {
+	if cpu.r16(FIELD_FLAGS) & STEP_A4_WALL != 0 {
 		spend(0x801d5cd0, 0x801d5cd4)
 		if b == 0xa4 {
 			return shut()
@@ -1156,20 +1158,20 @@ heights_meet :: proc(sp: u32, x0, z0: i32, l0: u32, x1, z1: i32, l1: u32) -> boo
 		return meet()
 	}
 	spend(0x801d6060, 0x801d606c)
-	c := &psx.cpu
+	c := &cpu.state
 	frame := sp - 72
 	pos := frame + 16
 	c.r[29] = frame
 	defer c.r[29] = sp
 	spend(0x801d6070, 0x801d6084)
-	psx.w32(pos, u32(x0) << 16)
-	psx.w32(pos + 8, u32(z0) << 16)
+	cpu.w32(pos, u32(x0) << 16)
+	cpu.w32(pos + 8, u32(z0) << 16)
 	c.r[4], c.r[5] = pos, l0 & 255
 	game_call(GROUND, 0x801d6088)
 	h0 := i32(c.r[2])
 	spend(0x801d6088, 0x801d60a4)
-	psx.w32(pos, u32(x1) << 16)
-	psx.w32(pos + 8, u32(z1) << 16)
+	cpu.w32(pos, u32(x1) << 16)
+	cpu.w32(pos + 8, u32(z1) << 16)
 	c.r[4], c.r[5] = pos, l1 & 255
 	game_call(GROUND, 0x801d60a8)
 	d := h0 - i32(c.r[2])

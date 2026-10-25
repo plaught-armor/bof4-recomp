@@ -22,7 +22,8 @@
 package qol
 
 import "core:fmt"
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 // Message box draw; the box is at [TEXT_BOX], its string at +12 and the
 // characters revealed so far at +29 (u8).
@@ -99,18 +100,18 @@ Name :: struct {
 
 @(private = "file")
 NAMES := [?]Name {
-	{"L1", psx.PAD_L1, false},
-	{"L2", psx.PAD_L2, false},
-	{"R1", psx.PAD_R1, false},
-	{"R2", psx.PAD_R2, false},
-	{"START", psx.PAD_START, true},
-	{"SELECT", psx.PAD_SELECT, true},
+	{"L1", host.PAD_L1, false},
+	{"L2", host.PAD_L2, false},
+	{"R1", host.PAD_R1, false},
+	{"R2", host.PAD_R2, false},
+	{"START", host.PAD_START, true},
+	{"SELECT", host.PAD_SELECT, true},
 }
 
 @(private)
 button_text: struct {
-	text:     psx.Func_Proc,
-	dialogue: psx.Func_Proc,
+	text:     cpu.Func_Proc,
+	dialogue: cpu.Func_Proc,
 	// Set while the port draws its own text.
 	raw:      bool,
 }
@@ -139,8 +140,8 @@ Copy :: struct {
 
 @(private)
 button_text_init :: proc() -> bool {
-	text, text_ok := psx.hook(TEXT_DRAW, text_draw)
-	dialogue, dialogue_ok := psx.hook(DIALOGUE_DRAW, dialogue_draw)
+	text, text_ok := cpu.hook(TEXT_DRAW, text_draw)
+	dialogue, dialogue_ok := cpu.hook(DIALOGUE_DRAW, dialogue_draw)
 	if !text_ok || !dialogue_ok {
 		fmt.eprintf("qol: text draw %08x / %08x not found\n", TEXT_DRAW, DIALOGUE_DRAW)
 		return false
@@ -152,17 +153,17 @@ button_text_init :: proc() -> bool {
 
 @(private = "file")
 rewrites :: proc() -> bool {
-	return !button_text.raw && psx.input_device() != .PlayStation
+	return !button_text.raw && host.input_device() != .PlayStation
 }
 
 @(private = "file")
 text_draw :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	if !rewrites() {
 		button_text.text()
 		return
 	}
-	src := psx.lw(c.r[29] + 16)
+	src := cpu.lw(c.r[29] + 16)
 	out := Copy {
 		drawer = .Text,
 	}
@@ -173,7 +174,7 @@ text_draw :: proc() {
 	}
 	sp := c.r[29]
 	copy_at := place_copy(&out)
-	psx.sw(c.r[29] + 16, copy_at)
+	cpu.sw(c.r[29] + 16, copy_at)
 	button_text.text()
 	c.r[29] = sp
 	if stop := c.r[2]; stop >= copy_at && stop < copy_at + u32(out.n) {
@@ -183,10 +184,10 @@ text_draw :: proc() {
 
 @(private = "file")
 dialogue_draw :: proc() {
-	c := &psx.cpu
-	box := psx.lw(TEXT_BOX)
-	src := psx.lw(box + BOX_TEXT)
-	shown := psx.lbu(box + BOX_SHOWN)
+	c := &cpu.state
+	box := cpu.lw(TEXT_BOX)
+	src := cpu.lw(box + BOX_TEXT)
+	shown := cpu.lbu(box + BOX_SHOWN)
 	if !rewrites() || shown == 0 {
 		button_text.dialogue()
 		return
@@ -201,23 +202,23 @@ dialogue_draw :: proc() {
 	}
 	sp := c.r[29]
 	copy_at := place_copy(&out)
-	psx.sw(box + BOX_TEXT, copy_at)
-	psx.sb(box + BOX_SHOWN, u32(out.shown))
+	cpu.sw(box + BOX_TEXT, copy_at)
+	cpu.sb(box + BOX_SHOWN, u32(out.shown))
 	button_text.dialogue()
 	c.r[29] = sp
-	psx.sw(box + BOX_TEXT, src)
-	psx.sb(box + BOX_SHOWN, shown)
+	cpu.sw(box + BOX_TEXT, src)
+	cpu.sb(box + BOX_SHOWN, shown)
 }
 
 // Write the copy below the stack pointer and lower it past the copy;
 // returns where the copy is.
 @(private = "file")
 place_copy :: proc(out: ^Copy) -> u32 {
-	c := &psx.cpu
+	c := &cpu.state
 	frame := (c.r[29] - COPY_FRAME) &~ 7
 	copy_at := frame + COPY_AT
 	for i in 0 ..< out.n {
-		psx.sb(copy_at + u32(i), u32(out.bytes[i]))
+		cpu.sb(copy_at + u32(i), u32(out.bytes[i]))
 	}
 	c.r[29] = frame
 	return copy_at
@@ -233,14 +234,14 @@ rewrite :: proc(src: u32, out: ^Copy) -> bool {
 		if out.drawer == .Dialogue && out.drawn >= out.reveal {
 			return out.changed && put(out, CODE_END, i)
 		}
-		b := u8(psx.lbu(src + u32(i)))
+		b := u8(cpu.lbu(src + u32(i)))
 		// Names and gaps are revealed whole; a sub-string a character at a
 		// time.
 		whole := true
 		switch {
 		case b == CODE_END && out.drawer == .Text:
 			return out.changed && put(out, CODE_END, i)
-		case b == SPACE && psx.lbu(src + u32(i) + 1) == SPACE:
+		case b == SPACE && cpu.lbu(src + u32(i) + 1) == SPACE:
 			i = put_gap(out, src, i) or_return
 		case b == CODE_NEWLINE:
 			out.drift = 0
@@ -248,7 +249,7 @@ rewrite :: proc(src: u32, out: ^Copy) -> bool {
 		case b < CODE_LIMIT[out.drawer]:
 			size, chars := code_size(out.drawer, src, i, b)
 			for k in 0 ..< size {
-				put(out, u8(psx.lbu(src + u32(i + k))), i + k) or_return
+				put(out, u8(cpu.lbu(src + u32(i + k))), i + k) or_return
 			}
 			out.drawn += chars
 			out.put += chars
@@ -289,17 +290,17 @@ code_size :: proc(drawer: Drawer, src: u32, i: int, b: u8) -> (size, chars: int)
 	case CODE_NEWLINE:
 		return size, 0
 	case 3:
-		return size, string_chars(char_record(psx.lbu(NAME_INDEX)), NAME_SIZE)
+		return size, string_chars(char_record(cpu.lbu(NAME_INDEX)), NAME_SIZE)
 	case 4:
-		return size, string_chars(char_record(psx.lbu(src + u32(i) + 1)), NAME_SIZE)
+		return size, string_chars(char_record(cpu.lbu(src + u32(i) + 1)), NAME_SIZE)
 	case 7:
-		return size, string_chars(SLOTS_AT + psx.lbu(src + u32(i) + 1) * SLOT_SIZE, SLOT_SIZE)
+		return size, string_chars(SLOTS_AT + cpu.lbu(src + u32(i) + 1) * SLOT_SIZE, SLOT_SIZE)
 	case 18, 19, 21, 27:
 		return size, 1
 	case 26:
 		// One operand, or four unless it is 255 or already in place.
-		op := psx.lbu(src + u32(i) + 1)
-		if op != 0xff && psx.lbu(NAME_INDEX + (op >> 4)) != op {
+		op := cpu.lbu(src + u32(i) + 1)
+		if op != 0xff && cpu.lbu(NAME_INDEX + (op >> 4)) != op {
 			size += 3
 		}
 	}
@@ -310,7 +311,7 @@ code_size :: proc(drawer: Drawer, src: u32, i: int, b: u8) -> (size, chars: int)
 @(private = "file")
 string_chars :: proc(at, size: u32) -> (n: int) {
 	for k in u32(0) ..< size {
-		b := psx.lbu(at + k)
+		b := cpu.lbu(at + k)
 		if b == CODE_END {
 			break
 		}
@@ -337,7 +338,7 @@ put :: proc(out: ^Copy, b: u8, from: int) -> bool {
 @(private = "file")
 put_gap :: proc(out: ^Copy, src: u32, i: int) -> (next: int, ok: bool) {
 	run := 0
-	for psx.lbu(src + u32(i + run)) == SPACE {
+	for cpu.lbu(src + u32(i + run)) == SPACE {
 		run += 1
 	}
 	shift := (out.drift + (out.drift >= 0 ? SPACE_W / 2 : -SPACE_W / 2)) / SPACE_W
@@ -386,7 +387,7 @@ drop_name :: proc(out: ^Copy, src: u32, i: int, name: Name) -> bool {
 	case out.name_end == i - 1 && out.n > 0 && out.bytes[out.n - 1] == '/':
 		out.n -= 1
 		out.put -= 1
-	case psx.lbu(src + u32(end)) == '/':
+	case cpu.lbu(src + u32(end)) == '/':
 		if _, used, _, _ := name_at(src, end + 1); used == "" {
 			return false
 		}
@@ -404,12 +405,12 @@ drop_name :: proc(out: ^Copy, src: u32, i: int, name: Name) -> bool {
 // key; used is "" when it stays or nothing is bound to it.
 @(private = "file")
 name_at :: proc(src: u32, i: int) -> (name: Name, used: string, key, found: bool) {
-	if is_alnum(psx.lbu(src + u32(i) - 1)) {
+	if is_alnum(cpu.lbu(src + u32(i) - 1)) {
 		return
 	}
 	for n in NAMES {
 		end := i + len(n.text)
-		if !has_text(src, i, n.text) || is_alnum(psx.lbu(src + u32(end))) {
+		if !has_text(src, i, n.text) || is_alnum(cpu.lbu(src + u32(end))) {
 			continue
 		}
 		if n.word && !has_text(src, end, " button") && !has_text(src, end, " to ") {
@@ -428,16 +429,16 @@ name_at :: proc(src: u32, i: int) -> (name: Name, used: string, key, found: bool
 // is a keyboard key; "" when nothing is bound to it.
 @(private = "file")
 device_name :: proc(bit: u16) -> (name: string, key: bool) {
-	device := psx.input_device()
+	device := host.input_device()
 	if device == .Keyboard {
 		sources: [1]string
-		if psx.key_sources(bit, sources[:]) == 0 {
+		if host.key_sources(bit, sources[:]) == 0 {
 			return "", false
 		}
-		_, mouse := psx.mouse_source_from_name(sources[0])
+		_, mouse := host.mouse_source_from_name(sources[0])
 		return short_name(sources[0]), !mouse
 	}
-	if c, ok := psx.pad_source(bit); ok {
+	if c, ok := host.pad_source(bit); ok {
 		return PAD_CONTROL_NAMES[device][c], false
 	}
 	return "", false
@@ -446,7 +447,7 @@ device_name :: proc(bit: u16) -> (name: string, key: bool) {
 @(private = "file")
 has_text :: proc(src: u32, i: int, text: string) -> bool {
 	for k in 0 ..< len(text) {
-		if psx.lbu(src + u32(i + k)) != u32(text[k]) {
+		if cpu.lbu(src + u32(i + k)) != u32(text[k]) {
 			return false
 		}
 	}
@@ -461,7 +462,7 @@ is_alnum :: proc(b: u32) -> bool {
 @(private = "file")
 text_width :: proc(text: string) -> (w: int) {
 	for i in 0 ..< len(text) {
-		w += text[i] == SPACE ? SPACE_W : int(psx.lbu(FONT_WIDTHS + u32(text[i])) & 0xf)
+		w += text[i] == SPACE ? SPACE_W : int(cpu.lbu(FONT_WIDTHS + u32(text[i])) & 0xf)
 	}
 	return w
 }

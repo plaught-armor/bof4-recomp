@@ -26,7 +26,7 @@
 // The rate joins damage.odin's multipliers, so the damage number shows it.
 package qol
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -130,11 +130,11 @@ timed_tick :: proc() {
 	if !config.battle_timed_attacks && !config.battle_timed_parry {
 		return
 	}
-	frame := psx.lw(GAME_FRAME)
-	if psx.lhu(PAD_PRESSED) & psx.lhu(CONFIRM_MASK) != 0 {
+	frame := cpu.lw(GAME_FRAME)
+	if cpu.lhu(PAD_PRESSED) & cpu.lhu(CONFIRM_MASK) != 0 {
 		press_note(frame)
 	}
-	acting := psx.lhu(GAME_MODE) == MODE_BATTLE && psx.lhu(BATTLE_STATE) == ROUND_ACTION
+	acting := cpu.lhu(GAME_MODE) == MODE_BATTLE && cpu.lhu(BATTLE_STATE) == ROUND_ACTION
 	if acting && !timed.acting {
 		action_start(frame)
 	} else if !acting && timed.acting {
@@ -151,7 +151,7 @@ action_start :: proc(frame: u32) {
 	timed.learning = {key = timed.key}
 	timed.hits = 0
 	if .Game in core.trace.active {
-		core.tracef(.Game, "timed: actor %d kind %d skill %d starts", psx.lbu(ACTION), psx.lbu(ACTION + ACTION_KIND), psx.lhu(ACTION + ACTION_SKILL))
+		core.tracef(.Game, "timed: actor %d kind %d skill %d starts", cpu.lbu(ACTION), cpu.lbu(ACTION + ACTION_KIND), cpu.lhu(ACTION + ACTION_SKILL))
 	}
 	for &t in timed.timings {
 		if t.key == timed.key && t.count != 0 {
@@ -176,18 +176,18 @@ action_end :: proc() {
 // The attacker (character id, or enemy name), kind and skill.
 @(private = "file")
 action_key :: proc() -> u64 {
-	actor := psx.lbu(ACTION)
+	actor := cpu.lbu(ACTION)
 	who: u64
 	if actor < ENEMY_IDS {
-		who = u64(psx.lbu(party_combatant(actor) + PARTY_CHAR))
+		who = u64(cpu.lbu(party_combatant(actor) + PARTY_CHAR))
 	} else {
 		name := combatant(actor) + ENEMY_NAME
-		who = u64(psx.lw(name)) | u64(psx.lw(name + 4)) << 32
+		who = u64(cpu.lw(name)) | u64(cpu.lw(name + 4)) << 32
 		who = who * 0x9e3779b97f4a7c15 | 1 << 63 // apart from character ids
 	}
 	// A plain attack leaves the last skill id in place.
-	kind := psx.lbu(ACTION + ACTION_KIND)
-	skill := kind == KIND_ATTACK ? 0 : psx.lhu(ACTION + ACTION_SKILL)
+	kind := cpu.lbu(ACTION + ACTION_KIND)
+	skill := kind == KIND_ATTACK ? 0 : cpu.lhu(ACTION + ACTION_SKILL)
 	return who ~ u64(kind) << 40 ~ u64(skill) << 48
 }
 
@@ -205,8 +205,8 @@ press_note :: proc(frame: u32) {
 // the hit is not one the options time.
 @(private)
 timed_rate :: proc(target: u32) -> f64 {
-	actor := psx.lbu(ACTION)
-	if !timed.acting || psx.lbu(ACTION + ACTION_KIND) != KIND_ATTACK {
+	actor := cpu.lbu(ACTION)
+	if !timed.acting || cpu.lbu(ACTION + ACTION_KIND) != KIND_ATTACK {
 		return 1
 	}
 	attack := actor < ENEMY_IDS && target >= ENEMY_IDS
@@ -214,11 +214,11 @@ timed_rate :: proc(target: u32) -> f64 {
 	if !(attack && config.battle_timed_attacks) && !(parry && config.battle_timed_parry) {
 		return 1
 	}
-	frame := psx.lw(GAME_FRAME)
+	frame := cpu.lw(GAME_FRAME)
 	// One judgement per hit frame; an attack on several targets at once
 	// shares it.
 	if timed.hits == 0 || frame != timed.last_hit {
-		if psx.lhu(PAD_PRESSED) & psx.lhu(CONFIRM_MASK) != 0 {
+		if cpu.lhu(PAD_PRESSED) & cpu.lhu(CONFIRM_MASK) != 0 {
 			press_note(frame)
 		}
 		from := frame - CUE + 1
@@ -276,7 +276,7 @@ timed_draws :: proc() -> bool {
 	if !config.battle_timed_attacks && !config.battle_timed_parry {
 		return false
 	}
-	return psx.lw(GAME_FRAME) < timed.result_till || cue_left() >= 0
+	return cpu.lw(GAME_FRAME) < timed.result_till || cue_left() >= 0
 }
 
 // For autoplay's `pulse qte`.
@@ -293,14 +293,14 @@ timed_cue_left :: proc() -> int {
 // Frames until the action's next learned hit, -1 when no cue is due.
 @(private = "file")
 cue_left :: proc() -> int {
-	if !timed.acting || timed.learned == nil || psx.lbu(ACTION + ACTION_KIND) != KIND_ATTACK {
+	if !timed.acting || timed.learned == nil || cpu.lbu(ACTION + ACTION_KIND) != KIND_ATTACK {
 		return -1
 	}
-	actor := psx.lbu(ACTION)
+	actor := cpu.lbu(ACTION)
 	if actor < ENEMY_IDS ? !config.battle_timed_attacks : !config.battle_timed_parry {
 		return -1
 	}
-	now := int(psx.lw(GAME_FRAME) - timed.start)
+	now := int(cpu.lw(GAME_FRAME) - timed.start)
 	for lead in timed.learned.leads[:timed.learned.count] {
 		left := int(lead) - now
 		if left >= 0 && left < CUE {
@@ -316,7 +316,7 @@ timed_draw :: proc() {
 		cue_square(CUE_HALF, CUE_YELLOW)
 		cue_square(CUE_HALF + left * CUE_STEP, CUE_WHITE)
 	}
-	if psx.lw(GAME_FRAME) < timed.result_till && timed.result != .Miss {
+	if cpu.lw(GAME_FRAME) < timed.result_till && timed.result != .Miss {
 		text := GRADE_TEXT[timed.result]
 		menu_text(CUE_X - menu_text_width(text) / 2, CUE_Y + CUE_HALF + 4, text, MENU_YELLOW if timed.result == .Perfect else MENU_WHITE)
 	}
@@ -337,10 +337,10 @@ cue_line :: proc(x0, y0, x1, y1: int, colour: u32) {
 	LINE_TAG :: 0x03000000
 	LINE :: 0x40000000
 	LINE_BYTES :: 0x10
-	prim := psx.lw(SPRITE_PACKETS)
-	psx.sw(prim, LINE_TAG)
-	psx.sw(prim + 4, LINE | colour)
-	psx.sw(prim + 8, u32(x0) & 0xffff | u32(y0) << 16)
-	psx.sw(prim + 12, u32(x1) & 0xffff | u32(y1) << 16)
+	prim := cpu.lw(SPRITE_PACKETS)
+	cpu.sw(prim, LINE_TAG)
+	cpu.sw(prim + 4, LINE | colour)
+	cpu.sw(prim + 8, u32(x0) & 0xffff | u32(y0) << 16)
+	cpu.sw(prim + 12, u32(x1) & 0xffff | u32(y1) << 16)
 	game_routine(PRIM_COMMIT, {1, LINE_BYTES, 0, 0, 0})
 }

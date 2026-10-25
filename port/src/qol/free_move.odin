@@ -56,7 +56,8 @@ package qol
 
 import "core:math"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
+import host "ps:psx/host"
 
 import "ps:core"
 
@@ -197,7 +198,7 @@ free: struct {
 	checked: bool,
 	check:   [3]i32,
 	bound:   bool,
-	exit_check: psx.Func_Proc, // the game's EXIT_CHECK
+	exit_check: cpu.Func_Proc, // the game's EXIT_CHECK
 }
 
 @(private)
@@ -211,10 +212,10 @@ free_move_init :: proc() -> bool {
 // the leader walks onto them and door_through switches instead.
 @(private = "file")
 exit_check :: proc() {
-	c := &psx.cpu
+	c := &cpu.state
 	pos := c.r[4]
-	if _, _, through := door_exit_at(cell_of(i32(psx.lw(pos + POS_X))), cell_of(i32(psx.lw(pos + POS_Z)))); through {
-		psx.sb(c.r[7], 0xff)
+	if _, _, through := door_exit_at(cell_of(i32(cpu.lw(pos + POS_X))), cell_of(i32(cpu.lw(pos + POS_Z)))); through {
+		cpu.sb(c.r[7], 0xff)
 		c.r[2] = 0
 		return
 	}
@@ -226,17 +227,17 @@ Cell :: [2]i32 // x, z
 
 // Runs STAND for the leader in free mode; `stand` is the original.
 @(private)
-free_stand :: proc(obj: u32, stand: psx.Func_Proc) {
+free_stand :: proc(obj: u32, stand: cpu.Func_Proc) {
 	pos := obj + OBJ_POS
-	x, z := i32(psx.lw(pos + POS_X)), i32(psx.lw(pos + POS_Z))
+	x, z := i32(cpu.lw(pos + POS_X)), i32(cpu.lw(pos + POS_Z))
 	set_xz(pos, cell_origin(x), cell_origin(z))
 	stand()
 	set_xz(pos, x, z)
-	if psx.lbu(obj + OBJ_SUBSTATE) != SUBSTATE_CHOOSE {
+	if cpu.lbu(obj + OBJ_SUBSTATE) != SUBSTATE_CHOOSE {
 		free.checked = false
 		if free.moving {
 			free.moving = false
-			psx.sb(obj + OBJ_GAIT_ANIM, ANIM_STOP)
+			cpu.sb(obj + OBJ_GAIT_ANIM, ANIM_STOP)
 		}
 		return
 	}
@@ -250,8 +251,8 @@ free_stand :: proc(obj: u32, stand: psx.Func_Proc) {
 		free.moving = false
 		return
 	}
-	psx.sb(obj + OBJ_SUBSTATE, SUBSTATE_STAND)
-	psx.sb(obj + OBJ_TURN, 0)
+	cpu.sb(obj + OBJ_SUBSTATE, SUBSTATE_STAND)
+	cpu.sb(obj + OBJ_TURN, 0)
 	if !ok {
 		return
 	}
@@ -262,12 +263,12 @@ free_stand :: proc(obj: u32, stand: psx.Func_Proc) {
 // DIRECTION_DELTA calls 0 (-z), in degrees.
 @(private = "file")
 held_angle :: proc(obj: u32) -> (degrees: f64, ok: bool) {
-	yaw := f64(psx.lhu(CAMERA_YAW)) * DEGREES_PER_YAW
-	if stick := psx.sticks().left; config.move_stick && stick != {} {
-		return psx.stick_angle(stick) + yaw, true
+	yaw := f64(cpu.lhu(CAMERA_YAW)) * DEGREES_PER_YAW
+	if stick := host.sticks().left; config.move_stick && stick != {} {
+		return host.stick_angle(stick) + yaw, true
 	}
-	bits := u16(psx.lhu(obj + OBJ_PAD) & DIRECTION_BITS)
-	for sector, i in psx.STICK_SECTORS {
+	bits := u16(cpu.lhu(obj + OBJ_PAD) & DIRECTION_BITS)
+	for sector, i in host.STICK_SECTORS {
 		if sector == bits {
 			return f64(i) * 45 + yaw, true
 		}
@@ -277,7 +278,7 @@ held_angle :: proc(obj: u32) -> (degrees: f64, ok: bool) {
 
 @(private = "file")
 move :: proc(obj: u32, degrees: f64) {
-	c := &psx.cpu
+	c := &cpu.state
 	ra, sp := c.r[31], c.r[29]
 	defer c.r[29], c.r[31] = sp, ra
 
@@ -290,7 +291,7 @@ move :: proc(obj: u32, degrees: f64) {
 	vx := i32(math.round(math.sin(angle) * speed))
 	vz := i32(math.round(-math.cos(angle) * speed))
 
-	x, z := i32(psx.lw(pos + POS_X)), i32(psx.lw(pos + POS_Z))
+	x, z := i32(cpu.lw(pos + POS_X)), i32(cpu.lw(pos + POS_Z))
 	from := Cell{cell_of(x), cell_of(z)}
 	x, z = slide(obj, x, z, vx, true)
 	z, x = slide(obj, z, x, vz, false)
@@ -298,10 +299,10 @@ move :: proc(obj: u32, degrees: f64) {
 	set_height(pos)
 
 	direction := u32(i32(math.round(degrees / 45))) & 7
-	psx.sb(obj + OBJ_DIRECTION, direction)
-	psx.sb(obj + OBJ_STEP_DIRECTION, direction)
-	psx.sb(obj + OBJ_GAIT, run ? GAIT_RUN : GAIT_WALK)
-	psx.sb(obj + OBJ_GAIT_ANIM, run ? ANIM_RUN : ANIM_WALK)
+	cpu.sb(obj + OBJ_DIRECTION, direction)
+	cpu.sb(obj + OBJ_STEP_DIRECTION, direction)
+	cpu.sb(obj + OBJ_GAIT, run ? GAIT_RUN : GAIT_WALK)
+	cpu.sb(obj + OBJ_GAIT_ANIM, run ? ANIM_RUN : ANIM_WALK)
 	free.moving = true
 
 	to := Cell{cell_of(x), cell_of(z)}
@@ -365,13 +366,13 @@ slide :: proc(obj: u32, along, across, v: i32, along_x: bool) -> (i32, i32) {
 // NPC the leader already overlaps is left alone, so it can always get free.
 @(private = "file")
 npc_clamp :: proc(obj: u32, along, across, to: i32, along_x: bool) -> i32 {
-	if psx.lbu(obj + OBJ_BOX_FLAGS) & 1 != 0 {
+	if cpu.lbu(obj + OBJ_BOX_FLAGS) & 1 != 0 {
 		return to
 	}
 	pos := obj + OBJ_POS
-	y := i32(psx.lw(pos + POS_Y))
-	width := i32(psx.lbu(obj + OBJ_BOX_WIDTH))
-	height := i32(psx.lbu(obj + OBJ_BOX_HEIGHT))
+	y := i32(cpu.lw(pos + POS_Y))
+	width := i32(cpu.lbu(obj + OBJ_BOX_WIDTH))
+	height := i32(cpu.lbu(obj + OBJ_BOX_HEIGHT))
 	along_at, across_at := u32(POS_Z), u32(POS_X)
 	if along_x {
 		along_at, across_at = POS_X, POS_Z
@@ -379,19 +380,19 @@ npc_clamp :: proc(obj: u32, along, across, to: i32, along_x: bool) -> i32 {
 	result := to
 	for i in u32(0) ..< NPC_COUNT {
 		npc := NPCS + i * NPC_SIZE
-		if psx.lbu(npc) == 0 || psx.lbu(npc + OBJ_BOX_FLAGS) & 1 != 0 {
+		if cpu.lbu(npc) == 0 || cpu.lbu(npc + OBJ_BOX_FLAGS) & 1 != 0 {
 			continue
 		}
 		npc_pos := npc + OBJ_POS
-		reach := (height + i32(psx.lbu(npc + OBJ_BOX_HEIGHT)) + 1) * CELL
-		if abs(i32(psx.lw(npc_pos + POS_Y)) - y) > reach {
+		reach := (height + i32(cpu.lbu(npc + OBJ_BOX_HEIGHT)) + 1) * CELL
+		if abs(i32(cpu.lw(npc_pos + POS_Y)) - y) > reach {
 			continue
 		}
-		extent := RADIUS + NPC_RADIUS + (width + i32(psx.lbu(npc + OBJ_BOX_WIDTH))) * CELL
-		if abs(i32(psx.lw(npc_pos + across_at)) - across) >= extent {
+		extent := RADIUS + NPC_RADIUS + (width + i32(cpu.lbu(npc + OBJ_BOX_WIDTH))) * CELL
+		if abs(i32(cpu.lw(npc_pos + across_at)) - across) >= extent {
 			continue
 		}
-		at := i32(psx.lw(npc_pos + along_at))
+		at := i32(cpu.lw(npc_pos + along_at))
 		clamped := result
 		if to > along && along < at {
 			clamped = min(result, max(along, at - extent))
@@ -400,7 +401,7 @@ npc_clamp :: proc(obj: u32, along, across, to: i32, along_x: bool) -> i32 {
 		}
 		if clamped != result {
 			result = clamped
-			psx.sb(npc + NPC_BUMPS, psx.lbu(npc + NPC_BUMPS) + 1)
+			cpu.sb(npc + NPC_BUMPS, cpu.lbu(npc + NPC_BUMPS) + 1)
 		}
 	}
 	return result
@@ -413,7 +414,7 @@ passable :: proc(obj: u32, from, to: Cell) -> bool {
 	if from == to {
 		return true
 	}
-	c := &psx.cpu
+	c := &cpu.state
 	c.r[29] -= SCRATCH_FRAME
 	defer c.r[29] += SCRATCH_FRAME
 	a := c.r[29] + SCRATCH_A
@@ -423,7 +424,7 @@ passable :: proc(obj: u32, from, to: Cell) -> bool {
 	set_xz(a, from.x * CELL, from.y * CELL)
 	c.r[4], c.r[5], c.r[6], c.r[7] = a, b, direction_of(to - from), 0
 	game_call(NEXT_POS, NEXT_POS_RET)
-	c.r[4], c.r[5], c.r[6] = a, b, psx.lbu(obj + OBJ_FLAGS_BYTE)
+	c.r[4], c.r[5], c.r[6] = a, b, cpu.lbu(obj + OBJ_FLAGS_BYTE)
 	game_call(PASSABLE, PASSABLE_RET)
 	return c.r[2] & 0xff != 0
 }
@@ -445,7 +446,7 @@ steps_bound_cached :: proc(obj: u32, x, z: i32, direction: u32) -> bool {
 @(private = "file")
 steps_bound :: proc(obj, direction: u32) -> bool {
 	for i in u32(0) ..< 3 {
-		if step_bound(obj, (direction + psx.lbu(STEP_TRIES + i)) & 7) {
+		if step_bound(obj, (direction + cpu.lbu(STEP_TRIES + i)) & 7) {
 			return true
 		}
 	}
@@ -457,7 +458,7 @@ steps_bound :: proc(obj, direction: u32) -> bool {
 // CHOOSE_STEP passes over like an empty cell.
 @(private = "file")
 step_bound :: proc(obj, direction: u32) -> bool {
-	c := &psx.cpu
+	c := &cpu.state
 	ra := c.r[31]
 	c.r[29] -= SCRATCH_FRAME
 	defer c.r[29], c.r[31] = c.r[29] + SCRATCH_FRAME, ra
@@ -466,18 +467,18 @@ step_bound :: proc(obj, direction: u32) -> bool {
 	out := c.r[29] + SCRATCH_OUT
 	pos := obj + OBJ_POS
 	copy_pos(a, pos)
-	set_xz(a, cell_origin(i32(psx.lw(pos + POS_X))), cell_origin(i32(psx.lw(pos + POS_Z))))
+	set_xz(a, cell_origin(i32(cpu.lw(pos + POS_X))), cell_origin(i32(cpu.lw(pos + POS_Z))))
 	c.r[4], c.r[5], c.r[6], c.r[7] = a, b, direction, 0
 	game_call(NEXT_POS, NEXT_POS_RET)
-	psx.sb(out, 0xff)
+	cpu.sb(out, 0xff)
 	c.r[4], c.r[5], c.r[6], c.r[7] = b, direction, 0, out
 	game_call(EXIT_CHECK, EXIT_CHECK_RET)
-	switch psx.lbu(out) {
+	switch cpu.lbu(out) {
 	case 0xff, 2, 3, 4:
 		return false
 	}
 	if .Game in core.trace.active {
-		core.tracef(.Game, "free: step %d bound (result %d)", direction, psx.lbu(out))
+		core.tracef(.Game, "free: step %d bound (result %d)", direction, cpu.lbu(out))
 	}
 	return true
 }
@@ -486,36 +487,36 @@ step_bound :: proc(obj, direction: u32) -> bool {
 // returns to the continuous position x, z unless the engine took the leader.
 @(private = "file")
 arrive :: proc(obj: u32, from, to: Cell, x, z: i32) {
-	c := &psx.cpu
+	c := &cpu.state
 	pos := obj + OBJ_POS
 	direction := direction_of(to - from)
 	set_xz(pos, from.x * CELL, from.y * CELL)
 	c.r[4], c.r[5], c.r[6], c.r[7] = pos, obj + OBJ_TARGET, direction, 0
 	game_call(NEXT_POS, NEXT_POS_RET)
 	for i in u32(0) ..< 3 {
-		psx.sw(pos + 4 * i, psx.lw(obj + OBJ_TARGET + 4 * i))
+		cpu.sw(pos + 4 * i, cpu.lw(obj + OBJ_TARGET + 4 * i))
 	}
 	c.r[4] = pos
 	game_call(STOP_MOTION, STOP_MOTION_RET)
-	psx.sb(pos + POS_FRAMES, 1)
-	psx.sb(obj + OBJ_STEP_DIRECTION, direction)
-	psx.sb(obj + OBJ_SUBSTATE, SUBSTATE_STEP)
+	cpu.sb(pos + POS_FRAMES, 1)
+	cpu.sb(obj + OBJ_STEP_DIRECTION, direction)
+	cpu.sb(obj + OBJ_SUBSTATE, SUBSTATE_STEP)
 
-	state := psx.lbu(obj + OBJ_STATE)
+	state := cpu.lbu(obj + OBJ_STATE)
 	c.r[4] = obj
 	game_call(STEPPER, STEPPER_RET)
-	substate := psx.lbu(obj + OBJ_SUBSTATE)
-	if psx.lbu(obj + OBJ_STATE) != state || substate > SUBSTATE_STEP {
+	substate := cpu.lbu(obj + OBJ_SUBSTATE)
+	if cpu.lbu(obj + OBJ_STATE) != state || substate > SUBSTATE_STEP {
 		free.moving = false
 		if .Game in core.trace.active {
-			core.tracef(.Game, "free: arrival at %d,%d handed over (state %x, substate %d)", to.x, to.y, psx.lbu(obj + OBJ_STATE), substate)
+			core.tracef(.Game, "free: arrival at %d,%d handed over (state %x, substate %d)", to.x, to.y, cpu.lbu(obj + OBJ_STATE), substate)
 		}
 		return
 	}
 	c.r[4] = pos
 	game_call(STOP_MOTION, STOP_MOTION_RET)
-	psx.sb(pos + POS_FRAMES, 0)
-	psx.sb(obj + OBJ_SUBSTATE, SUBSTATE_STAND)
+	cpu.sb(pos + POS_FRAMES, 0)
+	cpu.sb(obj + OBJ_SUBSTATE, SUBSTATE_STAND)
 	set_xz(pos, x, z)
 	set_height(pos)
 }
@@ -528,7 +529,7 @@ arrive :: proc(obj: u32, from, to: Cell, x, z: i32) {
 // foot, which stood the leader at the top of the stairs sunk into them.
 @(private = "file")
 set_height :: proc(pos: u32) {
-	x, z := i32(psx.lw(pos + POS_X)), i32(psx.lw(pos + POS_Z))
+	x, z := i32(cpu.lw(pos + POS_X)), i32(cpu.lw(pos + POS_Z))
 	y := ground_height(pos)
 	if _, way, through := door_exit_at(cell_of(x), cell_of(z)); through {
 		set_xz(pos, x - i32(way.x) * CELL, z - i32(way.y) * CELL)
@@ -538,7 +539,7 @@ set_height :: proc(pos: u32) {
 			y = back
 		}
 	}
-	psx.sw(pos + POS_Y, u32(y))
+	cpu.sw(pos + POS_Y, u32(y))
 }
 
 // The most two neighbouring cells' ground may differ by for a step between
@@ -548,8 +549,8 @@ STEP_RISE :: 0x10000
 
 @(private = "file")
 ground_height :: proc(pos: u32) -> i32 {
-	c := &psx.cpu
-	c.r[4], c.r[5] = pos, psx.lbu(pos + POS_LAYER)
+	c := &cpu.state
+	c.r[4], c.r[5] = pos, cpu.lbu(pos + POS_LAYER)
 	game_call(GROUND_HEIGHT, GROUND_HEIGHT_RET)
 	return i32(c.r[2])
 }
@@ -558,8 +559,8 @@ ground_height :: proc(pos: u32) -> i32 {
 @(private = "file")
 direction_of :: proc(d: Cell) -> u32 {
 	for i in u32(0) ..< 8 {
-		dz := i32(i8(psx.lbu(DIRECTION_DELTA + 2 * i)))
-		dx := i32(i8(psx.lbu(DIRECTION_DELTA + 2 * i + 1)))
+		dz := i32(i8(cpu.lbu(DIRECTION_DELTA + 2 * i)))
+		dx := i32(i8(cpu.lbu(DIRECTION_DELTA + 2 * i + 1)))
 		if dx == d.x && dz == d.y {
 			return i
 		}
@@ -579,13 +580,13 @@ cell_origin :: proc(v: i32) -> i32 {
 
 @(private = "file")
 set_xz :: proc(pos: u32, x, z: i32) {
-	psx.sw(pos + POS_X, u32(x))
-	psx.sw(pos + POS_Z, u32(z))
+	cpu.sw(pos + POS_X, u32(x))
+	cpu.sw(pos + POS_Z, u32(z))
 }
 
 @(private = "file")
 copy_pos :: proc(dst, src: u32) {
 	for i: u32 = 0; i < POS_SIZE; i += 4 {
-		psx.sw(dst + i, psx.lw(src + i))
+		cpu.sw(dst + i, cpu.lw(src + i))
 	}
 }

@@ -27,7 +27,7 @@ import "core:mem"
 import "core:os"
 import "core:strconv"
 
-import "ps:psx"
+import cpu "ps:psx/cpu"
 
 import "ps:core"
 
@@ -123,14 +123,14 @@ REPRICED := [?]Repricing {
 
 @(private = "file")
 restored: struct {
-	copy:     psx.Func_Proc,
+	copy:     cpu.Func_Proc,
 	forced:   bool, // BOF4_SHOP=<index>: every shop opens as that one (testing)
 	force:    u32,
 }
 
 @(private)
 restored_init :: proc() -> bool {
-	copy_fn, ok := psx.hook_overlay(SHOP_COPY, SLOT_MENU, SHOP_ID, shop_copy)
+	copy_fn, ok := cpu.hook_overlay(SHOP_COPY, SLOT_MENU, SHOP_ID, shop_copy)
 	if !ok {
 		fmt.eprintf("qol: restored items function %08x not found\n", SHOP_COPY)
 		return false
@@ -146,7 +146,7 @@ restored_init :: proc() -> bool {
 
 @(private)
 restored_vblank :: proc() {
-	if psx.r32(SLOT_GAME) != GAME_ID {
+	if cpu.r32(SLOT_GAME) != GAME_ID {
 		return
 	}
 	for &r in REPRICED {
@@ -157,7 +157,7 @@ restored_vblank :: proc() {
 @(private = "file")
 reprice :: proc(r: ^Repricing) {
 	size := r.row_size * u32(len(r.prices))
-	live := psx.mem_slice(r.table + r.first * r.row_size, size)
+	live := cpu.mem_slice(r.table + r.first * r.row_size, size)
 	vanilla, patched := r.vanilla[:size], r.patched[:size]
 	if !r.captured {
 		if hash.fnv32a(live) != r.hash {
@@ -183,14 +183,14 @@ reprice :: proc(r: ^Repricing) {
 @(private = "file")
 shop_copy :: proc() {
 	if restored.forced {
-		psx.sb(SHOP_INDEX, restored.force)
-		psx.sb(BUY_COUNT, psx.lbu(SHOP_TABLE + restored.force * SHOP_SIZE))
+		cpu.sb(SHOP_INDEX, restored.force)
+		cpu.sb(BUY_COUNT, cpu.lbu(SHOP_TABLE + restored.force * SHOP_SIZE))
 	}
 	restored.copy()
 	if !config.field_restored_items {
 		return
 	}
-	shop := psx.lbu(SHOP_INDEX)
+	shop := cpu.lbu(SHOP_INDEX)
 	goods: []Good
 	for a in ADDED {
 		if u32(a.shop) == shop {
@@ -200,13 +200,13 @@ shop_copy :: proc() {
 	if goods == nil || !shop_table_vanilla() {
 		return
 	}
-	count := psx.lbu(BUY_COUNT)
+	count := cpu.lbu(BUY_COUNT)
 	for g, i in goods {
 		at := BUY_LIST + (count + u32(i)) * 2
-		psx.sb(at, u32(g.id))
-		psx.sb(at + 1, u32(g.kind))
+		cpu.sb(at, u32(g.id))
+		cpu.sb(at + 1, u32(g.kind))
 	}
-	psx.sb(BUY_COUNT, count + u32(len(goods)))
+	cpu.sb(BUY_COUNT, count + u32(len(goods)))
 	if .Game in core.trace.active {
 		core.tracef(.Game, "restored: shop %d gets %d more goods", shop, len(goods))
 	}
@@ -215,7 +215,7 @@ shop_copy :: proc() {
 @(private = "file")
 shop_table_vanilla :: proc() -> bool {
 	table: [SHOP_COUNT * SHOP_SIZE]u8
-	copy(table[:], psx.mem_slice(SHOP_TABLE, u32(len(table))))
+	copy(table[:], cpu.mem_slice(SHOP_TABLE, u32(len(table))))
 	for s in 0 ..< SHOP_COUNT {
 		table[s * SHOP_SIZE] = 0
 		table[s * SHOP_SIZE + 1] = 0
