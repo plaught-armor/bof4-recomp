@@ -1,8 +1,8 @@
 # Regression baseline
 
 `run.py` replays recorded sessions and autoplay routes headless (SDL offscreen,
-audio to `/dev/null`, unpaced) and compares every present against a recorded
-reference. The port writes hashes rather than pictures (`BOF4_DUMP_HASH=1`,
+audio to `/dev/null`, unpaced, connected controllers ignored) and compares
+every present against a recorded reference. The port writes hashes rather than pictures (`BOF4_DUMP_HASH=1`,
 see [debugging.md](../docs/debugging.md)), one line per dump. Each present
 gets the window picture and the PS1 frame. Every 150th present also gets
 VRAM, and every 300th gets main RAM.

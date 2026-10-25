@@ -343,6 +343,7 @@ map_geometry: struct {
 	tiles_draw: psx.Func_Proc,
 	models_draw: psx.Func_Proc,
 	check:      bool, // BOF4_MAPCHECK: run both drawings and compare
+	charge:     bool, // BOF4_MAPCHECK: native passes charge the game's cycles
 	checked:    int,
 	mismatches: int,
 	timed:      int, // drawings that differ only after an interrupt
@@ -356,6 +357,7 @@ map_geometry_init :: proc() -> bool {
 	map_geometry.tiles_draw = psx.hook(LAYER_TILES_DRAW, map_tiles_draw) or_return
 	map_geometry.models_draw = psx.hook(MODELS_DRAW, map_models_draw) or_return
 	map_geometry.check = os.get_env("BOF4_MAPCHECK", context.temp_allocator) != ""
+	map_geometry.charge = map_geometry.check
 	floors.dump_dir = os.get_env("BOF4_FLOORDUMP", context.allocator)
 	return true
 }
@@ -379,7 +381,14 @@ map_tiles_draw :: proc() {
 		tiles_draw_native()
 		return
 	}
+	// Drawn in 3D (psx.world_on), the native passes cull and sort by view
+	// space corners where the game's tests screen corners: the two differ by
+	// design, so only the layer round trip is checked.
 	map_check_layers()
+	if psx.world_on() {
+		tiles_draw_native()
+		return
+	}
 	@(static, rodata) interface := [?]u32{SC_PASS, SC_COUNT, SC_COUNT + 1, SC_VISITS, SC_VISITS + 1, SC_PACKET, SC_PACKET + 1, SC_PACKET + 2, SC_PACKET + 3, SC_FOGGED, 0x23, 0x27, 0x2b, 0x2f}
 	map_check_draw(map_geometry.tiles_draw, tiles_draw_native, interface[:], "tiles")
 }
@@ -390,7 +399,7 @@ map_models_draw :: proc() {
 		map_geometry.models_draw()
 		return
 	}
-	if !map_geometry.check {
+	if !map_geometry.check || psx.world_on() {
 		models_draw_native()
 		return
 	}
@@ -551,7 +560,7 @@ cost :: #force_inline proc(from, to: u32) -> u64 {
 
 @(private)
 spend :: #force_inline proc(from, to: u32) {
-	if map_geometry.check || psx.charge_native {
+	if map_geometry.charge || psx.charge_native {
 		psx.cpu.cycles += cost(from, to)
 	}
 }
@@ -1004,7 +1013,7 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 		spend(q.wrap[1][0], q.wrap[1][1])
 		d.packet = d.wrap
 	}
-	if map_geometry.check || psx.charge_native {
+	if map_geometry.charge || psx.charge_native {
 		psx.cpu.cycles += d.colour_cost
 	}
 

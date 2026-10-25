@@ -899,8 +899,10 @@ byte for byte).
   PS1.
 - `BOF4_MAPCHECK=1` runs the game's drawing and the native one on every frame
   and logs RAM differences and cycle mismatches (drawings an interrupt falls
-  inside are skipped, their timing differs by nature). Expected: `0 differ`,
-  `0 in cycles`.
+  inside are skipped, their timing differs by nature). Drawings made in 3D
+  (the third-person camera, `psx.world_on`) are not compared: the native
+  passes cull and sort by view space corners there, the game's code by
+  screen corners. Expected: `0 differ`, `0 in cycles`.
 
 ### Floors
 

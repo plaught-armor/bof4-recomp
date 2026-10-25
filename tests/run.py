@@ -80,8 +80,9 @@ CASES = {
     # Three town doors in and out with instant doors.
     "doors": route_case("doors.txt", "d2.ini", TOWN, [("map changes", r"autoplay: mode 2 map")]),
     # The added rooftop Z level on an edited 1000 block, native map drawing
-    # checked against the game's own (BOF4_MAPCHECK).
-    "roof": route_case("roof.txt", "d2.ini",
+    # checked against the game's own (BOF4_MAPCHECK). Third-person off: drawn
+    # in 3D, the two differ by design and the check skips them.
+    "roof": route_case("roof.txt", "d2flat.ini",
                        {**TOWN, "BOF4_MAPS": str(LOCAL / "maps"), "BOF4_MAPCHECK": "1", "BOF4_AUTO_TRACE": "1"},
                        [("map check", r"(\d+ drawings.*differ.*)")]),
     # The door route again with smooth motion off.
@@ -111,6 +112,9 @@ def run(name, mode, out):
         "SDL_VIDEODRIVER": "offscreen",
         "SDL_AUDIODRIVER": "disk",
         "SDL_DISKAUDIOFILE": "/dev/null",
+        # Live pads still reach a headless window and merge with replayed
+        # input: a connected controller made runs differ. Ignore them all.
+        "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT": "0x0000/0x0000",
         "BOF4_FAST": "1",
         "BOF4_DEVICE": "keyboard",
         "BOF4_CONFIG": str(out / "bof4.ini"),

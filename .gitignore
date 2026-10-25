@@ -19,3 +19,4 @@
 /port/src/rec/
 /tools/bof4tools
 /tools/bof4tools.exe
+__pycache__/
