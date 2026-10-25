@@ -9,6 +9,8 @@
 !/setup.bat
 !/docs/
 !/tools/
+!/tests/
+/tests/local/
 !/port/
 /port/*
 !/port/build.sh

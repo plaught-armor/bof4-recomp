@@ -99,6 +99,9 @@ host: struct {
 	dump_from:   u64,
 	// BOF4_DUMP_WINDOW=1: frame dumps also save the finished window picture.
 	dump_window: bool,
+	// BOF4_DUMP_HASH=1: <dump_dir>/hashes.tsv, which takes a hash line per
+	// dump in place of its file (regression runs, see tests/).
+	dump_hashes: ^os.File,
 	script:      [dynamic]Scripted_Press,
 	stick_script: [dynamic]Scripted_Stick,
 	poke_script: [dynamic]Scripted_Poke,
@@ -316,6 +319,15 @@ platform_init :: proc(title: cstring) -> bool {
 	capture_init()
 	sprite_dump_init()
 	host.dump_window = host.dump_dir != "" && os.get_env("BOF4_DUMP_WINDOW", context.temp_allocator) == "1"
+	if host.dump_dir != "" && os.get_env("BOF4_DUMP_HASH", context.temp_allocator) == "1" {
+		path := fmt.tprintf("%s/hashes.tsv", host.dump_dir)
+		f, err := os.create(path)
+		if err != nil {
+			fmt.eprintln("BOF4_DUMP_HASH: cannot create", path, err)
+			return false
+		}
+		host.dump_hashes = f
+	}
 	// Debug aid: BOF4_OSD_PANEL=<n> starts with the panel shown on page n
 	// (from 1).
 	if page, ok := strconv.parse_int(os.get_env("BOF4_OSD_PANEL", context.temp_allocator)); ok && page > 0 {
@@ -650,10 +662,7 @@ dump_frame :: proc() {
 		return
 	}
 	if host.presents >= host.dump_from && host.presents % host.ram_every == 0 {
-		ram_name := fmt.tprintf("%s/ram_%05d.bin", host.dump_dir, host.presents)
-		if err := os.write_entire_file(ram_name, ram[:]); err != nil {
-			fmt.eprintln("BOF4_DUMP: ram write failed:", ram_name, err)
-		}
+		dump_put("ram", "bin", ram[:])
 	}
 	if !frame_dump_due() || display.w <= 0 || display.h <= 0 {
 		return
@@ -663,10 +672,7 @@ dump_frame :: proc() {
 	header := fmt.tprintf("P6\n%d %d\n255\n", fw, fh)
 	append(&buf, ..transmute([]u8)header)
 	append(&buf, ..frame_rgb(frame_pixels()[:fw * fh]))
-	name := fmt.tprintf("%s/frame_%05d.ppm", host.dump_dir, host.presents)
-	if err := os.write_entire_file(name, buf[:]); err != nil {
-		fmt.eprintln("BOF4_DUMP: write failed:", name, err)
-	}
+	dump_put("frame", "ppm", buf[:])
 	if host.presents % 150 == 0 {
 		dump_vram()
 	}
@@ -696,8 +702,23 @@ dump_vram :: proc() {
 	header := fmt.tprintf("P6\n%d %d\n255\n", VRAM_W, VRAM_H)
 	append(&buf, ..transmute([]u8)header)
 	append(&buf, ..vram_rgb())
-	name := fmt.tprintf("%s/vram_%05d.ppm", host.dump_dir, host.presents)
-	if err := os.write_entire_file(name, buf[:]); err != nil {
+	dump_put("vram", "ppm", buf[:])
+}
+
+// Write one dump as <dump_dir>/<kind>_<presents>.<ext>, or with
+// BOF4_DUMP_HASH as a "<kind> <presents> <XXH3 of data>" line (tab
+// separated) in hashes.tsv.
+@(private)
+dump_put :: proc(kind, ext: string, data: []u8) {
+	if host.dump_hashes != nil {
+		line := fmt.tprintf("%s\t%d\t%016x\n", kind, host.presents, xxhash.XXH3_64(data))
+		if _, err := os.write_string(host.dump_hashes, line); err != nil {
+			fmt.eprintln("BOF4_DUMP_HASH: write failed:", err)
+		}
+		return
+	}
+	name := fmt.tprintf("%s/%s_%05d.%s", host.dump_dir, kind, host.presents, ext)
+	if err := os.write_entire_file(name, data); err != nil {
 		fmt.eprintln("BOF4_DUMP: write failed:", name, err)
 	}
 }

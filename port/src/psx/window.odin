@@ -257,10 +257,7 @@ dump_window_picture :: proc(kind: string) {
 	buf := make([dynamic]u8, context.temp_allocator)
 	append(&buf, ..transmute([]u8)header)
 	append(&buf, ..pix)
-	name := fmt.tprintf("%s/%s_%05d.ppm", host.dump_dir, kind, host.presents)
-	if err := os.write_entire_file(name, buf[:]); err != nil {
-		fmt.eprintln("BOF4_DUMP_WINDOW: write failed:", name, err)
-	}
+	dump_put(kind, "ppm", buf[:])
 }
 
 // The window's back buffer as tightly packed RGB888, in temp memory.

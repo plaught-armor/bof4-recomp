@@ -1,0 +1,26 @@
+timeout 20000
+until field
+wait 30
+goto 20 42
+until field
+wait 120
+goto 6 4
+until field
+wait 30
+goto 22 43
+goto 17 19
+until field
+wait 120
+goto 6 2
+until field
+wait 30
+goto 19 19
+goto 26 16
+until field
+wait 120
+goto 1 8
+until field
+wait 30
+goto 24 16
+wait 60
+quit

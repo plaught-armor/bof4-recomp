@@ -1,0 +1,16 @@
+timeout 3000
+until field
+goto 18 16
+stick 345 90
+stick 345 40
+log on roof
+snap
+goto 22 11
+snap
+goto 17 12
+log at landing
+stick 165 150
+log came down
+goto 26 30
+log back on ground
+quit

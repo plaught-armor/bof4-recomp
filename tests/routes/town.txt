@@ -1,0 +1,10 @@
+timeout 3000
+until field
+log start
+goto 22 22
+goto 34 33
+goto 22 43
+goto 18 31
+goto 26 32
+log done
+quit
