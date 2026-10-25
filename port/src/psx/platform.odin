@@ -892,17 +892,18 @@ platform_frame :: proc() {
 		preload_frame()
 		return
 	}
+	poll_events()
+	if present_hook != nil {
+		present_hook()
+	}
+	present()
+	// Before the pause wait, which is not work.
 	if .Perf in core.trace.active {
 		work := time.tick_since(host.work_mark)
 		if host.work_mark != {} && work > VBLANK_NS && !host.vsync {
 			core.tracef(.Perf, "late vblank: %.1f ms of work", time.duration_milliseconds(work))
 		}
 	}
-	poll_events()
-	if present_hook != nil {
-		present_hook()
-	}
-	present()
 	pause_wait()
 	if host.quit {
 		platform_shutdown()
