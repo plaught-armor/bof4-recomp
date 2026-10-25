@@ -6,6 +6,8 @@ picture, PS1 frame, and periodic RAM and VRAM become hash lines rather than
 files. `record` runs each case twice, keeps the first run's hashes as the
 reference in tests/local/ref/, and marks as unstable every present at which the two
 runs differ (host timing, such as the preload child, decides some frames).
+Presents the old reference marked stay marked, so a flake seen once is not
+lost on a re-record; delete the reference to start the marks afresh.
 `check` runs each case once and compares it with its reference.
 
     python3 tests/run.py list
@@ -220,11 +222,14 @@ def record(name, mode):
     a, checks, rc = run(name, mode, OUT / f"{name}.{mode}.1")
     b, checks2, rc2 = run(name, mode, OUT / f"{name}.{mode}.2")
     differ, only = compare(a, b)
-    write_ref(name, mode, a, set(differ) | set(only), checks, rc)
+    old = read_ref(name, mode)
+    kept = old[1] & a.keys() if old else set()
+    write_ref(name, mode, a, set(differ) | set(only) | kept, checks, rc)
     last = max((k[1] for k in a), default=0)
     note = "" if checks == checks2 else f"; checks differ between runs: {checks} / {checks2}"
     print(f"{name}.{mode}: exit {rc}/{rc2}, {len(a)} dumps to present {last}, "
           f"{len({k[1] for k in differ + only})} unstable presents ({spans(differ + only) or 'none'}), "
+          f"{len({k[1] for k in kept})} kept from the old reference, "
           f"checks {checks}{note}")
     return True
 
