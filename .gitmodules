@@ -1,0 +1,3 @@
+[submodule "ps-recomp"]
+	path = ps-recomp
+	url = https://github.com/plaught-armor/ps-recomp.git

@@ -10,6 +10,8 @@
 !/docs/
 !/tools/
 !/tests/
+!/ps-recomp
+!/.gitmodules
 /tests/local/
 !/port/
 /port/*
@@ -20,5 +22,3 @@
 /tools/bof4tools
 /tools/bof4tools.exe
 __pycache__/
-# ps-recomp checkout (a submodule later); here a link to a local one.
-/ps-recomp

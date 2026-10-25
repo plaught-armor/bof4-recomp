@@ -24,9 +24,9 @@ Requirements:
 - OpenGL 4.5 drivers; on Linux also SDL2 (Windows uses the `SDL2.dll` that
   ships with Odin)
 - ps-recomp (its recompiler, the emulated PS1 in its `psx` package, and
-  the `core` package: tracing, capture, PNG, environment), checked out as
-  `ps-recomp/` in the repository root, or anywhere else named by
-  `PS_RECOMP`
+  the `core` package: tracing, capture, PNG, environment): a submodule at
+  `ps-recomp/`, fetched by `git clone --recursive` or
+  `git submodule update --init`; `PS_RECOMP` names another checkout
 
 Steps:
 
