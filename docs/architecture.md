@@ -13,7 +13,8 @@ port/src/
 
 ## How the game's code runs
 
-`bof4tools recomp` is a static recompiler. It reads the executable and every
+ps-recomp's `recomp` is a static recompiler, run with the options in
+`tools/recomp.tsv`. It reads the executable and every
 code overlay (`overlays/`, see [overlays.md](overlays.md)) and turns each MIPS
 function into an Odin procedure working on the emulated CPU registers
 (`psx.cpu.r[0..31]`) and memory bus (`psx.lw`, `psx.sw`, `psx.lbu`, ...).
@@ -22,8 +23,10 @@ Function boundaries come from `tools/funcs.tsv` (exported from Ghidra with
 
 ```sh
 # from the repo root; regenerates port/src/rec byte-identical
-tools/bof4tools recomp exe disc/SLUS_013.24 overlays tools/funcs.tsv port/src/rec
-tools/bof4tools recomp ovl disc/SLUS_013.24 overlays tools/funcs.tsv port/src/rec
+# (setup skips its other steps when their output is there)
+tools/bof4tools setup
+# or with ps-recomp's recompiler built on its own
+odin build ps-recomp/recomp -o:speed -out:recomp && ./recomp tools/recomp.tsv
 ```
 
 Every call the game makes goes through `psx.call(addr)` (`psx/cpu.odin`):
@@ -73,7 +76,7 @@ state from outside `psx/` must go through `spu_sync` or `psx.sound_ram()`
 ## Patch points
 
 For a change inside a function that a whole-function hook cannot reach,
-`PATCHES` in `tools/recomp.odin` maps an instruction address to an Odin
+`tools/patches.tsv` maps an instruction address to an Odin
 condition and a target label in the same function: the generated code
 jumps there when the condition holds. Regenerate after editing it.
 

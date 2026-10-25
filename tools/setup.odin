@@ -6,6 +6,8 @@
 package tools
 
 import "core:os"
+import "ps:recomp/mips"
+import "ps:recomp/r3000"
 
 SETUP_USAGE :: `Usage: bof4tools setup
   Run from the top of the checkout, next to "Breath of Fire IV.cue" and its
@@ -36,7 +38,7 @@ setup_main :: proc(args: []string) {
 	}
 	// The recompiler warns about each branch in a delay slot it handles;
 	// the counts it prints are what matter here.
-	recomp_exe(SETUP_EXE, "overlays", "tools/funcs.tsv", "port/src/rec", quiet = true)
-	flush()
-	recomp_overlays(SETUP_EXE, "overlays", "tools/funcs.tsv", "port/src/rec", quiet = true)
+	o := mips.load_options("tools/recomp.tsv")
+	o.values["quiet"] = "true"
+	r3000.generate(o)
 }

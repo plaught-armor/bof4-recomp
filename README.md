@@ -23,8 +23,8 @@ Requirements:
   guide)
 - OpenGL 4.5 drivers; on Linux also SDL2 (Windows uses the `SDL2.dll` that
   ships with Odin)
-- ps-recomp's `core` package
-  (tracing, capture, PNG, environment), checked out as `ps-recomp/` in the
+- ps-recomp (its recompiler, and the `core` package: tracing, capture,
+  PNG, environment), checked out as `ps-recomp/` in the
   repository root, or anywhere else named by `PS_RECOMP`
 
 Steps:
@@ -39,7 +39,8 @@ Steps:
    - extracts the disc's files to `disc/` (`bof4tools disc-extract`);
    - checks that the executable is the US release;
    - extracts the code overlays to `overlays/` (`bof4tools emi-extract`);
-   - recompiles everything into `port/src/rec` (`bof4tools recomp`);
+   - recompiles everything into `port/src/rec` (ps-recomp's recompiler, with
+     `tools/recomp.tsv`);
    - builds the port (`port/build.sh`, or `port\build.bat` on Windows,
      which also copies `SDL2.dll` next to `bof4.exe`).
 3. Run the port from `port/`: `cd port && ./bof4` (Windows: `cd port`,
@@ -65,7 +66,7 @@ camp menu's Setting > Extras page. Memory cards are
 | `port/src/psx` | the emulated PS1 and host platform (window, audio, input, renderer) |
 | `port/src/qol` | features and mods, hooked into game functions |
 | `port/src/rec` | generated: the recompiled game code (not in the repo) |
-| `tools/` | `bof4tools` (in Odin): recompiler, disc and overlay extractors, map block tool, research helpers; Ghidra scripts |
+| `tools/` | `bof4tools` (in Odin): setup, disc and overlay extractors, map block tool, research helpers; Ghidra scripts |
 | `docs/` | reverse-engineering and modding notes: start at [docs/README.md](docs/README.md) |
 
 ## Modding

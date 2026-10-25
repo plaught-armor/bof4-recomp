@@ -1,7 +1,7 @@
 // The checkout's tools in one program: preparing a checkout from the disc
-// (setup and the steps it runs), the recompiler, and the inspection tools
-// the docs refer to. Build it with tools/build.sh (tools\build.bat on
-// Windows); setup.sh and setup.bat at the top of the checkout do.
+// (setup and the steps it runs) and the inspection tools the docs refer to.
+// Build it with tools/build.sh (tools\build.bat on Windows); setup.sh and
+// setup.bat at the top of the checkout do.
 //
 // Usage: bof4tools <tool> [arguments]; bof4tools alone lists the tools.
 package tools
@@ -25,7 +25,6 @@ TOOLS := [?]Tool {
 	{"setup", SETUP_USAGE, setup_main},
 	{"disc-extract", DISC_EXTRACT_USAGE, disc_extract_main},
 	{"emi-extract", EMI_EXTRACT_USAGE, emi_extract_main},
-	{"recomp", RECOMP_USAGE, recomp_main},
 	{"file-table", FILE_TABLE_USAGE, file_table_main},
 	{"save-to-mcd", SAVE_TO_MCD_USAGE, save_to_mcd_main},
 	{"dengeki-patch", DENGEKI_PATCH_USAGE, dengeki_patch_main},

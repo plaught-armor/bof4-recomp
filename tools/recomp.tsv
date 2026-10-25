@@ -1,0 +1,22 @@
+# Options for ps-recomp's recompiler, which bof4tools setup runs; by hand,
+# from the top of the checkout: recomp tools/recomp.tsv
+# code_lo..code_hi is the executable's code (PS-X EXE text); everything
+# outside it is data or overlay space.
+# cycles_per_insn is the average R3000A cost per instruction including
+# memory stalls: timing loops in the PsyQ libraries (VSync timeout, CD
+# waits) assume roughly this.
+# package_insns is the instructions per generated overlay package. Odin
+# compiles packages as separate LLVM modules (-use-separate-modules), so
+# smaller packages build in parallel.
+key	value
+backend	r3000
+exe	disc/SLUS_013.24
+out	port/src/rec
+runtime	../psx
+code_lo	80139598
+code_hi	80172BDC
+overlays	overlays
+funcs	tools/funcs.tsv
+patches	tools/patches.tsv
+cycles_per_insn	2
+package_insns	50000
