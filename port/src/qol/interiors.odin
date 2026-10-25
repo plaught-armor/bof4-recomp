@@ -34,7 +34,7 @@
 // the streets round the room and through its see-through walls).
 //
 // A room models a black curtain past its doorway for the town outside; the
-// pass leaves it out (render.blacks_all_begin). The exit cells on either side
+// pass leaves it out (scene.blacks_all_begin). The exit cells on either side
 // need not sit square on the doorway as the maps model it (Sarai 0204: the
 // town's doorway sits 0.17 of the opening's width off its exit cells, the
 // room's curtain not at all), so the room slides along the opening (`along`)
@@ -74,6 +74,7 @@ import gpu "ps:psx/gpu"
 import host "ps:psx/host"
 import io "ps:psx/io"
 import render "ps:psx/render"
+import scene "../scene"
 import spu "ps:psx/spu"
 
 import "ps:core"
@@ -340,7 +341,7 @@ Door :: struct {
 	// View units the room is slid along the opening, from its first corner
 	// toward its second; the picture's index in the town frame, and how far
 	// across the opening the town's doorway back reached in the frame before
-	// (render.picture_span).
+	// (scene.picture_span).
 	along:   f32,
 	pic:     int,
 	// Where the room slides to once settled; the last reading's place and
@@ -351,7 +352,7 @@ Door :: struct {
 	agreed:  int,
 	// How far the picture's opening is moved out from `quad` toward the
 	// front: onto the doorway's dark back when a frame found it standing
-	// before the plane, and none on it (render.picture_off). Sarai's tavern (0201.2) models
+	// before the plane, and none on it (scene.picture_off). Sarai's tavern (0201.2) models
 	// its back a tile before the far side of its exit cells.
 	inset:   f32,
 	// The inset the picture `pic` was added with.
@@ -359,7 +360,7 @@ Door :: struct {
 	back:    [2]f32,
 	back_ok: bool,
 	// A room's door to the town it stands in: its picture is drawn with
-	// the room's building left out (render.cut_begin), and the town with the
+	// the room's building left out (scene.cut_begin), and the town with the
 	// building is laid over the room as the party walks in (door_cover).
 	around:  bool,
 	box:     [2][2]f32, // the room's floor, lo and hi x, z (view units)
@@ -378,8 +379,8 @@ Door :: struct {
 	between_hi: render.Picture_Hi,
 	between_on: bool,
 	// A room's door to its town, just walked in through: the town drawn
-	// with the room's building (render.cover_add), whether it was, and its
-	// doorway on the picture (render.curtain_hole).
+	// with the room's building (scene.cover_add), whether it was, and its
+	// doorway on the picture (scene.curtain_hole).
 	cover:       []u16,
 	cover_hi:    render.Picture_Hi,
 	cover_drawn: bool,
@@ -716,31 +717,31 @@ interiors_layer_draw :: proc() {
 				quad, front := door_inset(&d)
 				n := linalg.normalize0(linalg.cross(quad[1] - quad[0], quad[3] - quad[0]))
 				warp := door_warp(&d, tr, n, linalg.dot(n, quad[0]))
-				render.cover_add(d.cover, &d.cover_hi, d.w, d.h, door_view(quad, tr), view_point(front, tr), &d.cover_hole, max(a, out), warp, out <= a)
+				scene.cover_add(d.cover, &d.cover_hi, d.w, d.h, door_view(quad, tr), view_point(front, tr), &d.cover_hole, max(a, out), warp, out <= a)
 			}
 			d.between_on = inbetween_replaying && d.drawn && d.pic >= 0 && redrawn < MAX_DOOR_PASSES
 			if d.between_on {
 				redrawn += 1
 				interiors.between_want = true
 				quad, front := door_inset(&d)
-				render.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.between, &d.between_hi, d.w, d.h)
+				scene.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.between, &d.between_hi, d.w, d.h)
 			} else if d.drawn && d.pic >= 0 {
 				quad, front := door_inset(&d)
 				n := linalg.normalize0(linalg.cross(quad[1] - quad[0], quad[3] - quad[0]))
 				warp := door_warp(&d, tr, n, linalg.dot(n, quad[0]))
-				render.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.pixels, &d.hi, d.w, d.h, warp)
+				scene.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.pixels, &d.hi, d.w, d.h, warp)
 			}
 			continue
 		}
 		// The town may draw its layer more than once a frame: keep the
 		// last back seen until a pass measures against it.
-		back, on := render.picture_span(d.pic)
+		back, on := scene.picture_span(d.pic)
 		if on {
 			d.back, d.back_ok = back, true
 		}
 		// Moved only when no back stood on the plane: a wall before it
 		// beside a back on it (Sarai 0204.2) is not one.
-		if off, ok := render.picture_off(d.pic); ok && !on && d.pic_inset == 0 && d.inset == 0 {
+		if off, ok := scene.picture_off(d.pic); ok && !on && d.pic_inset == 0 && d.inset == 0 {
 			d.inset = off
 			if .Game in core.trace.active {
 				core.tracef(.Game, "interiors: %04x.%d inset %v", d.world[0], d.world[1], d.inset)
@@ -749,12 +750,12 @@ interiors_layer_draw :: proc() {
 		d.pic = -1
 		if a, out := door_cover(), door_out(); max(a, out) > 0 && d.around && d.cover_drawn && world_find(d.world[0], d.world[1]) != nil {
 			quad, front := door_inset(&d)
-			render.cover_add(d.cover, &d.cover_hi, d.w, d.h, door_view(quad, tr), view_point(front, tr), &d.cover_hole, max(a, out), sided = out <= a)
+			scene.cover_add(d.cover, &d.cover_hi, d.w, d.h, door_view(quad, tr), view_point(front, tr), &d.cover_hole, max(a, out), sided = out <= a)
 		}
 		if d.drawn && world_find(d.world[0], d.world[1]) != nil {
 			d.pic_inset = d.inset
 			quad, front := door_inset(&d)
-			d.pic = render.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.pixels, &d.hi, d.w, d.h)
+			d.pic = scene.picture_add(&d, door_view(quad, tr), view_point(front, tr), d.pixels, &d.hi, d.w, d.h)
 		}
 	}
 	interiors.layer_draw()
@@ -957,7 +958,7 @@ door_around :: proc() -> bool {
 }
 
 // How much of the town with the room's building is laid over the room
-// (render.cover_add): all of it as the party walks in through an instant door,
+// (scene.cover_add): all of it as the party walks in through an instant door,
 // then easing out over COVER_TAIL. The game's camera holds it for
 // COVER_VBLANKS; the third-person lens, trailing the leader, until it comes
 // over the room's floor (door_lens_in): out there it sees the building, and
@@ -1189,7 +1190,7 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 		return false
 	}
 	defer psx.checkpoint_restore(interiors.checkpoint)
-	render.pictures_clear()
+	scene.pictures_clear()
 	psx.draw_start_load(w.start)
 	render.vram = w.vram^
 	render.vram_world(u32(mem.ptr_sub(w, &interiors.worlds[0])) + 1)
@@ -1236,16 +1237,16 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 	for c, k in d.quad {
 		quad[k] = town_view_point(c, tr)
 	}
-	render.blacks_all_begin(quad, town_view_point(d.front, tr))
+	scene.blacks_all_begin(quad, town_view_point(d.front, tr))
 	// The town's doorway the party walked in through, where the pass draws
-	// it: the cover's opening (render.curtain_hole).
+	// it: the cover's opening (scene.curtain_hole).
 	if cover && interiors.enter_ok {
 		shift := door_shift(d)
 		at: [4][3]f32
 		for c, k in interiors.enter_quad {
 			at[k] = town_view_point(c + shift, tr)
 		}
-		render.picture_blank_add(at, town_view_point(interiors.enter_front + shift, tr), PICTURE_W, PICTURE_H)
+		scene.picture_blank_add(at, town_view_point(interiors.enter_front + shift, tr), PICTURE_W, PICTURE_H)
 	}
 	if d.around && !cover {
 		rot: [3][3]f32
@@ -1254,16 +1255,16 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 				rot[i][j] = f32(town_matrix(i, j)) / 4096
 			}
 		}
-		render.cut_begin(rot, {f32(i32(tr[0])), f32(i32(tr[1])), f32(i32(tr[2]))}, d.box[0], d.box[1], d.ground * VIEW_PER_CELL / TARGET_PER_CELL + AROUND_ABOVE)
+		scene.cut_begin(rot, {f32(i32(tr[0])), f32(i32(tr[1])), f32(i32(tr[2]))}, d.box[0], d.box[1], d.ground * VIEW_PER_CELL / TARGET_PER_CELL + AROUND_ABOVE)
 	}
 	interiors.draw_otag_env()
-	render.cut_end()
+	scene.cut_end()
 	// The back and the curtain are measured only with the whole opening on
 	// screen: one cut by the screen's edge or the lens (the camera at the
 	// doorway) measures part of either, which slid the room by more than a
 	// tile from one frame to the next.
-	curtain, seen := render.blacks_all_end()
-	hole := render.curtain_hole(quad)
+	curtain, seen := scene.blacks_all_end()
+	hole := scene.curtain_hole(quad)
 	env := w.main.r[5]
 	x, y := i32(i16(cpu.lh(env))), i32(i16(cpu.lh(env + 2)))
 	d.w = min(i32(i16(cpu.lh(env + 4))), PICTURE_W)

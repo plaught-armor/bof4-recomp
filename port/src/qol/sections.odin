@@ -38,7 +38,7 @@ import bios "ps:psx/bios"
 import cpu "ps:psx/cpu"
 import host "ps:psx/host"
 import io "ps:psx/io"
-import render "ps:psx/render"
+import scene "../scene"
 
 import "ps:core"
 
@@ -570,7 +570,7 @@ layer_draw :: proc() {
 		sections.draw()
 		layer := u32(cpu.lbu(DRAW_LAYER))
 		if layer > u32(section) && layer < u32(section) + section_layers(u32(section)) && sections.key == neighbours_key(section) && open_any() {
-			render.blacks_add(lo, cpu.lw(PACKETS))
+			scene.blacks_add(lo, cpu.lw(PACKETS))
 		}
 		return
 	}
@@ -615,14 +615,14 @@ layer_draw :: proc() {
 	backs: [MAX_NEIGHBOURS]int
 	lo := cpu.lw(PACKETS)
 	for nb, i in list[:n] {
-		backs[i] = render.back_begin(lo, door_view(nb.door, tr), view_point(nb.front, tr))
+		backs[i] = scene.back_begin(lo, door_view(nb.door, tr), view_point(nb.front, tr))
 	}
 	sections.draw()
 	for k in backs[:n] {
-		render.back_end(k, cpu.lw(PACKETS))
+		scene.back_end(k, cpu.lw(PACKETS))
 	}
 	if open_any() {
-		render.blacks_add(lo, cpu.lw(PACKETS))
+		scene.blacks_add(lo, cpu.lw(PACKETS))
 	}
 	unhide_tiles(hidden[:h])
 	if n == 0 {
@@ -639,7 +639,7 @@ layer_draw :: proc() {
 		k := hide_others(hidden[from[i]:from[i + 1]], &others)
 		lo := cpu.lw(PACKETS)
 		sections.draw()
-		render.portal_add(lo, cpu.lw(PACKETS), door_view(nb.door, tr), false)
+		scene.portal_add(lo, cpu.lw(PACKETS), door_view(nb.door, tr), false)
 		unhide_tiles(others[:k])
 	}
 	for nb, i in list[:n] {
@@ -993,7 +993,7 @@ draw_layer_at :: proc(layer, section: u32, nb: Neighbour, tr: [3]u32, floor: ^Fl
 		}
 	}
 	if open {
-		render.blacks_add(lo, cpu.lw(PACKETS))
+		scene.blacks_add(lo, cpu.lw(PACKETS))
 	}
 	unhide_tiles(hidden[:n])
 	cpu.sh(CAM_TARGET, tx)
@@ -1057,7 +1057,7 @@ draw_models :: proc(layer: u32, over, keep: Cover) {
 	show_models(models[:k])
 	k = hide_models(layer, over, keep, true, &models)
 	sections.layer_models()
-	render.blacks_add(lo, cpu.lw(PACKETS))
+	scene.blacks_add(lo, cpu.lw(PACKETS))
 	show_models(models[:k])
 }
 
@@ -1316,7 +1316,7 @@ drawn_open :: proc(nb: Neighbour) -> bool {
 @(private = "file")
 through_door :: proc(nb: Neighbour, lo, hi: u32, tr: [3]u32) {
 	if !drawn_open(nb) {
-		render.portal_add(lo, hi, door_view(nb.door, tr), true)
+		scene.portal_add(lo, hi, door_view(nb.door, tr), true)
 	}
 }
 

@@ -92,10 +92,11 @@ Additions, all not PS1 features:
 
 | File | What |
 |---|---|
-| `psx/render/see_through.odin` | per-pixel fading of what stands between camera and leader, by depth recovered from GTE projections (a vertex cache like PGXP's) |
+| `psx/render/depth.odin` | depth recovered from GTE projections (a vertex cache like PGXP's) |
+| `psx/render/see_through.odin`, `scene/see.odin` | per-pixel fading of what stands between camera and leader: the renderer fades by the cover each polygon is given, the port's scene package decides it |
 | `psx/render/depth_buffer.odin` | a depth buffer on the hi-res target under the third-person camera, so the close camera no longer shows the painter's order's mistakes |
-| `psx/render/portal.odin` | draw a packet range only inside (or only outside) an opening's screen shape: neighbour sections seen through doorways |
-| `psx/render/picture.odin` | fill a doorway with a picture drawn off screen: town interiors, and a room's door to its town (cut box) |
+| `scene/portal.odin` | draw a packet range only inside (or only outside) an opening's screen shape: neighbour sections seen through doorways |
+| `scene/picture.odin` | fill a doorway with a picture drawn off screen: town interiors, and a room's door to its town (cut box) |
 | `psx/checkpoint.odin` | frozen-time passes: run game draw code for an extra picture, then restore the machine exactly |
 | `qol/inbetween.odin` | 60 fps: an in-between picture for each repeated display frame, drawn by a frozen-time pass with poses blended between two game frames |
 
@@ -239,7 +240,7 @@ Finer cells (4 x 4) and larger batches gave no fewer levels.
 The rest is the main thread (game code, triangle setup, checkpoint copies).
 A frozen-time pass no longer copies the 2.9 MB depth cache both ways: it
 logs each slot the pass first changes and puts those back at restore
-(`Depth_Undo`, `psx/render/see_through.odin`), which cut checkpoint save and
+(`Depth_Undo`, `psx/render/depth.odin`), which cut checkpoint save and
 restore from about 7.7% to 2.7% of all samples. RAM is saved a 4 KB page
 at a time, on the pass's first write to each page (`ram_guard` in
 `psx/cpu/bus.odin`; every RAM writer, CPU stores, DMA and native code, goes
@@ -469,7 +470,7 @@ than H / 2, where the GTE's divide overflows: the quotient stops at
 0x1ffff, so those corners land at about twice their view x, y from the
 screen offset whatever their depth. Unprojected as H / z, they bent the
 face's plane every frame, and its cover (leader behind the plane or not)
-flipped. `unproject` (psx/render/see_through.odin) takes the quotient as capped
+flipped. `unproject` (psx/render/depth.odin) takes the quotient as capped
 for see-through, door cuts and doorway openings, and the hardware
 renderer's shader does the same.
 
@@ -710,7 +711,7 @@ of the table draws with a depth buffer (`psx/render/depth_buffer.odin`):
   `PORTAL_VBLANKS` frames) can cover the address a later, flat 2D prim is
   built at, and that prim then took the sprite's depth (or a `depth_fill`
   hit) and the z-test or see-through hid it. Dialogue portraits vanished in
-  third-person this way (Wyndia's dog, every talk). `render.screen_add(lo, hi)`
+  third-person this way (Wyndia's dog, every talk). `scene.screen_add(lo, hi)`
   files a packet range as screen drawing: `exec_polygon` gives prims in it
   no depth and skips the Flats. The third-person hook on `FACE_DRAW`
   (0x801516ec) files the portrait's packets. The list holds `MAX_SCREENS`
@@ -750,7 +751,7 @@ the same range (`READ_OK`).
 
 While the third-person camera is in (`cpu.world_3d`) the field's
 tiles and placed models are drawn from their view-space corners
-instead of the packet's screen positions (`psx/render/world.odin`). The game still
+instead of the packet's screen positions (`scene/world.odin`). The game still
 builds, culls and orders every packet; only where the corners land changes.
 
 - **Filing.** `quad_draw` (`qol/map_geometry.odin`) computes each quad's

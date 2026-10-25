@@ -8,6 +8,8 @@ port/src/
   main.odin   loads SLUS_013.24 from ../disc, opens the .cue, starts everything
   rec/        generated: every game function recompiled from MIPS to Odin
   qol/        quality-of-life features and mods, hooked into game functions
+  scene/      what the renderer's scene hooks ask: world quads, portals, black
+              drops, door pictures and what covers the leader (see-through)
 ```
 
 The emulated PS1 the recompiled code runs on, plus its host features, is

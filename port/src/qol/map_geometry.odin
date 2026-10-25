@@ -33,7 +33,7 @@ import cpu "ps:psx/cpu"
 import gte "ps:psx/gte"
 import host "ps:psx/host"
 import io "ps:psx/io"
-import render "ps:psx/render"
+import scene "../scene"
 
 @(private = "file")
 LAYER_TILES_DRAW :: 0x80143930 // both tile passes over the runs LAYER_SETUP picked
@@ -386,11 +386,11 @@ map_tiles_draw :: proc() {
 		tiles_draw_native()
 		return
 	}
-	// Drawn in 3D (render.world_on), the native passes cull and sort by view
+	// Drawn in 3D (scene.world_on), the native passes cull and sort by view
 	// space corners where the game's tests screen corners: the two differ by
 	// design, so only the layer round trip is checked.
 	map_check_layers()
-	if render.world_on() {
+	if scene.world_on() {
 		tiles_draw_native()
 		return
 	}
@@ -404,7 +404,7 @@ map_models_draw :: proc() {
 		map_geometry.models_draw()
 		return
 	}
-	if !map_geometry.check || render.world_on() {
+	if !map_geometry.check || scene.world_on() {
 		models_draw_native()
 		return
 	}
@@ -837,10 +837,10 @@ quad_may_show :: proc(sxy: [4]u32, sz: [4]i32) -> bool {
 // lens.
 @(private = "file")
 world_may_show :: proc(at: [4][3]f32) -> bool {
-	h, of := render.world_lens()
+	h, of := scene.world_lens()
 	near, left, right, above, below := 0, 0, 0, 0, 0
 	for c in at {
-		near += int(c.z < render.WORLD_NEAR)
+		near += int(c.z < scene.WORLD_NEAR)
 		left += int(h * c.x + (of.x + 16) * c.z < 0)
 		right += int(h * c.x + (of.x - 336) * c.z >= 0)
 		above += int(h * c.y + (of.y + 16) * c.z < 0)
@@ -883,14 +883,14 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 	turn1 := i32(gte.gte_read(24))
 	sxy[3], sz[3] = gte.gte_read(14), i32(gte.gte_read(19))
 	spend(q.project[0], q.project[1])
-	// Drawn in 3D (render.world_on), the quad is tested by its corners in view
+	// Drawn in 3D (scene.world_on), the quad is tested by its corners in view
 	// space: the GTE's screen corners are clamped, and nonsense behind the
 	// lens.
-	world := render.world_on()
+	world := scene.world_on()
 	at: [4][3]f32
 	if world {
 		for &c, i in at {
-			c = render.world_view(d.v[i])
+			c = scene.world_view(d.v[i])
 		}
 		turn0, turn1 = world_turn(at[0], at[1], at[2]), world_turn(at[1], at[2], at[3])
 	}
@@ -1088,7 +1088,7 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 		spend(0x8014448c + l, 0x801444e8 + l)
 	}
 	if world {
-		render.world_quad_add(p, at)
+		scene.world_quad_add(p, at)
 	}
 	ot_insert(d.ot + OT_FIRST + u32(depth) * 4, p)
 	d.count += 1
@@ -1132,7 +1132,7 @@ quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 		cpu.w32(at + 4, sxy[i])
 	}
 	if world {
-		render.world_quad_add(p + 8, at)
+		scene.world_quad_add(p + 8, at)
 	}
 	slot := d.ot + OT_FIRST - 4 + u32(depth) * 4
 	ot_insert(slot, p + 8)

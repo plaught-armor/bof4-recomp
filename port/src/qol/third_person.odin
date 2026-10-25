@@ -38,7 +38,7 @@
 // his size on screen; past BOOM_MAX it rises no further and stays where it
 // is, inside the building behind him if need be. What is
 // still in the way, the GPU fades per
-// pixel, by real depth (render.see_through, see psx/see_through.odin):
+// pixel, by real depth (render.see_through, see psx/render/see_through.odin and scene/see.odin):
 // set_see_through hands it the leader's middle for each view built. What the
 // camera sits in is cut away near the lens; a face whose plane has the
 // leader behind it as seen from the lens (a wall turned to the camera in
@@ -73,6 +73,7 @@ import gte "ps:psx/gte"
 import host "ps:psx/host"
 import io "ps:psx/io"
 import render "ps:psx/render"
+import scene "../scene"
 
 // Maps of area M (1xxx) are towns; any other map is a room or a field.
 @(private = "file")
@@ -388,13 +389,13 @@ third_person_init :: proc() -> bool {
 }
 
 // A portrait is drawn flat on the screen: keep any depth off its quad
-// (render.screen_add), or it can take a sprite's from frames before and hide
+// (scene.screen_add), or it can take a sprite's from frames before and hide
 // behind the scenery.
 @(private = "file")
 face_draw :: proc() {
 	lo := cpu.lw(SPRITE_PACKETS)
 	tp.face()
-	render.screen_add(lo, cpu.lw(SPRITE_PACKETS))
+	scene.screen_add(lo, cpu.lw(SPRITE_PACKETS))
 }
 
 // This camera turns freely and looks through what stands before the leader
@@ -891,7 +892,7 @@ sprite_draw :: proc() {
 			cpu.sw(sprite + SPRITE_SCALE_X, sx)
 			cpu.sw(sprite + SPRITE_SCALE_Y, sy)
 		}
-		render.see_flat_add(lo, cpu.lw(SPRITE_PACKETS), tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_party, max(clear, 0))
+		scene.see_flat_add(lo, cpu.lw(SPRITE_PACKETS), tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_party, max(clear, 0))
 		tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_clear, tp.copy_scale = 0, {}, {}, -1, {}
 		return
 	}
@@ -935,7 +936,7 @@ sprite_draw :: proc() {
 	if !party || clear >= 0 || door_out() > 0 || door_cover() > 0 {
 		tp.copy_depth, tp.copy_party = f32(depth), party
 	}
-	render.see_flat_add(lo, cpu.lw(SPRITE_PACKETS), tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_party, max(clear, 0))
+	scene.see_flat_add(lo, cpu.lw(SPRITE_PACKETS), tp.copy_depth, tp.copy_at, tp.copy_sub, tp.copy_party, max(clear, 0))
 	cpu.sb(sprite + SPRITE_SCALED, scaled)
 	cpu.sw(sprite + SPRITE_SCALE_X, sx)
 	cpu.sw(sprite + SPRITE_SCALE_Y, sy)
@@ -1009,7 +1010,7 @@ set_see_through :: proc() {
 	}
 	down = linalg.normalize0(down)
 	f := [3]f32{f32(feet.x), f32(feet.y), f32(feet.z)}
-	render.see_through_set(f - down * LEADER_MIDDLE, -down, f.z, LEADER_MIDDLE, cpu.lhu(MAP_ID) & TOWN_MAPS == 0)
+	scene.see_through_set(f - down * LEADER_MIDDLE, -down, f.z, LEADER_MIDDLE, cpu.lhu(MAP_ID) & TOWN_MAPS == 0)
 	grade_update()
 }
 

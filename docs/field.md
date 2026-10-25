@@ -418,7 +418,7 @@ crosses between them without a fade (`qol/sections.odin`):
 - The black blocks round a stairwell share a placed model (and tiles) with
   the stair's top steps, so they cannot be hidden by model. While a floor is
   drawn whole, the port leaves black polygons out of its packets instead:
-  `psx/render/blacks.odin` keeps packet address runs, and a polygon in a run whose
+  `scene/blacks.odin` keeps packet address runs, and a polygon in a run whose
   colour (or texels at the middle and toward each corner) is black is not
   drawn. Runs cover the open floor's tiles and models, and this section's own
   layers while any neighbour is open (020b s4's other layers model blacks
@@ -444,9 +444,9 @@ been inside and show it in the doorway.
 - Black faces in rooms: a room's lens can hang outside its front wall, and
   from the third-person camera the black polygons round the room then cover
   the floor and the leader (Sarai 0204.2). With see-through up in a non-town
-  map (`render.see_through_set(..., room)`, room = map id & 0x1000 == 0), a
+  map (`scene.see_through_set(..., room)`, room = map id & 0x1000 == 0), a
   polygon that see-through would ghost, not a sprite, not semi-transparent,
-  black (`polygon_black`, psx/render/blacks.odin) and not a thin strip (both
+  black (`polygon_black`, scene/blacks.odin) and not a thin strip (both
   screen extents over `SEE_BLACK_THIN` 40 px, `see_thin`) is not drawn.
   Towns draw all their black faces: clotheslines are black strips seen edge
   on.
@@ -455,7 +455,7 @@ How the picture lines up with the doorway:
 - The room map models a black curtain past its own door, standing in for
   the town. It is a vertical plane about 126 view units toward the town's
   lens, with a lid. The room pass leaves out every black polygon
-  (`render.blacks_all_begin`/`blacks_all_end`). It also measures how far across
+  (`scene.blacks_all_begin`/`blacks_all_end`). It also measures how far across
   the door's opening the left-out curtain reached.
 - The exit cells need not sit square on the modelled doorway. In Sarai 0204
   the town's doorway back spans -0.17..0.83 of the exit opening's width,
@@ -482,7 +482,7 @@ How the picture lines up with the doorway:
   plane, `back_off` looks for an upright polygon parallel to it, at most
   `BACK_BEFORE` (256) before it, inside its sides and spanning its height
   but no higher. The wall beside a doorway reaches about 1.5 openings up
-  and is rejected. `render.picture_off` reports the nearest one, and the door
+  and is rejected. `scene.picture_off` reports the nearest one, and the door
   moves its picture's opening and front out by that much (`inset`, set
   once per door load).
 - Depths come from projections filed by screen position (last write wins).
@@ -735,7 +735,7 @@ What a load does that the switch redoes by hand:
   cell off where walking in had come from.
 - Walking into a room from its town, the town is drawn once more every frame
   from the room's lens, its building included (`door_pass` with `cover`), and
-  laid over the room (`render.cover_add`, tag `DOOR_COVER`): the room and its
+  laid over the room (`scene.cover_add`, tag `DOOR_COVER`): the room and its
   people show only through its doorway, so the first room frame matches the
   last town frame. The town's black sky is laid too. The cover is
   full for `COVER_VBLANKS` (30) and eases out over `COVER_TAIL` (10). With
@@ -774,16 +774,16 @@ What a load does that the switch redoes by hand:
   juddered back and forth through the door.
 - The cover's opening, where the room shows through, is the outline on the
   picture of the doorway's dark back as the town pass drew it
-  (`render.curtain_hole`, a `psx.Cover_Hole`: the convex hull of the corners of
+  (`scene.curtain_hole`, a `psx.Cover_Hole`: the convex hull of the corners of
   the black polygons left out, in picture coordinates). For the doorway of
   the door walked in through (`interiors.enter_quad`/`enter_front`, set by
   `door_enter` with `enter_ok`), the pass also lays a blank picture
-  (`render.picture_blank_add`): its back drawn black, its corners noted with
+  (`scene.picture_blank_add`): its back drawn black, its corners noted with
   the curtain's, so the opening is there even where the town drew no
   curtain. The walk tests each pixel against the opening after reading the
   cover, in picture coordinates; a warped cover clamps to the picture's
   edges. The GL path does the same (`pic_blank` uniform).
-- `render.cover_add` takes the opening by pointer (`&d.cover_hole`) and
+- `scene.cover_add` takes the opening by pointer (`&d.cover_hole`) and
   `picture_flush` copies it as it lays the cover: the frame's own cover pass
   runs after `cover_add` and overwrites the pixels and the opening, and a
   copy taken at `cover_add` paired the new pixels with the old opening (on
@@ -792,7 +792,7 @@ What a load does that the switch redoes by hand:
 - The room's own curtain at its doorway (its black polygons there) would
   hide the room in the opening. While a cover is due (`cover_due`), the
   frame leaves out black polygons about the cover's doorway (`cover_door`,
-  `curtain_at` in psx/render/blacks.odin) as it does in a curtain run.
+  `curtain_at` in scene/blacks.odin) as it does in a curtain run.
 - Party members stay over the cover the whole time it is laid, walking in
   or out (qol/third_person.odin `sprite_draw`), seen through the town's
   walls. Hiding those past the doorway (`door_cover_front`, removed) lost
@@ -855,7 +855,7 @@ picture; round the room stays the game's black.
   the doorway and hide the street. `floor_open_box` (qol/floors.odin) gives
   the box of the section's cells that are not walls; widened by
   `AROUND_WALL` (6) cells, it becomes an x/z box in the town's world space.
-  While the pass draws (`render.cut_begin`), a polygon with known depths (not a
+  While the pass draws (`scene.cut_begin`), a polygon with known depths (not a
   sprite) whose corners overlap the box and reach more than `AROUND_ABOVE`
   (48 view units) over the door's ground is left out.
 - Walking in, the cover (the town with the building) is laid over the room.
@@ -901,7 +901,7 @@ byte for byte).
 - `BOF4_MAPCHECK=1` runs the game's drawing and the native one on every frame
   and logs RAM differences and cycle mismatches (drawings an interrupt falls
   inside are skipped, their timing differs by nature). Drawings made in 3D
-  (the third-person camera, `render.world_on`) are not compared: the native
+  (the third-person camera, `scene.world_on`) are not compared: the native
   passes cull and sort by view space corners there, the game's code by
   screen corners. Expected: `0 differ`, `0 in cycles`.
 
