@@ -25,7 +25,7 @@ package qol
 
 import "core:fmt"
 import "core:os"
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 WORLD_FLAGS :: 0x8011b878

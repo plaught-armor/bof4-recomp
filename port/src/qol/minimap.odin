@@ -15,7 +15,7 @@ package qol
 
 import "core:math"
 
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 BLOCK_GRIDS :: 0x4 // u32 offsets of the grid headers

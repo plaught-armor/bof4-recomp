@@ -27,7 +27,7 @@ import "core:mem"
 import "core:os"
 import "core:strconv"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

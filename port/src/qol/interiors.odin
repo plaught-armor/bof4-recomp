@@ -67,7 +67,7 @@ import "core:math/linalg"
 import "core:mem"
 import "core:time"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

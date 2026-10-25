@@ -17,7 +17,7 @@
 // now the port's Display page), which shows a second value table.
 package qol
 
-import "../psx"
+import "ps:psx"
 
 // a0 the menu record. Per overlay (setting_menu.odin), as the tables and
 // message ids.

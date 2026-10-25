@@ -21,7 +21,7 @@
 // any frame rate.
 package qol
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

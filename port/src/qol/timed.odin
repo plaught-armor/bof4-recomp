@@ -26,7 +26,7 @@
 // The rate joins damage.odin's multipliers, so the damage number shows it.
 package qol
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

@@ -16,7 +16,7 @@
 package qol
 
 import "core:strings"
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 LEGEND_PAGE_X :: 640

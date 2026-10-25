@@ -3,7 +3,7 @@
 // address has one name (docs/address-map.md is built from these).
 package qol
 
-import "../psx"
+import "ps:psx"
 
 // Overlay slots (docs/overlays.md); each hook names its overlay id itself.
 SLOT_GAME :: 0x8018d800 // SYSTEM/GAME.EMI, id 0x0e: main loop, item/skill/growth tables

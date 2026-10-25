@@ -19,7 +19,7 @@ package qol
 
 import "core:fmt"
 
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 IDENTIFY_SLOT :: 0x801e6800

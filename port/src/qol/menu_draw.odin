@@ -14,7 +14,7 @@ package qol
 
 import "core:fmt"
 
-import "../psx"
+import "ps:psx"
 
 // a0 x, a1 y, a2 width, a3 height (8..255): frame and dark translucent body.
 @(private)

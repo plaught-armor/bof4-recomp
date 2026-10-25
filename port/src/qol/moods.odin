@@ -33,7 +33,7 @@ package qol
 
 import "core:fmt"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

@@ -16,7 +16,7 @@
 package qol
 
 import "core:hash"
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 VILLAGE_MAP :: 0x1013

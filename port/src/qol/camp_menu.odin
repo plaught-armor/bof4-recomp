@@ -27,7 +27,7 @@ package qol
 
 import "core:fmt"
 
-import "../psx"
+import "ps:psx"
 
 @(private)
 CAMP_ID :: 0x11

@@ -23,9 +23,10 @@ Requirements:
   guide)
 - OpenGL 4.5 drivers; on Linux also SDL2 (Windows uses the `SDL2.dll` that
   ships with Odin)
-- ps-recomp (its recompiler, and the `core` package: tracing, capture,
-  PNG, environment), checked out as `ps-recomp/` in the
-  repository root, or anywhere else named by `PS_RECOMP`
+- ps-recomp (its recompiler, the emulated PS1 in its `psx` package, and
+  the `core` package: tracing, capture, PNG, environment), checked out as
+  `ps-recomp/` in the repository root, or anywhere else named by
+  `PS_RECOMP`
 
 Steps:
 
@@ -63,7 +64,6 @@ camp menu's Setting > Extras page. Memory cards are
 
 | Path | What |
 |---|---|
-| `port/src/psx` | the emulated PS1 and host platform (window, audio, input, renderer) |
 | `port/src/qol` | features and mods, hooked into game functions |
 | `port/src/rec` | generated: the recompiled game code (not in the repo) |
 | `tools/` | `bof4tools` (in Odin): setup, disc and overlay extractors, map block tool, research helpers; Ghidra scripts |

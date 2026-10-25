@@ -35,7 +35,7 @@ import "core:math/bits"
 
 import sdl "vendor:sdl2"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

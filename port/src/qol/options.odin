@@ -21,7 +21,7 @@ import "core:math"
 import "core:os"
 import "core:strings"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

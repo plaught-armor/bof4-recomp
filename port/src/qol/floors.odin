@@ -24,7 +24,7 @@ import "core:fmt"
 import "core:mem"
 import "core:os"
 import "core:strings"
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

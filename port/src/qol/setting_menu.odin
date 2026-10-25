@@ -25,7 +25,7 @@ package qol
 
 import "core:fmt"
 
-import "../psx"
+import "ps:psx"
 
 // The game's Options (save block bytes): Text 0 Slow, 1 Norm, 2 Fast; Dash
 // 1 Auto; Camera 1 Reverse.

@@ -198,7 +198,7 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

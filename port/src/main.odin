@@ -7,7 +7,7 @@ package main
 import "core:fmt"
 import "core:os"
 
-import "psx"
+import "ps:psx"
 import "qol"
 import "rec"
 
@@ -50,6 +50,7 @@ main :: proc() {
 	psx.timers_init()
 	psx.dma_init()
 	psx.bios_init()
+	psx.card_files = {"bof4_slot1.mcd", "bof4_slot2.mcd"}
 	if !psx.memcard_init() {
 		os.exit(1)
 	}

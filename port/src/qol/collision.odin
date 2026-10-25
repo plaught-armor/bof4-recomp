@@ -11,7 +11,7 @@
 // backward branches, as in map_geometry.odin.
 package qol
 
-import "../psx"
+import "ps:psx"
 
 GROUND_CORE :: 0x8014a9cc // scratch position and layer descriptor: v0 = s16 ground y (units of 1/256), 0 off the grid
 GROUND_LIGHT :: 0x801381e9 // u8 brightness of the ground last found, 128 on unlit layers

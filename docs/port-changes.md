@@ -13,7 +13,7 @@ up, fix or open up what it already does.
   MIPS to Odin (`port/src/rec`), with a fallback interpreter for code the
   recompiler did not cover. No emulator core and no BIOS image: the PS1's
   CPU, GTE, GPU, SPU (with its reverb), CD-ROM, MDEC movies, XA audio, pads
-  and memory cards are reimplemented (`port/src/psx`).
+  and memory cards are reimplemented (ps-recomp's `psx` package).
 - Game routines are hooked or rewritten natively where that is faster or
   needed for a feature; game timing and save data stay compatible.
 - Memory cards are files: `bof4_slot1.mcd` and `bof4_slot2.mcd`.

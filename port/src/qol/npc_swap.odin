@@ -16,7 +16,7 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 NPC_INIT :: 0x801e0598

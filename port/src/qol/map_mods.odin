@@ -25,7 +25,7 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 MAP_DATA :: 0x80069800

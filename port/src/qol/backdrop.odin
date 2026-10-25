@@ -19,7 +19,7 @@
 package qol
 
 import "core:math"
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 MODE_EVENT :: 4

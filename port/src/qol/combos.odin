@@ -11,7 +11,7 @@ package qol
 
 import "core:strconv"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

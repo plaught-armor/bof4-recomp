@@ -15,7 +15,7 @@
 // them; scripts wait for a fade to end, so events stay in step.
 package qol
 
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 FADE_STEP :: 0x8018f524 // a0 = ^s16 counter, a1 = speed, a2 = layer, a3 = blend; v0 1 when done

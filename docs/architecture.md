@@ -7,9 +7,12 @@ emulator's CPU core. It is written in [Odin](https://odin-lang.org/).
 port/src/
   main.odin   loads SLUS_013.24 from ../disc, opens the .cue, starts everything
   rec/        generated: every game function recompiled from MIPS to Odin
-  psx/        the emulated PS1 the recompiled code runs on, plus host features
   qol/        quality-of-life features and mods, hooked into game functions
 ```
+
+The emulated PS1 the recompiled code runs on, plus its host features, is
+ps-recomp's `psx` package (`ps-recomp/psx/`, imported as `ps:psx`); the
+`psx/` paths in these docs are in it.
 
 ## How the game's code runs
 
@@ -243,7 +246,7 @@ minimap) with `psx/osd.odin`.
 
 ## Building
 
-Needs the Odin compiler, SDL2 and ps-recomp's `core` package (as
+Needs the Odin compiler, SDL2 and ps-recomp's `psx` and `core` packages (as
 `ps-recomp/` in the repository root, or wherever `PS_RECOMP` names; the
 build passes it as `-collection:ps` with `-define:ENV_PREFIX=BOF4_`, so its
 environment variables keep the `BOF4_` names). From `port/`:

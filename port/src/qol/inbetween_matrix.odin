@@ -21,7 +21,7 @@
 // for (a whole-picture pop of a pixel).
 package qol
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

@@ -14,7 +14,7 @@ package qol
 
 import "core:hash"
 
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 DESCRIPTION_BANK :: 2 // MESSAGE_TEXT's bank number (id >> 13) for item descriptions

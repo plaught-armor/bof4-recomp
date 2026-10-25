@@ -68,7 +68,7 @@ import "core:math"
 import "core:math/linalg"
 import "core:slice"
 
-import "../psx"
+import "ps:psx"
 
 // Maps of area M (1xxx) are towns; any other map is a room or a field.
 @(private = "file")
@@ -508,7 +508,7 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 		kept_write(&tp.h, CAM_H, h)
 		kept_write(&tp.near, CAM_NEAR, near)
 		kept_write(&tp.radii, CAM_TILE_RADII, radii)
-		psx.tiles_unculled = false
+		psx.world_3d = false
 		tp.view()
 		psx.see_through.on = false
 		psx.exact_view.stamp = 0
@@ -541,7 +541,7 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 	psx.sh(CAM_PITCH, boom(tilt))
 	psx.sh(CAM_TARGET + 2, height)
 	kept_write(&tp.radii, CAM_TILE_RADII, max(radii & 0xffff, TP_TILE_RADIUS) | max(radii >> 16, TP_TILE_RADIUS) << 16)
-	psx.tiles_unculled = true
+	psx.world_3d = true
 	a0 := psx.cpu.r[4]
 	view_at(u32(i32(math.round(reach))), distance, h, near)
 	exact_set(a0, yaw_frac, frac, h, pitch, distance, height)

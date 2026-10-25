@@ -19,7 +19,7 @@ package qol
 
 import "core:fmt"
 
-import "../psx"
+import "ps:psx"
 
 // u32 per game file: its first sector on the disc.
 @(private)

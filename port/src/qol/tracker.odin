@@ -20,7 +20,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
-import "../psx"
+import "ps:psx"
 
 // The region holding the event flag arrays, the per-area flag words and the
 // global flags (save offsets 0xdf4..0x10cc).

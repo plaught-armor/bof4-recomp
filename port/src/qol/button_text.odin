@@ -22,7 +22,7 @@
 package qol
 
 import "core:fmt"
-import "../psx"
+import "ps:psx"
 
 // Message box draw; the box is at [TEXT_BOX], its string at +12 and the
 // characters revealed so far at +29 (u8).

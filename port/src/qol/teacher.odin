@@ -20,7 +20,7 @@ package qol
 import "core:fmt"
 import "core:strings"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

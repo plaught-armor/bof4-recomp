@@ -21,7 +21,7 @@ import "core:fmt"
 import "core:math"
 import "core:path/filepath"
 import sdl "vendor:sdl2"
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 EDIT_BLOCK :: 0x80069800 // where a field map's data block loads (map_mods.odin)

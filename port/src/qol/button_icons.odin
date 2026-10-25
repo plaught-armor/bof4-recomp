@@ -20,7 +20,7 @@
 package qol
 
 import "core:strings"
-import "../psx"
+import "ps:psx"
 
 // Icon cells: 12x12 4bpp texels of texture page (960, 0), icon N at texel
 // (168 + 12*N, 184), so VRAM x 1002 + 3*N.

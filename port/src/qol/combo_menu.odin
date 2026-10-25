@@ -36,7 +36,7 @@ import "core:fmt"
 import "core:strconv"
 import "core:strings"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

@@ -17,7 +17,7 @@ tools/bof4tools emi-extract disc/BIN overlays
 An overlay's first word, at its slot address, is its global id. The port uses
 that (plus a short signature of the function's first words) to tell which
 overlay is resident when the game calls an address several overlays share
-(`ovl_resident` in `port/src/psx/cpu.odin`).
+(`ovl_resident` in ps-recomp's `psx/cpu.odin`).
 
 ## Slots
 

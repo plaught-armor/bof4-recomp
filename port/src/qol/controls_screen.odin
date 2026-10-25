@@ -24,7 +24,7 @@ package qol
 import "core:fmt"
 import "core:strings"
 
-import "../psx"
+import "ps:psx"
 
 // a0 the menu record; and the window kind's draw (no arguments, the window
 // in WIN_CURRENT).

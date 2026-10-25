@@ -9,7 +9,7 @@
 // the movie's title card shows.
 package qol
 
-import "../psx"
+import "ps:psx"
 
 // ZBOF4.STR on the disc: its first sector and length in sectors.
 @(private = "file")

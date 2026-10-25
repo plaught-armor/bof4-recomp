@@ -14,7 +14,7 @@
 // which one is loaded.
 package qol
 
-import "../psx"
+import "ps:psx"
 
 @(private)
 GAME_MODE_FIELD :: 2

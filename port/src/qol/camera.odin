@@ -41,7 +41,7 @@ package qol
 import "core:fmt"
 import "core:math"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 

@@ -14,7 +14,7 @@
 // per skill id, from SKILL_NAMES, to a NUL-terminated name.
 package qol
 
-import "../psx"
+import "ps:psx"
 
 @(private = "file")
 COMMAND_ID :: 0x33

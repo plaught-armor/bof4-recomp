@@ -61,7 +61,7 @@ import "core:fmt"
 import "core:math"
 import "core:slice"
 
-import "../psx"
+import "ps:psx"
 
 import "ps:core"
 
