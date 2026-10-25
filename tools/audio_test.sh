@@ -9,6 +9,9 @@
 #   ../tools/audio_test.sh /tmp/a BOF4_AUTO=auto.txt BOF4_REPLAY=rec/input.rec
 #     BOF4_CONFIG=rec/bof4.ini BOF4_MCD=rec/bof4_slot1.mcd
 # Do not set BOF4_FAST: an unpaced run queues no sound.
+# SDL_HINT_EGL_DEVICE=1 keeps the offscreen window on the GPU; without it the
+# picture is drawn in software, too slow for 60 vblanks a second in towns, and
+# the queue runs dry for that reason alone.
 # Leaves the bof4_test sink loaded; remove it with
 #   pactl unload-module module-null-sink
 set -e
@@ -23,7 +26,7 @@ pw-record --target bof4_test --rate 44100 --channels 2 --format s16 "$out/played
 rec=$!
 sleep 0.5
 status=0
-env SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=pulseaudio PULSE_SINK=bof4_test \
+env SDL_VIDEODRIVER=offscreen SDL_HINT_EGL_DEVICE=1 SDL_AUDIODRIVER=pulseaudio PULSE_SINK=bof4_test \
 	BOF4_TRACE=game,perf BOF4_AUDIO_DUMP="$out/mixed.wav" "$@" \
 	timeout 600 ./bof4 > "$out/log" 2>&1 || status=$?
 sleep 0.5
