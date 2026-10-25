@@ -1,25 +1,17 @@
-// Host input: keyboard and SDL game controllers, mapped to the console pad.
+// Host input for the console pad, on ps:core's input (core/input.odin):
+// bindings, controllers, rumble and taps live there. This file keeps what is
+// BoF4's: the pad bit layout, mouse sources, the left stick driving the
+// d-pad, scripted and replayed input, the autopilot, and the OSD panel and
+// qol hooks between the player and the game.
 //
-// Every keyboard key, controller button and trigger has a binding: the pad
-// bits it holds down. Bindings start at the defaults below and can be
-// replaced with bind_keys / bind_buttons (the qol config does this). Held
-// state is sampled once per poll, so several sources may hold the same bit.
-//
-// Controllers go through SDL's GameController layer, which maps any known
-// pad to an Xbox-style layout. The left stick also drives the d-pad, pressing
-// the direction of the 45 degree sector it points into once past the dead
-// zone, so menus work with it; `sticks` gives the analog positions to
-// features that use them directly.
+// Every controller feeds the one pad (core.input_init(shared = true)). The
+// left stick also drives the d-pad, pressing the direction of the 45 degree
+// sector it points into once past the dead zone, so menus work with it;
+// `sticks` gives the analog positions to features that use them directly.
 package psx
 
-import "core:fmt"
 import "core:math"
-import "core:os"
-import "core:strings"
-import sdl "vendor:sdl2"
-
-@(private)
-MAX_GAMEPADS :: 4
+import "ps:core"
 
 // D-pad bits of the eight 45 degree sectors around a stick, clockwise from up.
 STICK_SECTORS := [8]u16 {
@@ -32,147 +24,37 @@ STICK_SECTORS := [8]u16 {
 	PAD_LEFT,
 	PAD_LEFT | PAD_UP,
 }
-// Trigger deflection (0..1) that counts as pressed.
-@(private)
-TRIGGER_PRESS :: 0.5
-// Radial dead zone of the analog sticks (0..1); `sticks` rescales past it.
-@(private)
-STICK_DEADZONE :: 0.2
-
-// Each rumble sent to the controllers lasts this long (real time) and is
-// renewed at half of it while a motor runs, so a motor left on stops soon
-// after the game stops polling.
-@(private)
-RUMBLE_HOLD_MS :: 500
-
-@(private)
-Trigger :: enum {
-	Left,
-	Right,
-}
 
 @(private)
 input: struct {
-	keys:     [sdl.NUM_SCANCODES]u16,
-	buttons:  [sdl.GameControllerButton.MAX]u16,
-	triggers: [Trigger]u16,
-	pads:     [MAX_GAMEPADS]^sdl.GameController,
-	pad_ids:  [MAX_GAMEPADS]sdl.JoystickID,
-	// Pads that refused a rumble; reported once each.
-	no_rumble: [MAX_GAMEPADS]bool,
-	// Vblank until which each pad bit stays held by press_for.
-	tap_until: [16]u64,
 	// Buttons kept from the game until released: those held while the panel
 	// was up (pad_game).
-	blocked:  u16,
-	// The kind of device last used, for button prompts.
-	device:   Input_Device,
-	// The family of the controller last used or connected; PlayStation
-	// until there is one.
-	pad_device: Input_Device,
-	// Set from BOF4_DEVICE: device and pad_device stay as set.
-	device_fixed: bool,
+	blocked: u16,
 }
 
-// The kind of device the player last pressed something on. Button prompts
-// follow it: keycaps for the keyboard and mouse, face-button symbols or
-// letters for each controller family.
-Input_Device :: enum u8 {
-	Keyboard,
-	PlayStation,
-	Xbox,
-	Nintendo,
+Input_Device :: core.Input_Device
+Pad_Control :: core.Pad_Control
+
+input_device :: core.input_device
+input_pad_device :: core.input_pad_device
+stick_angle :: core.stick_angle
+
+// core.Buttons is in pad wire order with byte 3 in the low half; the game's
+// PAD_ masks have it in the high half.
+@(private)
+pad_bits :: proc(b: core.Buttons) -> u16 {
+	v := transmute(u16)b
+	return v << 8 | v >> 8
 }
 
-// The kind of device last used.
-input_device :: proc() -> Input_Device {
-	return input.device
-}
-
-// The family of the controller last used or connected (PlayStation when
-// none has been): what controller buttons are called.
-input_pad_device :: proc() -> Input_Device {
-	return input.pad_device == .Keyboard ? .PlayStation : input.pad_device
-}
-
-// The controls of an SDL game controller, by their Xbox-style names; A is
-// the south face button (on Nintendo pads, the button labelled A).
-Pad_Control :: enum u8 {
-	A,
-	B,
-	X,
-	Y,
-	Back,
-	Guide,
-	Start,
-	Left_Stick,
-	Right_Stick,
-	Left_Shoulder,
-	Right_Shoulder,
-	Up,
-	Down,
-	Left,
-	Right,
-	Left_Trigger,
-	Right_Trigger,
+@(private)
+pad_set :: proc(bits: u16) -> core.Buttons {
+	return transmute(core.Buttons)(bits << 8 | bits >> 8)
 }
 
 // The first controller control (in Pad_Control order) that holds `bit`.
 pad_source :: proc(bit: u16) -> (c: Pad_Control, ok: bool) {
-	#assert(int(Pad_Control.Right) == int(sdl.GameControllerButton.DPAD_RIGHT))
-	for c in Pad_Control.A ..= Pad_Control.Right {
-		if input.buttons[sdl.GameControllerButton(c)] & bit != 0 {
-			return c, true
-		}
-	}
-	if input.triggers[.Left] & bit != 0 {
-		return .Left_Trigger, true
-	}
-	if input.triggers[.Right] & bit != 0 {
-		return .Right_Trigger, true
-	}
-	return {}, false
-}
-
-// Controller axis deflection that counts as using the pad (of 32767).
-@(private)
-DEVICE_AXIS_USE :: 16000
-
-// The prompt family of an open controller. Unknown pads use Xbox prompts,
-// since SDL lays every pad out like one.
-@(private)
-device_of_pad :: proc(pad: ^sdl.GameController) -> Input_Device {
-	#partial switch sdl.GameControllerGetType(pad) {
-	case .PS3, .PS4, .PS5:
-		return .PlayStation
-	case .NINTENDO_SWITCH_PRO:
-		return .Nintendo
-	}
-	// Joy-Con types (left, right, pair) postdate the binding's enum.
-	if t := int(sdl.GameControllerGetType(pad)); t >= 11 && t <= 13 {
-		return .Nintendo
-	}
-	return .Xbox
-}
-
-// Note a press on a device of kind `d`.
-@(private)
-device_used :: proc(d: Input_Device) {
-	if input.device_fixed {
-		return
-	}
-	input.device = d
-	if d != .Keyboard {
-		input.pad_device = d
-	}
-}
-
-// Note a press on the controller with joystick instance id `id`.
-@(private)
-device_pad_used :: proc(id: sdl.JoystickID) {
-	if pad := sdl.GameControllerFromInstanceID(id); pad != nil {
-		device_used(device_of_pad(pad))
-	}
+	return core.pad_source(pad_set(bit))
 }
 
 // Emulated vblanks a tap (press_for) usually lasts: two game ticks at the
@@ -182,23 +64,7 @@ TAP_HOLD :: 8
 // Hold `bits` for the next `vblanks` emulated vblanks, on top of whatever the
 // player holds; a later call extends a tap still running.
 press_for :: proc(bits: u16, vblanks: u64) {
-	for i in 0 ..< len(input.tap_until) {
-		if bits & (1 << u16(i)) != 0 {
-			input.tap_until[i] = max(input.tap_until[i], host.presents + vblanks)
-		}
-	}
-}
-
-// Motor strength scale 0..1, set by pad_set_rumble.
-@(private)
-rumble_strength: f32
-
-// Motor state last sent to the controllers and when (SDL ticks, ms).
-@(private)
-rumble: struct {
-	small: bool,
-	large: u8,
-	sent:  u32,
+	core.input_tap(0, pad_set(bits), host.presents + vblanks)
 }
 
 // Console button names as used in config files.
@@ -224,36 +90,11 @@ PAD_NAMES := [?]struct {
 
 @(private)
 input_init :: proc() {
+	core.input_init(shared = true)
 	key_binds_set(key_binds_default())
-	b := &input.buttons
-	b[sdl.GameControllerButton.A] = PAD_CROSS
-	b[sdl.GameControllerButton.B] = PAD_CIRCLE
-	b[sdl.GameControllerButton.X] = PAD_SQUARE
-	b[sdl.GameControllerButton.Y] = PAD_TRIANGLE
-	b[sdl.GameControllerButton.LEFTSHOULDER] = PAD_L1
-	b[sdl.GameControllerButton.RIGHTSHOULDER] = PAD_R1
-	b[sdl.GameControllerButton.BACK] = PAD_SELECT
-	b[sdl.GameControllerButton.START] = PAD_START
-	b[sdl.GameControllerButton.DPAD_UP] = PAD_UP
-	b[sdl.GameControllerButton.DPAD_DOWN] = PAD_DOWN
-	b[sdl.GameControllerButton.DPAD_LEFT] = PAD_LEFT
-	b[sdl.GameControllerButton.DPAD_RIGHT] = PAD_RIGHT
-	input.triggers = {.Left = PAD_L2, .Right = PAD_R2}
-	// BOF4_DEVICE fixes the prompt family (for tests).
-	input.device_fixed = true
-	switch os.get_env("BOF4_DEVICE", context.temp_allocator) {
-	case "keyboard":
-		input.device = .Keyboard
-	case "ps":
-		input.device = .PlayStation
-	case "xbox":
-		input.device = .Xbox
-	case "switch":
-		input.device = .Nintendo
-	case:
-		input.device_fixed = false
-	}
-	input.pad_device = input.device
+	core.input_bind_standard()
+	// The digital pad has no L3/R3.
+	core.bind_buttons({.L3, .R3}, nil)
 }
 
 // The pad bit for a config name such as "cross" or "l1".
@@ -270,34 +111,19 @@ pad_bit_from_name :: proc(name: string) -> (bit: u16, ok: bool) {
 // "Left Shift") and mouse sources (MOUSE_NAMES, e.g. "Mouse Left", "Wheel
 // Up") hold `bit`. All names are checked before anything changes.
 bind_keys :: proc(bit: u16, names: []string) -> bool {
-	Source :: union {
-		sdl.Scancode,
-		Mouse_Source,
-	}
-	sources := make([]Source, len(names), context.temp_allocator)
-	for name, i in names {
+	keys := make([dynamic]string, 0, len(names), context.temp_allocator)
+	mice := make([dynamic]Mouse_Source, 0, len(names), context.temp_allocator)
+	for name in names {
 		if m, ok := mouse_source_from_name(name); ok {
-			sources[i] = m
-			continue
+			append(&mice, m)
+		} else {
+			append(&keys, name)
 		}
-		code := sdl.GetScancodeFromName(strings.clone_to_cstring(name, context.temp_allocator))
-		if code == .UNKNOWN {
-			fmt.eprintln("input: unknown key", name)
-			return false
-		}
-		sources[i] = code
 	}
-	for &k in input.keys {
-		k &= ~bit
-	}
+	core.bind_keys(pad_set(bit), keys[:]) or_return
 	mouse_unbind(bit)
-	for s in sources {
-		switch v in s {
-		case sdl.Scancode:
-			input.keys[v] |= bit
-		case Mouse_Source:
-			mouse_bind(v, bit)
-		}
+	for m in mice {
+		mouse_bind(m, bit)
 	}
 	return true
 }
@@ -306,127 +132,24 @@ bind_keys :: proc(bit: u16, names: []string) -> bool {
 // start, leftshoulder, rightshoulder, leftstick, rightstick, dpup, dpdown,
 // dpleft, dpright, plus lefttrigger and righttrigger) hold `bit`.
 bind_buttons :: proc(bit: u16, names: []string) -> bool {
-	Source :: union {
-		sdl.GameControllerButton,
-		Trigger,
-	}
-	sources := make([]Source, len(names), context.temp_allocator)
-	for name, i in names {
-		switch name {
-		case "lefttrigger":
-			sources[i] = Trigger.Left
-		case "righttrigger":
-			sources[i] = Trigger.Right
-		case:
-			b := sdl.GameControllerGetButtonFromString(strings.clone_to_cstring(name, context.temp_allocator))
-			if b == .INVALID {
-				fmt.eprintln("input: unknown controller button", name)
-				return false
-			}
-			sources[i] = b
-		}
-	}
-	for &b in input.buttons {
-		b &= ~bit
-	}
-	for &t in input.triggers {
-		t &= ~bit
-	}
-	for s in sources {
-		switch v in s {
-		case sdl.GameControllerButton:
-			input.buttons[v] |= bit
-		case Trigger:
-			input.triggers[v] |= bit
-		}
-	}
-	return true
+	return core.bind_buttons(pad_set(bit), names)
 }
 
-// CONTROLLERDEVICEADDED: `index` is a device index. Pads present at startup
-// arrive through this event too.
-@(private)
-gamepad_added :: proc(index: i32) {
-	for p, k in input.pads {
-		if p != nil {
-			continue
-		}
-		pad := sdl.GameControllerOpen(index)
-		if pad == nil {
-			fmt.eprintln("gamepad: cannot open device", index, sdl.GetError())
-			return
-		}
-		input.pads[k] = pad
-		input.no_rumble[k] = false
-		input.pad_ids[k] = sdl.JoystickInstanceID(sdl.GameControllerGetJoystick(pad))
-		device_used(device_of_pad(pad))
-		fmt.eprintln("gamepad: connected", sdl.GameControllerName(pad))
-		return
-	}
-	fmt.eprintln("gamepad: ignoring device", index, "- all", MAX_GAMEPADS, "slots in use")
-}
-
-// CONTROLLERDEVICEREMOVED: `id` is a joystick instance id.
-@(private)
-gamepad_removed :: proc(id: sdl.JoystickID) {
-	for &p, k in input.pads {
-		if p != nil && input.pad_ids[k] == id {
-			sdl.GameControllerClose(p)
-			p = nil
-			fmt.eprintln("gamepad: disconnected")
-		}
-	}
-}
-
-// Drive the controller motors from the emulated pad's: the large (low
-// frequency) motor takes a speed, the small (high frequency) one is on or off.
+// Drive the controller motors from the emulated pad's.
 @(private)
 pad_rumble :: proc(small: bool, large: u8) {
-	now := sdl.GetTicks()
-	running := small || large != 0
-	if small == rumble.small && large == rumble.large {
-		if !running || now - rumble.sent < RUMBLE_HOLD_MS / 2 {
-			return
-		}
-	}
-	rumble = {small, large, now}
-	lo := u16(f32(large) / 255 * rumble_strength * 0xffff)
-	hi := small ? u16(rumble_strength * 0xffff) : 0
-	rumble_send(lo, hi, running ? RUMBLE_HOLD_MS : 0)
+	core.input_rumble(0, small, large)
 }
 
 // Stop the motors (pause); the next poll that runs one starts them again.
 @(private)
 rumble_stop :: proc() {
-	rumble = {}
-	rumble_send(0, 0, 0)
-}
-
-@(private)
-rumble_send :: proc(lo, hi: u16, ms: u32) {
-	for p, k in input.pads {
-		if p == nil || input.no_rumble[k] {
-			continue
-		}
-		if sdl.GameControllerRumble(p, lo, hi, ms) != 0 {
-			input.no_rumble[k] = true
-			fmt.eprintln("gamepad: no rumble on", sdl.GameControllerName(p), "-", sdl.GetError())
-		}
-	}
+	core.input_rumble_stop()
 }
 
 // Held buttons, active-high, in the game's bit layout.
 pad_buttons :: proc() -> (held: u16) {
-	for down, code in sdl.GetKeyboardStateAsSlice() {
-		if down != 0 && code < len(input.keys) {
-			held |= input.keys[code]
-		}
-	}
-	for p in input.pads {
-		if p != nil {
-			held |= gamepad_held(p)
-		}
-	}
+	held = pad_bits(core.input_poll(host.presents)[0].buttons)
 	for p in host.script {
 		if host.presents >= p.at && host.presents < p.at + p.hold {
 			held |= p.mask
@@ -437,11 +160,6 @@ pad_buttons :: proc() -> (held: u16) {
 	}
 	held |= mouse_held()
 	held |= auto_pad
-	for until, i in input.tap_until {
-		if host.presents < until {
-			held |= 1 << u16(i)
-		}
-	}
 	record_pad(held)
 	return held
 }
@@ -476,30 +194,9 @@ auto_stick: [2]f32
 // move a button's job to another on some screens; set by the qol package.
 pad_hook: proc(held: u16) -> u16
 
-// Clockwise angle of a stick from up, in degrees (-180..180).
-stick_angle :: proc(v: [2]f32) -> f64 {
-	return math.to_degrees(math.atan2(f64(v.x), f64(-v.y)))
-}
-
 @(private)
 stick_sector :: proc(v: [2]f32) -> int {
 	return int(math.round(stick_angle(v) / 45)) & 7
-}
-
-@(private)
-gamepad_held :: proc(p: ^sdl.GameController) -> (held: u16) {
-	for bits, b in input.buttons {
-		if bits != 0 && sdl.GameControllerGetButton(p, sdl.GameControllerButton(b)) != 0 {
-			held |= bits
-		}
-	}
-	if axis(p, .TRIGGERLEFT) >= TRIGGER_PRESS {
-		held |= input.triggers[.Left]
-	}
-	if axis(p, .TRIGGERRIGHT) >= TRIGGER_PRESS {
-		held |= input.triggers[.Right]
-	}
-	return
 }
 
 // Analog stick positions, x right and y down, each component in -1..1 with
@@ -512,20 +209,16 @@ sticks :: proc() -> (s: Sticks) {
 	if preload_child {
 		return
 	}
-	for p in input.pads {
-		if p == nil {
-			continue
-		}
-		s.left = stronger(s.left, dead_zone({axis(p, .LEFTX), axis(p, .LEFTY)}))
-		s.right = stronger(s.right, dead_zone({axis(p, .RIGHTX), axis(p, .RIGHTY)}))
-	}
+	p := core.input_poll(host.presents)[0]
+	s.left = core.dead_zone(p.left)
+	s.right = core.dead_zone(p.right)
 	if auto_stick != {} {
-		s.left = stronger(s.left, auto_stick)
+		s.left = core.stronger(s.left, auto_stick)
 	}
 	for e in host.stick_script {
 		if host.presents >= e.at && host.presents < e.at + e.hold {
-			s.left = stronger(s.left, e.sticks.left)
-			s.right = stronger(s.right, e.sticks.right)
+			s.left = core.stronger(s.left, e.sticks.left)
+			s.right = core.stronger(s.right, e.sticks.right)
 		}
 	}
 	// After the scripted and replayed moves, as pad_buttons records its
@@ -540,23 +233,3 @@ sticks :: proc() -> (s: Sticks) {
 // While set, the game and the qol walking code see the left stick at rest
 // (the map editor takes the pad); set by the qol package.
 sticks_left_blocked: bool
-
-@(private)
-axis :: proc(p: ^sdl.GameController, a: sdl.GameControllerAxis) -> f32 {
-	return max(f32(sdl.GameControllerGetAxis(p, a)) / 32767, -1)
-}
-
-@(private)
-dead_zone :: proc(v: [2]f32) -> [2]f32 {
-	m := math.sqrt(v.x * v.x + v.y * v.y)
-	if m <= STICK_DEADZONE {
-		return {}
-	}
-	scaled := min((m - STICK_DEADZONE) / (1 - STICK_DEADZONE), 1)
-	return v * (scaled / m)
-}
-
-@(private)
-stronger :: proc(a, b: [2]f32) -> [2]f32 {
-	return a.x * a.x + a.y * a.y >= b.x * b.x + b.y * b.y ? a : b
-}

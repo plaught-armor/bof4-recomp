@@ -14,11 +14,12 @@ package psx
 import "core:hash/xxhash"
 import "core:mem"
 import "core:strings"
+import "ps:core"
 import sdl "vendor:sdl2"
 
 // Every keyboard and mouse binding, to put back later.
 Key_Binds :: struct {
-	keys:  [sdl.NUM_SCANCODES]u16,
+	keys:  [sdl.NUM_SCANCODES]core.Buttons,
 	mouse: [Mouse_Source]u16,
 }
 
@@ -75,17 +76,17 @@ catch_mouse :: proc(s: Mouse_Source) -> bool {
 // device in use: button prompts drawn from them are still current while it
 // stays the same, so they need not be worked out again every vblank.
 binds_hash :: proc() -> u64 {
-	h := xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&input.keys), u64(input.device))
-	h = xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&input.buttons), h)
-	h = xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&input.triggers), h)
+	h := xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&core.input.keys), u64(core.input.device))
+	h = xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&core.input.buttons), h)
+	h = xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&core.input.triggers), h)
 	return xxhash.XXH3_64_with_seed(mem.ptr_to_bytes(&mouse.binds), h)
 }
 
 // The names of the keys and mouse sources that hold `bit`, keys first, as
 // many as fit in `out`; returns how many there are in all.
 key_sources :: proc(bit: u16, out: []string) -> (n: int) {
-	for b, code in input.keys {
-		if b & bit != 0 {
+	for b, code in core.input.keys {
+		if b & pad_set(bit) != {} {
 			if n < len(out) {
 				out[n] = string(sdl.GetScancodeName(sdl.Scancode(code)))
 			}
@@ -113,24 +114,24 @@ key_bind_move :: proc(name: string, bit: u16) -> bool {
 	if code == .UNKNOWN {
 		return false
 	}
-	input.keys[code] = bit
+	core.input.keys[code] = pad_set(bit)
 	return true
 }
 
 // Unbind every key and mouse source from `bit`.
 key_bind_clear :: proc(bit: u16) {
-	for &k in input.keys {
-		k &= ~bit
+	for &k in core.input.keys {
+		k -= pad_set(bit)
 	}
 	mouse_unbind(bit)
 }
 
 key_binds_get :: proc() -> Key_Binds {
-	return {input.keys, mouse.binds}
+	return {core.input.keys, mouse.binds}
 }
 
 key_binds_set :: proc(b: Key_Binds) {
-	input.keys = b.keys
+	core.input.keys = b.keys
 	mouse.binds = b.mouse
 }
 
@@ -142,23 +143,23 @@ key_binds_default :: proc() -> (b: Key_Binds) {
 	// opens the camp menu, Space does what Triangle does. The mouse turns the
 	// camera and its wheel stands in for L1/R1; Q and R are L2 and R2, which
 	// the game uses for few things (fishing's lure change among them).
-	k[sdl.Scancode.W] = PAD_UP
-	k[sdl.Scancode.S] = PAD_DOWN
-	k[sdl.Scancode.A] = PAD_LEFT
-	k[sdl.Scancode.D] = PAD_RIGHT
-	k[sdl.Scancode.UP] = PAD_UP
-	k[sdl.Scancode.DOWN] = PAD_DOWN
-	k[sdl.Scancode.LEFT] = PAD_LEFT
-	k[sdl.Scancode.RIGHT] = PAD_RIGHT
-	k[sdl.Scancode.E] = PAD_CROSS
-	k[sdl.Scancode.ESCAPE] = PAD_CIRCLE
-	k[sdl.Scancode.LSHIFT] = PAD_CIRCLE
-	k[sdl.Scancode.TAB] = PAD_SQUARE
-	k[sdl.Scancode.SPACE] = PAD_TRIANGLE
-	k[sdl.Scancode.RETURN] = PAD_START
-	k[sdl.Scancode.BACKSPACE] = PAD_SELECT
-	k[sdl.Scancode.Q] = PAD_L2
-	k[sdl.Scancode.R] = PAD_R2
+	k[sdl.Scancode.W] = pad_set(PAD_UP)
+	k[sdl.Scancode.S] = pad_set(PAD_DOWN)
+	k[sdl.Scancode.A] = pad_set(PAD_LEFT)
+	k[sdl.Scancode.D] = pad_set(PAD_RIGHT)
+	k[sdl.Scancode.UP] = pad_set(PAD_UP)
+	k[sdl.Scancode.DOWN] = pad_set(PAD_DOWN)
+	k[sdl.Scancode.LEFT] = pad_set(PAD_LEFT)
+	k[sdl.Scancode.RIGHT] = pad_set(PAD_RIGHT)
+	k[sdl.Scancode.E] = pad_set(PAD_CROSS)
+	k[sdl.Scancode.ESCAPE] = pad_set(PAD_CIRCLE)
+	k[sdl.Scancode.LSHIFT] = pad_set(PAD_CIRCLE)
+	k[sdl.Scancode.TAB] = pad_set(PAD_SQUARE)
+	k[sdl.Scancode.SPACE] = pad_set(PAD_TRIANGLE)
+	k[sdl.Scancode.RETURN] = pad_set(PAD_START)
+	k[sdl.Scancode.BACKSPACE] = pad_set(PAD_SELECT)
+	k[sdl.Scancode.Q] = pad_set(PAD_L2)
+	k[sdl.Scancode.R] = pad_set(PAD_R2)
 	b.mouse[.Left] = PAD_CROSS
 	b.mouse[.Right] = PAD_CIRCLE
 	b.mouse[.Wheel_Up] = PAD_L1

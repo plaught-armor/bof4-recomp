@@ -513,39 +513,28 @@ platform_should_quit :: proc() -> bool {
 poll_events :: proc() {
 	ev: sdl.Event
 	for sdl.PollEvent(&ev) {
+		core.input_event(ev)
 		#partial switch ev.type {
 		case .QUIT:
 			host.quit = true
 		case .KEYDOWN:
-			if ev.key.repeat == 0 {
-				device_used(.Keyboard)
-			}
 			if !catch_key(ev.key) && (key_hook == nil || !key_hook(ev.key)) {
 				window_key(ev.key)
 			}
 		case .MOUSEBUTTONDOWN, .MOUSEBUTTONUP:
 			if ev.type == .MOUSEBUTTONDOWN {
-				device_used(.Keyboard)
+				core.device_used(.Keyboard)
 			}
 			mouse_button(ev.button)
 		case .MOUSEMOTION:
 			mouse_motion(ev.motion)
 		case .MOUSEWHEEL:
-			device_used(.Keyboard)
+			core.device_used(.Keyboard)
 			mouse_wheel(ev.wheel)
-		case .CONTROLLERAXISMOTION:
-			if abs(i32(ev.caxis.value)) > DEVICE_AXIS_USE {
-				device_pad_used(ev.caxis.which)
-			}
 		case .CONTROLLERBUTTONDOWN:
-			device_pad_used(ev.cbutton.which)
 			window_button(sdl.GameControllerButton(ev.cbutton.button))
 		case .WINDOWEVENT:
 			window_event(ev.window)
-		case .CONTROLLERDEVICEADDED:
-			gamepad_added(ev.cdevice.which)
-		case .CONTROLLERDEVICEREMOVED:
-			gamepad_removed(sdl.JoystickID(ev.cdevice.which))
 		}
 	}
 }

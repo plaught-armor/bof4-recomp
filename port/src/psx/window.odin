@@ -127,11 +127,11 @@ window_key :: proc(k: sdl.KeyboardEvent) -> bool {
 		set_fullscreen(!window.opts.fullscreen)
 		return true
 	}
-	if sc == .F12 && input.keys[sc] == 0 {
+	if sc == .F12 && core.input.keys[sc] == {} {
 		snapshot_request()
 		return true
 	}
-	if (sc == .PAUSE || sc == .P) && input.keys[sc] == 0 {
+	if (sc == .PAUSE || sc == .P) && core.input.keys[sc] == {} {
 		set_paused(!window.paused, false)
 		return true
 	}
@@ -140,7 +140,7 @@ window_key :: proc(k: sdl.KeyboardEvent) -> bool {
 
 @(private)
 window_button :: proc(b: sdl.GameControllerButton) {
-	if b == .GUIDE && input.buttons[b] == 0 {
+	if b == .GUIDE && core.input.buttons[b] == {} {
 		set_paused(!window.paused, false)
 	}
 }

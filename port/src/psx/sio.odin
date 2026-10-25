@@ -60,7 +60,7 @@ pad: struct {
 pad_set_rumble :: proc(strength: f64) {
 	pad.dualshock = strength > 0
 	pad.motor_map = MOTOR_NONE
-	rumble_strength = f32(clamp(strength, 0, 1))
+	core.input.rumble_strength = f32(clamp(strength, 0, 1))
 }
 
 @(private)
