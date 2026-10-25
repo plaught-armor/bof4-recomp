@@ -537,8 +537,9 @@ How the picture lines up with the doorway:
   disc a second time; in Sarai's 0201.0 that put the room up about 170
   presents sooner.
   - fork() copies only the calling thread. So BIOS threads (OpenTh/ChangeTh,
-    which the game uses for its loader) are ucontext coroutines on that one
-    thread (psx/coroutine.odin), and they carry over into the child.
+    which the game uses for its loader) are coroutines on that one
+    thread (ps-recomp core/coroutine.odin), and their mmap'd stacks carry over
+    into the child.
   - The child shows nothing, plays no sound and reads the pad as released.
     It runs raster jobs inline, because the raster pool's threads are not
     copied. Autoplay stands aside in the child. The child dies with the

@@ -509,7 +509,7 @@ Bios_Thread :: struct {
 	regs:  Cpu,
 	sr:    u32,
 	entry: u32,
-	co:    ^Coroutine,
+	co:    ^core.Coroutine,
 }
 
 @(private)
@@ -522,12 +522,12 @@ cur_thread: int
 // Coroutine of a thread that closed itself. It keeps running until it
 // switches away; the next thread to run then discards it.
 @(private)
-zombie: ^Coroutine
+zombie: ^core.Coroutine
 
 @(private)
 reap_zombie :: proc() {
 	if zombie != nil {
-		co_kill(zombie)
+		core.co_kill(zombie)
 		zombie = nil
 	}
 }
@@ -536,7 +536,7 @@ reap_zombie :: proc() {
 threads_init :: proc() {
 	threads[0] = {
 		used = true,
-		co   = &co_main_thread,
+		co   = &core.co_main_thread,
 	}
 	cur_thread = 0
 }
@@ -557,7 +557,7 @@ open_thread :: proc(pc, sp, gp: u32) -> u32 {
 		t.regs.r[29] = sp
 		t.regs.r[30] = sp
 		t.regs.r[28] = gp
-		t.co = co_create(thread_entry, rawptr(uintptr(i)))
+		t.co = core.co_create(thread_entry, rawptr(uintptr(i)))
 		return 0xff000000 | u32(i)
 	}
 	fmt.eprintln("bios: thread table full")
@@ -582,7 +582,7 @@ close_thread :: proc(h: u32) -> u32 {
 	if i == cur_thread {
 		zombie = threads[i].co
 	} else {
-		co_kill(threads[i].co)
+		core.co_kill(threads[i].co)
 	}
 	threads[i] = {}
 	return 1
@@ -614,7 +614,7 @@ change_thread :: proc(h: u32) {
 	cpu.cycles = cycles
 	cop0.sr = to.sr
 	cur_thread = i
-	co_switch(to.co)
+	core.co_switch(to.co)
 	// Resumed: whoever switched back already loaded our registers.
 	reap_zombie()
 }

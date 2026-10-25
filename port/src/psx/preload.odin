@@ -1,6 +1,6 @@
 // Background machines (not a PS1 feature): fork() copies the whole process,
 // so a child carries the machine exactly as it stood, BIOS threads and all
-// (coroutine.odin keeps them in one OS thread for this). The qol package
+// (ps:core coroutines keep them in one OS thread for this). The qol package
 // forks a child to play the game on ahead out of sight, e.g. to load a room
 // the party has not visited yet, and the child hands back what it found in
 // memory shared with the parent, then exits. The parent plays on meanwhile.
