@@ -7,6 +7,8 @@ package main
 import "core:fmt"
 import "core:os"
 
+import "ps:core"
+import psx "ps:psx"
 import bios "ps:psx/bios"
 import cpu "ps:psx/cpu"
 import host "ps:psx/host"
@@ -45,6 +47,10 @@ main :: proc() {
 
 	cpu.register_funcs(rec.EXE_FUNCS[:])
 	rec.register_overlays()
+	// Machine code built from the same recompile (its native_arch and
+	// native_out options) in place of the Odin functions; on failure the
+	// Odin ones stay.
+	if path := core.env("NATIVE_FILE"); path != "" {psx.load_native(path)}
 	if !qol.init() {
 		os.exit(1)
 	}

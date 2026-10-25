@@ -13,6 +13,7 @@ instance at a time: two share the memory card files.
 | `BOF4_MCD=<file>`, `BOF4_MCD2=<file>` | memory card images for slots 1 and 2 |
 | `BOF4_DEVICE=keyboard\|ps\|xbox\|switch` | fix the button prompt family |
 | `BOF4_FAST=1` | run unpaced (as fast as the host can) |
+| `BOF4_NATIVE_FILE=<file>` | run the game's functions as machine code from this file instead of the recompiled Odin; build it by adding `native_arch` (`x64_sysv`, `x64_win` or `arm64`) and `native_out` (the file) to `tools/recomp.tsv` and running `tools/bof4tools setup`. The file is generated from the game: keep it out of git. `BOF4_NATIVE=0` keeps the Odin functions |
 | `BOF4_OSD_PANEL=<n>` | start with the debug panel shown on page n |
 | `BOF4_WARP=map[.section][:x,z]` | every save loaded resumes on that map (hex id, see [story-and-maps.md](story-and-maps.md)), section (decimal) and tile; a section the map lacks hangs the game |
 | `BOF4_FLAGLOG=1` | log every story flag change with the last message shown |
