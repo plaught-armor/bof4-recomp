@@ -27,8 +27,12 @@ main RAM, VRAM as a picture and raw as `_vram.bin`: 1024x512 u16, which keeps
 bit 15 and the texel indices of 4bpp and 8bpp pages). Emulation is driven by emulated vblanks ("presents"), so
 `BOF4_REPLAY=<dir>/input.rec` replays the session exactly, given the same
 disc, config and starting memory cards. Live input adds on top, so a replay
-can be taken over at its end. Format: see the header of `psx/record.odin`.
-A record starts with `T 0 2` (native rewrites take no emulated time); one
+can be taken over at its end. Format: see the header of `psx/record.odin`;
+buttons and sticks are a ps-recomp core input record (`core/record.odin`),
+which starts with `V 1` and keeps button masks in pad wire order. A record
+made before the port moved onto core has no `V` line and is refused;
+`python3 tools/rec_v1.py <files>` converts such records in place.
+After the `V` line, a record starts with `T 0 2` (native rewrites take no emulated time); one
 without a `T` entry is from before 2026-10-22, and its replay charges the
 game's cycles for them as it was recorded, until its last entry (see
 [architecture.md](architecture.md#how-the-games-code-runs)). Recording

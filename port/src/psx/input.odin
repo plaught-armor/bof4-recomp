@@ -149,7 +149,7 @@ rumble_stop :: proc() {
 
 // Held buttons, active-high, in the game's bit layout.
 pad_buttons :: proc() -> (held: u16) {
-	held = pad_bits(core.input_poll(host.presents)[0].buttons)
+	held = pad_bits(core.input_poll(host.presents)[0].buttons + core.replay_buttons(0, host.presents))
 	for p in host.script {
 		if host.presents >= p.at && host.presents < p.at + p.hold {
 			held |= p.mask
@@ -215,6 +215,9 @@ sticks :: proc() -> (s: Sticks) {
 	if auto_stick != {} {
 		s.left = core.stronger(s.left, auto_stick)
 	}
+	rl, rr := core.replay_sticks(0, host.presents)
+	s.left = core.stronger(s.left, rl)
+	s.right = core.stronger(s.right, rr)
 	for e in host.stick_script {
 		if host.presents >= e.at && host.presents < e.at + e.hold {
 			s.left = core.stronger(s.left, e.sticks.left)
