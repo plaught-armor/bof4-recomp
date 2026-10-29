@@ -17,16 +17,21 @@ machine by `setup.sh` (`setup.bat` on Windows).
 
 Requirements:
 
-- Linux or Windows, x86-64
+- Linux, x86-64. Only Linux is tested: the Windows scripts (`setup.bat`,
+  `port\build.bat`) are untested, and macOS is untested and has no scripts
 - [Odin](https://odin-lang.org/) (developed with `dev-2026-10`); on Windows
   Odin also needs the MSVC build tools and Windows SDK (see Odin's install
   guide)
 - OpenGL 4.5 drivers; on Linux also SDL2 (Windows uses the `SDL2.dll` that
   ships with Odin)
+- optional, for the experimental Vulkan renderer only: a Vulkan 1.3 driver
+  with dynamic rendering local read and 64-bit shader integers and floats
 - ps-recomp (its recompiler, the emulated PS1 in its `psx` package, and
   the `core` package: tracing, capture, PNG, environment): a submodule at
   `ps-recomp/`, fetched by `git clone --recursive` or
-  `git submodule update --init`; `PS_RECOMP` names another checkout
+  `git submodule update --init`; `PS_RECOMP` names another checkout.
+  Older commits of this repository pin ps-recomp commits from before its
+  history was squashed for release; their submodule does not check out
 
 Steps:
 
@@ -55,6 +60,13 @@ own.
 On Windows the port does not load rooms ahead in the background: Linux does
 that in a `fork()` copy of the game, which Windows lacks. Rooms load when the
 party walks in, as on the PS1.
+
+The hi-res picture is drawn with OpenGL by default. The environment variable
+`BOF4_GPU` picks the renderer: `gl` (OpenGL), `sw` (the CPU rasterizer, also
+`[window] hardware = false` in bof4.ini) or `vk` (Vulkan, experimental: it
+draws only part of the picture on the GPU, and a Vulkan failure ends the
+game). If OpenGL fails to start, the port falls back to `sw`. See
+[docs/graphics.md](docs/graphics.md#hardware-renderer).
 
 Settings are in `port/bof4.ini`. Most can also be changed in game, from the
 camp menu's Setting > Extras page. Memory cards are
