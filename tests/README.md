@@ -12,6 +12,7 @@ python3 tests/run.py list
 python3 tests/run.py record [-jN] [case|gl|sw ...]   # write references
 python3 tests/run.py check  [-jN] [case|gl|sw ...]   # compare with them
 python3 tests/run.py glsw   [-jN] [case ...]         # GL run against the software reference
+python3 tests/run.py near   [-jN] [case|gl|vk ...]   # GPU run against software, live
 ```
 
 With no names, every case runs in both renderers (`gl`, `sw`). `record` runs
@@ -21,6 +22,15 @@ first (`port/build.sh`). Runs go six at a time, gl and sw mixed, each in its
 own `local/out/` directory; `-jN` sets how many (1 to 6). Guest time alone
 decides every frame, so host load does not change the hashes. A second
 `run.py` refuses to start while one is running (lock file `local/run.lock`).
+
+The renderer comes from `BOF4_GPU` (`gl`, `sw`, `vk`). `vk` is the Vulkan
+backend in progress and has no references; `near` is its gate. It runs each
+case in software and on the GPU backend at once, each streaming its dumps down
+a pipe (`BOF4_DUMP_FD`), and compares them as they come. RAM and VRAM must
+match exactly. A picture may have a few pixels off by 1 or 2 in a channel
+(`NEAR_SMALL` in `run.py`, the most gl showed) and none off by more; those
+are listed in `local/out/<case>.near.<mode>.tsv`. A near run takes two of
+the six slots.
 
 ## Local inputs
 

@@ -119,8 +119,12 @@ a game frame and the music and ambience stuttered with smooth motion on.
 By default the hi-res target is drawn with OpenGL 4.5 (`psx/render/gl_target.odin`)
 instead of the CPU rasterizer. `[window] hardware = false` in bof4.ini (the
 Display page's "GPU draw", read at start) keeps it on the CPU, and the
-environment variable `BOF4_GL=1` or `BOF4_GL=0` overrides the setting. If
-the GL context or a shader fails, the port falls back to software. The CPU
+environment variable `BOF4_GPU=gl` or `BOF4_GPU=sw` (or the older
+`BOF4_GL=1` and `BOF4_GL=0`) overrides the setting. If the GL context or a
+shader fails, the port falls back to software. `BOF4_GPU=vk` starts the
+Vulkan backend (`psx/render/vk_target.odin`), still a skeleton: it makes the
+device and the target's images, but the target is drawn in software, and a
+Vulkan failure ends the game. The CPU
 rasterizer at detail 2 cannot hold 60 fps in busy towns (every game frame
 took 18-26 ms of host work in Sarai's square, against 16.7 ms). The VRAM
 target is always drawn in software, because the game reads VRAM back and

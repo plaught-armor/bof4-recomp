@@ -14,9 +14,20 @@ lost on a re-record; delete the reference to start the marks afresh.
     python3 tests/run.py record [-jN] [case|mode ...]
     python3 tests/run.py check  [-jN] [case|mode ...]
     python3 tests/run.py glsw   [-jN] [case ...]    # GL against software reference
+    python3 tests/run.py near   [-jN] [case|mode ...]  # GPU run against software, live
 
-A case name selects one case, a mode (gl, sw) narrows to that renderer, and
-no names means every case in both modes. Runs go to a pool of N instances at
+A case name selects one case, a mode (gl, sw, vk) narrows to that renderer,
+and no names means every case in gl and sw (vk has no references yet).
+
+`near` runs each case in software and on a GPU backend (gl, vk; no mode
+means both) at once, each streaming its dumps whole down a pipe
+(BOF4_DUMP_FD), and compares them as they come. RAM and VRAM must match
+exactly. The window and PS1 frame pictures may differ by a little: a pixel
+whose largest channel difference is 1 or 2 is counted, and one off by more
+is listed in out/<case>.near.<mode>.tsv. A run passes when no picture has
+more pixels off by 1-2 than NEAR_SMALL allows and none is off by more.
+Presents unstable in either reference are skipped. Each near run takes two
+pool slots. Runs go to a pool of N instances at
 once (default and most 6, gl and sw mixed; -j1 runs them one at a time). Every
 run has its own out directory, and guest time alone decides each frame, so
 the load the pool puts on the host does not change the hashes. Inputs that
@@ -30,8 +41,11 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import numpy as np
 
 TESTS = Path(__file__).resolve().parent
 ROOT = TESTS.parent
@@ -42,9 +56,23 @@ OUT = LOCAL / "out"
 JOBS = 6
 
 MODES = {
-    "gl": {"BOF4_GL": "1", "SDL_HINT_EGL_DEVICE": os.environ.get("SDL_HINT_EGL_DEVICE", "1")},
-    "sw": {"BOF4_GL": "0"},
+    "gl": {"BOF4_GPU": "gl", "SDL_HINT_EGL_DEVICE": os.environ.get("SDL_HINT_EGL_DEVICE", "1")},
+    "sw": {"BOF4_GPU": "sw"},
+    "vk": {"BOF4_GPU": "vk"},
 }
+# The modes run when none is named, and a GPU mode's line in the log when it
+# came up (none means it fell back to software).
+DEFAULT_MODES = ["gl", "sw"]
+GPU_UP = {"gl": "filled on the GPU", "vk": "GPU: vk"}
+# Dumps compared near (pictures); every other kind must match exactly.
+PICTURES = ("frame", "window")
+# Lines of out/<case>.near.<mode>.tsv at most.
+NEAR_LIST = 100000
+# Pixels off by 1 or 2 one picture may have: the most gl had against sw on
+# the cases (street, present 3476, 2026-10-29); the window is the frame
+# scaled 2x. Every gl pixel off by more was a real difference (Δ up to 60+),
+# so none is allowed.
+NEAR_SMALL = {"frame": 55, "window": 220}
 
 # Log checks: (label, pattern). The recorded value is the number of log lines
 # matching the pattern, or with a group, the last match of that group.
@@ -101,8 +129,10 @@ CASES = {
 }
 
 
-def run(name, mode, out):
-    """One headless run of a case; returns (hashes, checks, rc)."""
+def run(name, mode, out, stream=None):
+    """One headless run of a case; returns (hashes, checks, rc). With
+    `stream`, the write end of a pipe, the dumps go down it whole instead of
+    as hash lines (the hashes come back empty), and it is closed here."""
     case = CASES[name]
     if out.exists():
         shutil.rmtree(out)
@@ -136,15 +166,25 @@ def run(name, mode, out):
         **case["env"],
         **MODES[mode],
     }
+    if stream is not None:
+        del env["BOF4_DUMP_HASH"]
+        env["BOF4_DUMP_FD"] = str(stream)
     with open(out / "log.txt", "w") as log:
         try:
-            rc = subprocess.run([str(PORT / "bof4")], cwd=PORT, env=env, stdout=log,
-                                stderr=subprocess.STDOUT, timeout=case["timeout"]).returncode
+            p = subprocess.Popen([str(PORT / "bof4")], cwd=PORT, env=env, stdout=log,
+                                 stderr=subprocess.STDOUT, pass_fds=() if stream is None else (stream,))
+        finally:
+            if stream is not None:
+                os.close(stream)
+        try:
+            rc = p.wait(timeout=case["timeout"])
         except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait()
             rc = "timeout"
     text = (out / "log.txt").read_text(errors="replace")
-    if mode == "gl" and "filled on the GPU" not in text:
-        rc = f"{rc}, GL fell back to software"
+    if mode in GPU_UP and GPU_UP[mode] not in text:
+        rc = f"{rc}, {mode} fell back to software"
     return read_hashes(out / "hashes.tsv"), log_checks(case["checks"], text), rc
 
 
@@ -294,9 +334,154 @@ def glsw_report(name, ref, result):
     return not differ and not only
 
 
+def near(pool, name, mode):
+    """Software and `mode` runs of a case at once, their dumps compared as
+    they stream; see the module notes."""
+    refs = [r for r in (read_ref(name, "sw"), read_ref(name, mode)) if r]
+    skip = set().union(*(r[1] for r in refs))
+    got = pool.submit(near_run, name, mode, skip)
+    return lambda: near_report(name, mode, got.result())
+
+
+def near_run(name, mode, skip):
+    results, readers, threads = {}, [], []
+    for m in ("sw", mode):
+        r, w = os.pipe()
+        readers.append(open(r, "rb"))
+        out = OUT / f"{name}.near.{m}"
+        threads.append(threading.Thread(target=lambda m=m, w=w, out=out: results.__setitem__(m, run(name, m, out, w))))
+        threads[-1].start()
+    near = Near(OUT / f"{name}.near.{mode}.tsv", skip)
+    try:
+        near.compare(*readers)
+    finally:
+        # Drain both to the end, so neither run blocks writing to a pipe no
+        # one reads, then wait for them.
+        for f in readers:
+            while f.read(1 << 20):
+                pass
+            f.close()
+        for t in threads:
+            t.join()
+        near.close()
+    return near, results["sw"][2], results[mode][2]
+
+
+def dumps(f):
+    """(kind, present, data) for each dump a run streams."""
+    while head := f.readline():
+        kind, present, size = head.decode().split("\t")
+        data = f.read(int(size))
+        if len(data) != int(size):
+            return
+        yield kind, int(present), data
+
+
+def ppm(data):
+    """A P6 picture as an h x w x 3 array."""
+    magic, w, h, top, rest = data.split(maxsplit=4)
+    assert magic == b"P6" and top == b"255"
+    return np.frombuffer(rest, np.uint8).reshape(int(h), int(w), 3)
+
+
+class Near:
+    """Two dump streams compared as they come, in present order."""
+
+    def __init__(self, path, skip):
+        self.skip = skip
+        self.list = open(path, "w")
+        self.listed = 0
+        self.only = []
+        self.exact_off = []
+        self.shape_off = []
+        # kind: [compared, frames off, Δ1-2 pixels, Δ>2 pixels, (most Δ1-2 in one frame, present)]
+        self.stats = {}
+
+    def close(self):
+        self.list.close()
+
+    def compare(self, a, b):
+        pending = ({}, {})
+        last = [0, 0]
+        streams = [dumps(a), dumps(b)]
+        live = [True, True]
+        while any(live):
+            for side in (0, 1):
+                if not live[side]:
+                    continue
+                d = next(streams[side], None)
+                if d is None:
+                    live[side] = False
+                    last[side] = 1 << 62
+                    continue
+                kind, present, data = d
+                last[side] = present
+                key = (kind, present)
+                other = pending[1 - side]
+                if key in other:
+                    pair = (data, other.pop(key)) if side == 0 else (other.pop(key), data)
+                    if key not in self.skip:
+                        self.pair(kind, present, *pair)
+                else:
+                    pending[side][key] = data
+            # A dump the other stream is past has no partner.
+            for side in (0, 1):
+                for key in [k for k in pending[side] if k[1] < last[1 - side]]:
+                    del pending[side][key]
+                    if key not in self.skip:
+                        self.only.append(key)
+        for side in (0, 1):
+            self.only += [k for k in pending[side] if k not in self.skip]
+
+    def pair(self, kind, present, sw, gpu):
+        s = self.stats.setdefault(kind, [0, 0, 0, 0, (0, 0)])
+        s[0] += 1
+        if sw == gpu:
+            return
+        s[1] += 1
+        if kind not in PICTURES:
+            self.exact_off.append((kind, present))
+            return
+        a, b = ppm(sw), ppm(gpu)
+        if a.shape != b.shape:
+            self.shape_off.append((kind, present))
+            return
+        d = np.abs(a.astype(np.int16) - b).max(axis=2)
+        small = int(np.count_nonzero((d > 0) & (d <= 2)))
+        ys, xs = np.nonzero(d > 2)
+        s[2] += small
+        s[3] += len(ys)
+        s[4] = max(s[4], (small, present))
+        for y, x in zip(ys.tolist(), xs.tolist()):
+            if self.listed < NEAR_LIST:
+                self.list.write(f"{kind}\t{present}\t{x}\t{y}\t{a[y, x].tolist()}\t{b[y, x].tolist()}\n")
+            self.listed += 1
+
+
+def near_report(name, mode, result):
+    near, rc_sw, rc = result
+    pictures = all(near.stats[k][3] == 0 and near.stats[k][4][0] <= NEAR_SMALL[k] for k in PICTURES if k in near.stats)
+    ok = pictures and not near.only and not near.exact_off and not near.shape_off and rc_sw == 0 and rc == 0
+    print(f"{name} {mode} near sw: {'ok' if ok else 'FAIL'} (exit {rc_sw}/{rc})")
+    for kind, (n, off, small, big, (most, at)) in sorted(near.stats.items()):
+        line = f"  {kind}: {n} compared, {off} off"
+        if kind in PICTURES and off:
+            line += f", {small} pixels off by 1-2 (most {most} at present {at}, {NEAR_SMALL[kind]} allowed), {big} off by more"
+        print(line)
+    if near.exact_off:
+        print(f"  {len(near.exact_off)} RAM or VRAM dumps differ at presents {spans(near.exact_off)}")
+    if near.shape_off:
+        print(f"  {len(near.shape_off)} pictures differ in size at presents {spans(near.shape_off)}")
+    if near.only:
+        print(f"  {len(near.only)} dumps on one side only, presents {spans(near.only)}")
+    if near.listed > NEAR_LIST:
+        print(f"  {near.listed} pixels off by more than 2, the first {NEAR_LIST} listed")
+    return ok
+
+
 def main():
     args = sys.argv[1:]
-    if not args or args[0] not in ("list", "record", "check", "glsw"):
+    if not args or args[0] not in ("list", "record", "check", "glsw", "near"):
         sys.exit(__doc__)
     if args[0] == "list":
         for name, case in CASES.items():
@@ -309,7 +494,7 @@ def main():
     if not 1 <= jobs <= JOBS:
         sys.exit(f"-j takes 1 to {JOBS}")
     names = [a for a in args[1:] if a in CASES] or list(CASES)
-    modes = [a for a in args[1:] if a in MODES] or list(MODES)
+    modes = [a for a in args[1:] if a in MODES] or (["gl", "vk"] if args[0] == "near" else DEFAULT_MODES)
     unknown = [a for a in args[1:] if a not in CASES and a not in MODES]
     if unknown:
         sys.exit(f"unknown case or mode: {' '.join(unknown)}")
@@ -324,9 +509,13 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         sys.exit(f"another run.py is running in {LOCAL}")
-    action = {"record": record, "check": check, "glsw": glsw}[args[0]]
+    action = {"record": record, "check": check, "glsw": glsw, "near": near}[args[0]]
     if args[0] == "glsw":
         modes = ["gl"]
+    if args[0] == "near":
+        if "sw" in modes:
+            sys.exit("near compares gl or vk with sw")
+        jobs = max(1, jobs // 2)
     with ThreadPoolExecutor(jobs) as pool:
         reports = [action(pool, n, m) for n in names for m in modes]
         ok = all([report() for report in reports])
