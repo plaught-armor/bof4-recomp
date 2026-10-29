@@ -23,7 +23,7 @@ window for seconds.
 | `SCENE_DRAW` | exe 0x801420a4 | the field scene: map, models, sprites |
 | `MAP_DRAW` | exe 0x80144800 | map tiles: floors, roofs (kind 0x3c), shadows (0x3e) |
 | tile window | exe 0x8014330c | which tiles around a point ahead of the camera are drawn: half height and half width in cells, u16 at 0x801381e4 / 0x801381e6 (24, 16), centre offset u16 at 0x801381e0 / 0x801381e2; rows go into a list of 64 entries |
-| tile corner test | exe 0x80143b84, 0x80144b5c, 0x801464c8, 0x80147d84, 0x80148b34, 0x801491ec | a tile or model part is skipped unless one of its four projected corners lies in -16..335 x -16..255; a near face spanning the screen fails it. The port's recompiler patch points skip it while `cpu.world_3d` (third-person camera); the port's own tile draw (`quad_draw` in qol/map_geometry.odin) then culls with `quad_may_show` instead: a quad goes only when all four corners are behind the lens (SZ 0) or all are in front and past the same screen side |
+| tile corner test | exe 0x80143b84, 0x80144b5c, 0x801464c8, 0x80147d84, 0x80148b34, 0x801491ec | a tile or model part is skipped unless one of its four projected corners lies in -16..335 x -16..255; a near face spanning the screen fails it. The port's recompiler patch points skip it while `cpu.host_camera` (third-person camera); the port's own tile draw (`quad_draw` in qol/map_geometry.odin) then culls with `quad_may_show` instead: a quad goes only when all four corners are behind the lens (SZ 0) or all are in front and past the same screen side |
 | packet budget | exe 0x8005aa54 | the frame's map packet count, scratch u16 0x1f800076 (`SC_BUDGET`): 1024, or 1496 while byte 0x801381ea != 0. Packet buffers are 1024 x 52 bytes (0xd000) per frame parity; the draw wraps at 0x8004e800 (`SC_PACKET_WRAP` 0x80). With no cull at all, the third-person tile window's tiles behind the camera spent the whole budget before `MODELS_LIST_DRAW`, and big towns (1001) lost every placed model (houses, the pool statue) to black; with `quad_may_show`, 1001 spends 238 |
 | `LAYER_SETUP` / `LAYER_DRAW` | exe 0x80143304 / 0x80145654 | one map layer (see [field.md](field.md#sections)) |
 | `LAYER_ADD` | exe 0x8013ae34 | commit a packet run to the OT |
@@ -749,7 +749,7 @@ the same range (`READ_OK`).
 
 ## Native 3D world (third person)
 
-While the third-person camera is in (`cpu.world_3d`) the field's
+While the third-person camera is in (`cpu.host_camera`) the field's
 tiles and placed models are drawn from their view-space corners
 instead of the packet's screen positions (`scene/world.odin`). The game still
 builds, culls and orders every packet; only where the corners land changes.

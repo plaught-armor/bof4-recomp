@@ -524,7 +524,7 @@ quad_draw_begin :: proc() -> (d: Quad_Draw) {
 		depth_mode  = sc[SC_DEPTH_MODE],
 		fog         = sc[SC_FOG],
 		fog_shift   = u32(sc[SC_FOG_SHIFT]) & 31,
-		unculled    = cpu.world_3d,
+		unculled    = cpu.host_camera,
 		fogged      = sc[SC_FOGGED],
 	}
 	d.fog_base = i32(sc_u32(SC_FOG_BASE)) - (4096 >> (u32(i8(sc[SC_FOG_SHIFT])) & 31))
@@ -804,7 +804,7 @@ tile_uv :: proc(d: ^Quad_Draw, t: ^Map_Tile) {
 	d.colour_cost = c
 }
 
-// The unculled drawing's test (cpu.world_3d): the game's needs a
+// The unculled drawing's test (cpu.host_camera): the game's needs a
 // corner on screen, which drops a big quad whose corners all lie off it. This
 // one drops a quad only when it cannot show: every corner behind the lens, or
 // every corner before it and off the same side of the screen (the game's

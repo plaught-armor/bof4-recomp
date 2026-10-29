@@ -65,7 +65,7 @@ World_Undo :: struct {
 
 // Whether the world is drawn in 3D now: the third-person field.
 world_on :: #force_inline proc() -> bool {
-	return cpu.world_3d
+	return cpu.host_camera
 }
 
 // The view-space point (view units) the GTE's rotation and translation put

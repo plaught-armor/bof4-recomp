@@ -513,7 +513,7 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 		kept_write(&tp.h, CAM_H, h)
 		kept_write(&tp.near, CAM_NEAR, near)
 		kept_write(&tp.radii, CAM_TILE_RADII, radii)
-		cpu.world_3d = false
+		cpu.host_camera = false
 		tp.view()
 		render.see_through.on = false
 		gte.exact_view.stamp = 0
@@ -546,7 +546,7 @@ build_view :: proc(yaw_frac: f64, frac: [VIEW_FIELD_COUNT]f64, step: bool) {
 	cpu.sh(CAM_PITCH, boom(tilt))
 	cpu.sh(CAM_TARGET + 2, height)
 	kept_write(&tp.radii, CAM_TILE_RADII, max(radii & 0xffff, TP_TILE_RADIUS) | max(radii >> 16, TP_TILE_RADIUS) << 16)
-	cpu.world_3d = true
+	cpu.host_camera = true
 	a0 := cpu.state.r[4]
 	view_at(u32(i32(math.round(reach))), distance, h, near)
 	exact_set(a0, yaw_frac, frac, h, pitch, distance, height)
