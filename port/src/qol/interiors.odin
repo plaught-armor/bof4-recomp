@@ -62,9 +62,11 @@
 // settles the room's door back by the opposite one.
 package qol
 
+import "core:fmt"
 import "core:math"
 import "core:math/linalg"
 import "core:mem"
+import "core:sync"
 import "core:time"
 
 import "ps:psx"
@@ -500,6 +502,9 @@ Preload :: struct {
 
 Preload_Share :: struct {
 	done:      b32,
+	// The child's vblanks since the fork: so far, and once done, the ones
+	// the load took.
+	vblanks:   u64,
 	key:       [3]u32,
 	regs:      cpu.Cpu,
 	main:      cpu.Cpu,
@@ -1431,16 +1436,18 @@ interiors_view_build :: proc() {
 	}
 }
 
-// Vblanks a background load may take before the parent gives up on it.
+// Vblanks a background load may take before the child gives up on it.
 @(private = "file")
 PRELOAD_LIMIT :: 1200
 // Background loads run at once, each in its own child: a door the party
 // walks straight to need not wait for loads of doors nearer it.
 @(private = "file")
 PRELOAD_LOADS :: 4
-// The longest door_enter waits for the load of the room it goes to.
+// The longest the parent waits for a child that makes no progress (one
+// stuck in the host, not the game) before it ends the load: loudly, and
+// fatally in a dump run, as the host clock then decided a frame.
 @(private = "file")
-PRELOAD_WAIT :: 2 * time.Second
+PRELOAD_STUCK :: 10 * time.Second
 @(private = "file")
 MAP_REQUEST_RET :: 0x801d5c38 // where the field's exit check requests a map
 // (a0 map, a1 section): what the field's exit check calls before it
@@ -1455,7 +1462,10 @@ AREA_SET_RET :: 0x801d5c04
 // has no world, unseen and unpaced, and hands the room's world back once it
 // is noted; the parent, playing on, keeps it as if the party had been in.
 // Up to PRELOAD_LOADS doors at a time, nearest the leader first, each tried
-// once per town visit.
+// once per town visit. The parent takes a world at the vblank the child was
+// done at, counted in the child's vblanks since the fork, never sooner: what
+// the game sees depends on emulated time only, not on how fast the host ran
+// the child.
 @(private = "file")
 preload_step :: proc() {
 	if io.preload_child {
@@ -1497,8 +1507,8 @@ preload_step :: proc() {
 		i := pick
 		d := &interiors.doors[i]
 		interiors.tried[i] = true
-		free.share.done = false
-		free.door = d.world
+		free.share.done, free.share.vblanks = false, 0
+		free.door, free.since = d.world, cpu.vblanks()
 		pid, ok := host.preload_fork()
 		if !ok {
 			return
@@ -1508,7 +1518,7 @@ preload_step :: proc() {
 			preload_enter(d)
 			return
 		}
-		free.pid, free.since = pid, cpu.vblanks()
+		free.pid = pid
 		if .Game in core.trace.active {
 			core.tracef(.Game, "interiors: loading %04x.%d in the background", d.world[0], d.world[1])
 		}
@@ -1534,6 +1544,21 @@ preload_enter :: proc(d: ^Door) {
 	c.cycles = cycles
 }
 
+// Once per vblank: in the child, show the parent how far the load ran, and
+// give up past PRELOAD_LIMIT.
+@(private)
+interiors_vblank :: proc() {
+	l := interiors.load
+	if !io.preload_child || l == nil {
+		return
+	}
+	n := cpu.vblanks() - l.since
+	sync.atomic_store_explicit(&l.share.vblanks, n, .Relaxed)
+	if n >= PRELOAD_LIMIT {
+		host.preload_exit()
+	}
+}
+
 // In the child: a world was noted; hand it back if it is the room loaded.
 @(private = "file")
 preload_hand_back :: proc(w: ^World) {
@@ -1548,7 +1573,8 @@ preload_hand_back :: proc(w: ^World) {
 	sh.sound = w.sound^
 	sh.start = w.start^
 	sh.vram = w.vram^
-	sh.done = true
+	sync.atomic_store_explicit(&sh.vblanks, cpu.vblanks() - l.since, .Relaxed)
+	sync.atomic_store_explicit(&sh.done, true, .Release)
 	host.preload_exit()
 }
 
@@ -1563,20 +1589,61 @@ preload_of :: proc(key: [2]u32) -> ^Preload {
 	return nil
 }
 
-// In the parent: take the child's world once it handed one back, or end
-// it past PRELOAD_LIMIT.
+// In the parent: take the child's world once the parent reached the vblank
+// the child was done at, or end the load when the child failed. The child
+// runs ahead unless the host is slow; when it is behind, the parent waits
+// for it to catch up rather than decide on a half-run child. `now` takes
+// the world whatever vblank the child was done at.
 @(private = "file")
-preload_poll :: proc(l: ^Preload) {
+preload_poll :: proc(l: ^Preload, now := false) {
 	sh := l.share
-	ended := host.preload_ended(l.pid)
-	if !ended && !sh.done && cpu.vblanks() - l.since < PRELOAD_LIMIT {
+	at := cpu.vblanks() - l.since
+	start := time.tick_now()
+	seen, moved := u64(0), start
+	ended := false
+	for {
+		if sync.atomic_load_explicit(&sh.done, .Acquire) {
+			break
+		}
+		ran := sync.atomic_load_explicit(&sh.vblanks, .Relaxed)
+		ended = host.preload_ended(l.pid)
+		// Past the parent's vblank, the child has run all of it: had it
+		// been done by then, done would show.
+		if ended || !now && ran > at {
+			break
+		}
+		if ran != seen {
+			seen, moved = ran, time.tick_now()
+		} else if time.tick_since(moved) > PRELOAD_STUCK {
+			break
+		}
+		time.sleep(200 * time.Microsecond)
+	}
+	if waited := time.tick_since(start); waited >= time.Millisecond {
+		fmt.eprintf("preload: parent waited %v ms for %04x.%d\n", time.duration_milliseconds(waited), l.door[0], l.door[1])
+	}
+	done := sync.atomic_load_explicit(&sh.done, .Acquire)
+	stuck := !done && !ended && time.tick_since(moved) > PRELOAD_STUCK
+	// A child that ended without its world (a crash) still holds its load
+	// until PRELOAD_LIMIT, where one giving up would end: the slot then
+	// frees, and the next fork comes, at a vblank the game decides.
+	early := !done && ended && !now && at < PRELOAD_LIMIT
+	if done && !now && sh.vblanks > at || !done && !ended && !stuck || early {
 		return
 	}
 	if !ended {
 		host.preload_kill(l.pid)
 	}
 	l.pid = 0
-	if !sh.done {
+	if stuck {
+		// The host clock, not the game, ended this load: the frames from
+		// here are the host's, so a regression run (DUMP) stops on it.
+		fmt.eprintf("preload: child for %04x.%d made no progress in %v, loading from the disc\n", l.door[0], l.door[1], PRELOAD_STUCK)
+		if core.dump_dir() != "" {
+			panic("preload: a stuck child decided a load in a dump run")
+		}
+	}
+	if !done {
 		if .Game in core.trace.active {
 			core.tracef(.Game, "interiors: background load of %04x.%d failed", l.door[0], l.door[1])
 		}
@@ -1594,25 +1661,19 @@ preload_poll :: proc(l: ^Preload) {
 	w.vram^ = sh.vram
 	w.ready = true
 	if .Game in core.trace.active {
-		core.tracef(.Game, "interiors: background load of %04x.%d done in %d vblanks", sh.key[0], sh.key[1], cpu.vblanks() - l.since)
+		core.tracef(.Game, "interiors: background load of %04x.%d done in %d vblanks", sh.key[0], sh.key[1], sh.vblanks)
 	}
 }
 
 
 // The party took the door the background load is on: wait for the child
-// (a frozen frame of up to PRELOAD_WAIT) rather than load the room from the
-// disc again, which takes longer than what the child has left.
+// to finish (a frozen frame) rather than load the room from the disc again,
+// which takes longer than what the child has left. Always waiting to the
+// end keeps the outcome the child's alone, whatever the host's speed.
 @(private = "file")
 preload_wait :: proc(l: ^Preload) -> ^World {
-	start := time.tick_now()
-	for !l.share.done && !host.preload_ended(l.pid) && time.tick_since(start) < PRELOAD_WAIT {
-		time.sleep(time.Millisecond)
-	}
-	if .Game in core.trace.active {
-		core.tracef(.Game, "interiors: waited %v for the background load of %04x.%d", time.tick_since(start), l.door[0], l.door[1])
-	}
 	key := l.door
-	preload_poll(l)
+	preload_poll(l, now = true)
 	return world_find(key[0], key[1])
 }
 

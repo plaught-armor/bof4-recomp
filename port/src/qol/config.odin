@@ -400,6 +400,7 @@ vblank :: proc() {
 	combo_menu_vblank()
 	balance_vblank()
 	autoplay_vblank()
+	interiors_vblank()
 	pressed := panel_vblank()
 	journal_select(pressed)
 	combos_select(pressed)
