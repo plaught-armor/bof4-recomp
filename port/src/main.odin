@@ -9,11 +9,6 @@ import "core:os"
 
 import "ps:core"
 import psx "ps:psx"
-import bios "ps:psx/bios"
-import cpu "ps:psx/cpu"
-import host "ps:psx/host"
-import io "ps:psx/io"
-import spu "ps:psx/spu"
 import "qol"
 import "rec"
 
@@ -27,48 +22,24 @@ main :: proc() {
 		fmt.eprintln("cannot read", exe_path)
 		os.exit(1)
 	}
-	pc, gp, sp, ok := cpu.load_exe(exe)
+	ok := psx.run(
+		{
+			exe = exe,
+			cue = cue,
+			title = "Breath of Fire IV",
+			funcs = rec.EXE_FUNCS[:],
+			overlays = rec.register_overlays,
+			// Machine code built from the same recompile (its native_arch and
+			// native_out options) in place of the Odin functions; on failure
+			// the Odin ones stay.
+			native = core.env("NATIVE_FILE"),
+			cards = {"bof4_slot1.mcd", "bof4_slot2.mcd"},
+			setup = qol.boot,
+			hooks = qol.init,
+		},
+	)
 	if !ok {
-		fmt.eprintln("not a PS-X EXE:", exe_path)
 		os.exit(1)
 	}
-	if !spu.cdrom_open(cue) {
-		os.exit(1)
-	}
-	if !cpu.trace_init() {
-		os.exit(1)
-	}
-	if !qol.boot() {
-		os.exit(1)
-	}
-	if !host.platform_init("Breath of Fire IV") {
-		os.exit(1)
-	}
-
-	cpu.register_funcs(rec.EXE_FUNCS[:])
-	rec.register_overlays()
-	// Machine code built from the same recompile (its native_arch and
-	// native_out options) in place of the Odin functions; on failure the
-	// Odin ones stay.
-	if path := core.env("NATIVE_FILE"); path != "" {psx.load_native(path)}
-	if !qol.init() {
-		os.exit(1)
-	}
-	io.events_init()
-	spu.spu_init()
-	spu.xa_init()
-	io.timers_init()
-	io.dma_init()
-	bios.bios_init()
-	bios.card_files = {"bof4_slot1.mcd", "bof4_slot2.mcd"}
-	if !bios.memcard_init() {
-		os.exit(1)
-	}
-
-	cpu.state.r[28] = gp
-	cpu.state.r[29] = sp
-	cpu.state.r[30] = sp
-	cpu.cop0.sr = 0x40000401
-	cpu.call(pc)
 	fmt.eprintln("game returned from its entry point")
 }
