@@ -11,22 +11,26 @@ lost on a re-record; delete the reference to start the marks afresh.
 `check` runs each case once and compares it with its reference.
 
     python3 tests/run.py list
-    python3 tests/run.py record [case|mode ...]
-    python3 tests/run.py check  [case|mode ...]
-    python3 tests/run.py glsw   [case ...]    # GL against software reference
+    python3 tests/run.py record [-jN] [case|mode ...]
+    python3 tests/run.py check  [-jN] [case|mode ...]
+    python3 tests/run.py glsw   [-jN] [case ...]    # GL against software reference
 
 A case name selects one case, a mode (gl, sw) narrows to that renderer, and
-no names means every case in both modes. Inputs that come from the disc or
-from saves (cards, replays, edited map blocks) live in tests/local/, which is
-not tracked; see tests/README.md. Run nothing else on the machine meanwhile:
-instances never run in parallel, and load changes the unstable frames.
+no names means every case in both modes. Runs go to a pool of N instances at
+once (default and most 6, gl and sw mixed; -j1 runs them one at a time). Every
+run has its own out directory, and guest time alone decides each frame, so
+the load the pool puts on the host does not change the hashes. Inputs that
+come from the disc or from saves (cards, replays, edited map blocks) live in
+tests/local/, which is not tracked; see tests/README.md.
 """
 
+import fcntl
 import os
 import re
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
@@ -35,6 +39,7 @@ PORT = ROOT / "port"
 LOCAL = TESTS / "local"
 REF = LOCAL / "ref"
 OUT = LOCAL / "out"
+JOBS = 6
 
 MODES = {
     "gl": {"BOF4_GL": "1", "SDL_HINT_EGL_DEVICE": os.environ.get("SDL_HINT_EGL_DEVICE", "1")},
@@ -99,9 +104,6 @@ CASES = {
 def run(name, mode, out):
     """One headless run of a case; returns (hashes, checks, rc)."""
     case = CASES[name]
-    for need in (case["cards"] / "bof4_slot1.mcd", case["replay"]):
-        if not need.exists():
-            sys.exit(f"{name}: missing {need} (see tests/README.md)")
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -144,6 +146,12 @@ def run(name, mode, out):
     if mode == "gl" and "filled on the GPU" not in text:
         rc = f"{rc}, GL fell back to software"
     return read_hashes(out / "hashes.tsv"), log_checks(case["checks"], text), rc
+
+
+def missing(name):
+    """The local inputs a case needs that are not there."""
+    case = CASES[name]
+    return [p for p in (case["cards"] / "bof4_slot1.mcd", case["replay"]) if not p.exists()]
 
 
 def log_checks(checks, text):
@@ -218,9 +226,17 @@ def spans(keys):
     return ", ".join(out[:12]) + (" ..." if len(out) > 12 else "")
 
 
-def record(name, mode):
-    a, checks, rc = run(name, mode, OUT / f"{name}.{mode}.1")
-    b, checks2, rc2 = run(name, mode, OUT / f"{name}.{mode}.2")
+# Each action submits its runs to the pool and returns a function that waits
+# for them and reports, so the reports print in order while the runs overlap.
+
+def record(pool, name, mode):
+    first = pool.submit(run, name, mode, OUT / f"{name}.{mode}.1")
+    second = pool.submit(run, name, mode, OUT / f"{name}.{mode}.2")
+    return lambda: record_report(name, mode, first.result(), second.result())
+
+
+def record_report(name, mode, first, second):
+    (a, checks, rc), (b, checks2, rc2) = first, second
     differ, only = compare(a, b)
     old = read_ref(name, mode)
     kept = old[1] & a.keys() if old else set()
@@ -234,13 +250,17 @@ def record(name, mode):
     return True
 
 
-def check(name, mode):
+def check(pool, name, mode):
     ref = read_ref(name, mode)
     if ref is None:
-        print(f"{name}.{mode}: no reference, run record first")
-        return False
+        return lambda: print(f"{name}.{mode}: no reference, run record first") or False
+    got = pool.submit(run, name, mode, OUT / f"{name}.{mode}")
+    return lambda: check_report(name, mode, ref, got.result())
+
+
+def check_report(name, mode, ref, result):
     want, unstable, want_checks = ref
-    got, checks, rc = run(name, mode, OUT / f"{name}.{mode}")
+    got, checks, rc = result
     differ, only = compare(want, got, unstable)
     bad_checks = {k: (want_checks.get(k), v) for k, v in checks.items() if want_checks.get(k) != v}
     ok = not differ and not only and not bad_checks
@@ -255,15 +275,19 @@ def check(name, mode):
     return ok
 
 
-def glsw(name, _mode):
+def glsw(pool, name, _mode):
     """GL run against the software reference: the two renderers should draw
     the same pictures, so this reports where they do not."""
     ref = read_ref(name, "sw")
     if ref is None:
-        print(f"{name}: no sw reference, run record first")
-        return False
+        return lambda: print(f"{name}: no sw reference, run record first") or False
+    got = pool.submit(run, name, "gl", OUT / f"{name}.glsw")
+    return lambda: glsw_report(name, ref, got.result())
+
+
+def glsw_report(name, ref, result):
     want, unstable, _ = ref
-    got, _, rc = run(name, "gl", OUT / f"{name}.glsw")
+    got, _, rc = result
     differ, only = compare(want, got, unstable)
     print(f"{name} gl vs sw: exit {rc}, {len(differ)} dumps differ ({spans(differ) or 'none'}), "
           f"{len(only)} on one side only")
@@ -278,18 +302,34 @@ def main():
         for name, case in CASES.items():
             print(f"{name:10} {case['route'].name:16} {case['config'].name}")
         return
+    jobs = JOBS
+    for a in [a for a in args[1:] if re.fullmatch(r"-j\d+", a)]:
+        jobs = int(a[2:])
+        args.remove(a)
+    if not 1 <= jobs <= JOBS:
+        sys.exit(f"-j takes 1 to {JOBS}")
     names = [a for a in args[1:] if a in CASES] or list(CASES)
     modes = [a for a in args[1:] if a in MODES] or list(MODES)
     unknown = [a for a in args[1:] if a not in CASES and a not in MODES]
     if unknown:
         sys.exit(f"unknown case or mode: {' '.join(unknown)}")
-    if subprocess.run(["pgrep", "-x", "bof4"], capture_output=True).returncode == 0:
-        sys.exit("bof4 is already running; instances never run in parallel")
+    gone = [f"{n}: missing {p}" for n in names for p in missing(n)]
+    if gone:
+        sys.exit("\n".join(gone) + "\n(see tests/README.md)")
     REF.mkdir(exist_ok=True)
+    # Two invocations would write the same out directories and stack two
+    # pools on the host: the second one refuses while the first holds this.
+    lock = open(LOCAL / "run.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.exit(f"another run.py is running in {LOCAL}")
     action = {"record": record, "check": check, "glsw": glsw}[args[0]]
     if args[0] == "glsw":
         modes = ["gl"]
-    ok = all([action(n, m) for n in names for m in modes])
+    with ThreadPoolExecutor(jobs) as pool:
+        reports = [action(pool, n, m) for n in names for m in modes]
+        ok = all([report() for report in reports])
     sys.exit(0 if ok else 1)
 
 

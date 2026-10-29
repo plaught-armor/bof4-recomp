@@ -9,16 +9,18 @@ VRAM, and every 300th gets main RAM.
 
 ```
 python3 tests/run.py list
-python3 tests/run.py record [case|gl|sw ...]   # write references
-python3 tests/run.py check  [case|gl|sw ...]   # compare with them
-python3 tests/run.py glsw   [case ...]         # GL run against the software reference
+python3 tests/run.py record [-jN] [case|gl|sw ...]   # write references
+python3 tests/run.py check  [-jN] [case|gl|sw ...]   # compare with them
+python3 tests/run.py glsw   [-jN] [case ...]         # GL run against the software reference
 ```
 
 With no names, every case runs in both renderers (`gl`, `sw`). `record` runs
 each case twice. It keeps the first run as the reference and marks every
 present where the two runs differ as unstable, so `check` skips those. Build
-first (`port/build.sh`). Never run another instance at the same time; `run.py`
-refuses to start while `bof4` is running.
+first (`port/build.sh`). Runs go six at a time, gl and sw mixed, each in its
+own `local/out/` directory; `-jN` sets how many (1 to 6). Guest time alone
+decides every frame, so host load does not change the hashes. A second
+`run.py` refuses to start while one is running (lock file `local/run.lock`).
 
 ## Local inputs
 
