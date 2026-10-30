@@ -132,8 +132,35 @@ CASES = {
 def run(name, mode, out, stream=None):
     """One headless run of a case; returns (hashes, checks, rc). With
     `stream`, the write end of a pipe, the dumps go down it whole instead of
-    as hash lines (the hashes come back empty), and it is closed here."""
+    as hash lines (the hashes come back empty), and it is closed here on
+    every path: a run that fails before the game starts still ends the
+    stream, or its reader waits for it forever."""
     case = CASES[name]
+    try:
+        env = prepare(case, mode, out)
+        if stream is not None:
+            del env["BOF4_DUMP_HASH"]
+            env["BOF4_DUMP_FD"] = str(stream)
+        with open(out / "log.txt", "w") as log:
+            p = subprocess.Popen([str(PORT / "bof4")], cwd=PORT, env=env, stdout=log,
+                                 stderr=subprocess.STDOUT, pass_fds=() if stream is None else (stream,))
+    finally:
+        if stream is not None:
+            os.close(stream)
+    try:
+        rc = p.wait(timeout=case["timeout"])
+    except subprocess.TimeoutExpired:
+        p.kill()
+        p.wait()
+        rc = "timeout"
+    text = (out / "log.txt").read_text(errors="replace")
+    if mode in GPU_UP and GPU_UP[mode] not in text:
+        rc = f"{rc}, {mode} fell back to software"
+    return read_hashes(out / "hashes.tsv"), log_checks(case["checks"], text), rc
+
+
+def prepare(case, mode, out):
+    """A fresh out directory for one run of `case`; returns its environment."""
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -166,26 +193,7 @@ def run(name, mode, out, stream=None):
         **case["env"],
         **MODES[mode],
     }
-    if stream is not None:
-        del env["BOF4_DUMP_HASH"]
-        env["BOF4_DUMP_FD"] = str(stream)
-    with open(out / "log.txt", "w") as log:
-        try:
-            p = subprocess.Popen([str(PORT / "bof4")], cwd=PORT, env=env, stdout=log,
-                                 stderr=subprocess.STDOUT, pass_fds=() if stream is None else (stream,))
-        finally:
-            if stream is not None:
-                os.close(stream)
-        try:
-            rc = p.wait(timeout=case["timeout"])
-        except subprocess.TimeoutExpired:
-            p.kill()
-            p.wait()
-            rc = "timeout"
-    text = (out / "log.txt").read_text(errors="replace")
-    if mode in GPU_UP and GPU_UP[mode] not in text:
-        rc = f"{rc}, {mode} fell back to software"
-    return read_hashes(out / "hashes.tsv"), log_checks(case["checks"], text), rc
+    return env
 
 
 def missing(name):
@@ -345,11 +353,22 @@ def near(pool, name, mode):
 
 def near_run(name, mode, skip):
     results, readers, threads = {}, [], []
+
+    def side(m, w, out):
+        # An exception is kept as the result, so it reaches the pool thread
+        # below rather than dying with this one.
+        try:
+            results[m] = run(name, m, out, w)
+        except BaseException as e:
+            results[m] = e
+
     for m in ("sw", mode):
         r, w = os.pipe()
         readers.append(open(r, "rb"))
-        out = OUT / f"{name}.near.{m}"
-        threads.append(threading.Thread(target=lambda m=m, w=w, out=out: results.__setitem__(m, run(name, m, out, w))))
+        # The software run's directory is per mode: near gl and near vk of a
+        # case run at once, each with its own software run.
+        out = OUT / (f"{name}.near.{mode}.sw" if m == "sw" else f"{name}.near.{m}")
+        threads.append(threading.Thread(target=side, args=(m, w, out)))
         threads[-1].start()
     near = Near(OUT / f"{name}.near.{mode}.tsv", skip)
     try:
@@ -364,6 +383,9 @@ def near_run(name, mode, skip):
         for t in threads:
             t.join()
         near.close()
+    for m in ("sw", mode):
+        if isinstance(results[m], BaseException):
+            raise RuntimeError(f"{name} near {mode}: the {m} run failed") from results[m]
     return near, results["sw"][2], results[mode][2]
 
 
