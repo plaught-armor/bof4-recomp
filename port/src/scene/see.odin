@@ -144,11 +144,11 @@ screen_add :: proc(lo, hi: u32) {
 	if hi <= lo {
 		return
 	}
-	lo, hi := lo & 0x1fffff, hi & 0x1fffff
+	low, high := lo & 0x1fffff, hi & 0x1fffff
 	now := cpu.vblanks()
 	kept := 0
 	for q in screens.list[:screens.n] {
-		if now - q.stamp <= PORTAL_VBLANKS && (q.hi <= lo || q.lo >= hi) {
+		if now - q.stamp <= PORTAL_VBLANKS && (q.hi <= low || q.lo >= high) {
 			screens.list[kept] = q
 			kept += 1
 		}
@@ -162,7 +162,7 @@ screen_add :: proc(lo, hi: u32) {
 		copy(screens.list[:], screens.list[1:])
 		screens.n -= 1
 	}
-	screens.list[screens.n] = {lo, hi, now}
+	screens.list[screens.n] = {low, high, now}
 	screens.n += 1
 }
 

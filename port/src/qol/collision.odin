@@ -202,7 +202,6 @@ ram_s8 :: #force_inline proc(addr: u32) -> i32 {return i32(i8(cpu.r8(addr)))}
 
 @(private = "file")
 ground_core_native :: proc() -> i32 {
-	sc := &cpu.scratch
 	events()
 	desc := sc_u32(SCG_DESC)
 	sc_w16(SCG_LIT, u16(cpu.r8(desc + 3) & 1))

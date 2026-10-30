@@ -1244,12 +1244,12 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 	// The town's doorway the party walked in through, where the pass draws
 	// it: the cover's opening (scene.curtain_hole).
 	if cover && interiors.enter_ok {
-		shift := door_shift(d)
+		view_shift := door_shift(d)
 		at: [4][3]f32
 		for c, k in interiors.enter_quad {
-			at[k] = town_view_point(c + shift, tr)
+			at[k] = town_view_point(c + view_shift, tr)
 		}
-		scene.picture_blank_add(at, town_view_point(interiors.enter_front + shift, tr), PICTURE_W, PICTURE_H)
+		scene.picture_blank_add(at, town_view_point(interiors.enter_front + view_shift, tr), PICTURE_W, PICTURE_H)
 	}
 	if d.around && !cover {
 		rot: [3][3]f32

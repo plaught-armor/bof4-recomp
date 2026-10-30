@@ -620,12 +620,12 @@ ground_y :: proc(x, z: f64) -> f64 {
 @(private = "file")
 project :: proc(p: [3]f64) -> (s: [2]f64, ok: bool) {
 	shift := origin(map_editor.section + map_editor.layer) - origin(map_editor.section)
-	p := p + {f64(shift.x), f64(shift.y), f64(shift.z)}
+	moved := p + {f64(shift.x), f64(shift.y), f64(shift.z)}
 	v: [3]f64
 	for r in 0 ..< u32(3) {
 		sum := f64(i32(cpu.lw(CAM_TR + 4 * r))) * 4096
 		for i in 0 ..< u32(3) {
-			sum += f64(i16(cpu.lhu(CAM_MATRIX + 6 * r + 2 * i))) * p[i]
+			sum += f64(i16(cpu.lhu(CAM_MATRIX + 6 * r + 2 * i))) * moved[i]
 		}
 		v[r] = sum / 4096
 	}
@@ -741,7 +741,7 @@ draw_overlay :: proc() {
 				if colour == 0 {
 					continue
 				}
-				if s, ok := project(cell_point(f64(x) * 128, f64(z) * 128)); ok {
+				if s, shown := project(cell_point(f64(x) * 128, f64(z) * 128)); shown {
 					for dy in -1 ..= 1 {
 						for dx in -1 ..= 1 {
 							plot(pix, int(s.x) + dx, int(s.y) + dy, colour)

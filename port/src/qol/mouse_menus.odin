@@ -152,8 +152,8 @@ seek_end :: proc() {
 @(private = "file")
 mouse_menus_pad :: proc(held: u16) -> u16 {
 	m := &mouse_menus
-	held := mouse_menus_step(held)
-	return m.next_pad != nil ? m.next_pad(held) : held
+	pad := mouse_menus_step(held)
+	return m.next_pad != nil ? m.next_pad(pad) : pad
 }
 
 @(private = "file")

@@ -199,7 +199,6 @@ import "core:strconv"
 import "core:strings"
 
 import bios "ps:psx/bios"
-import cpu "ps:psx/cpu"
 import host "ps:psx/host"
 import render "ps:psx/render"
 

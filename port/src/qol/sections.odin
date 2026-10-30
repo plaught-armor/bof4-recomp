@@ -637,17 +637,17 @@ layer_draw :: proc() {
 		}
 		others: [MAX_TILES][2]u32
 		k := hide_others(hidden[from[i]:from[i + 1]], &others)
-		lo := cpu.lw(PACKETS)
+		start := cpu.lw(PACKETS)
 		sections.draw()
-		scene.portal_add(lo, cpu.lw(PACKETS), door_view(nb.door, tr), false)
+		scene.portal_add(start, cpu.lw(PACKETS), door_view(nb.door, tr), false)
 		unhide_tiles(others[:k])
 	}
 	for nb, i in list[:n] {
-		lo := cpu.lw(PACKETS)
+		start := cpu.lw(PACKETS)
 		for layer := nb.section + section_layers(nb.section) - 1; layer + 1 > nb.section; layer -= 1 {
 			draw_layer_at(layer, section, nb, tr, &sections.floors[i + 1])
 		}
-		through_door(nb, lo, cpu.lw(PACKETS), tr)
+		through_door(nb, start, cpu.lw(PACKETS), tr)
 	}
 	for i in u32(0) ..< 3 {
 		cpu.sw(CAM_TR + 4 * i, tr[i])

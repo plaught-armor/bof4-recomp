@@ -830,16 +830,16 @@ arm_of :: proc(e, tilt: f64) -> f64 {
 @(private = "file")
 spring :: proc(want: f64, tilt: u32, step: bool) {
 	top := boom_top(f64(tilt))
-	want := max(want, top)
+	goal := max(want, top)
 	if door_cover() > 0 && !tp.door_in {
 		tp.door_in, tp.lift_v = true, 0
 	}
 	if !step {
 		return
 	}
-	from, to := lift(max(tp.arm, top), f64(tilt)), lift(want, f64(tilt))
+	from, to := lift(max(tp.arm, top), f64(tilt)), lift(goal, f64(tilt))
 	if math.abs(to - from) < 0.5 {
-		tp.arm = want
+		tp.arm = goal
 		tp.door_in, tp.lift_v = false, 0
 		return
 	}

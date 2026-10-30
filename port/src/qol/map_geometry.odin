@@ -358,7 +358,6 @@ map_geometry: struct {
 
 @(private)
 map_geometry_init :: proc() -> bool {
-	ok: bool
 	map_geometry.tiles_draw = cpu.hook(LAYER_TILES_DRAW, map_tiles_draw) or_return
 	map_geometry.models_draw = cpu.hook(MODELS_DRAW, map_models_draw) or_return
 	map_geometry.check = os.get_env("BOF4_MAPCHECK", context.temp_allocator) != ""
@@ -1739,10 +1738,10 @@ layer_tris :: proc(layer: u32, shift: [3]f32, lo, hi: [2]f32, out: []Map_Tri) ->
 			n^ += 2
 		}
 	}
-	lo, hi := lo - shift.xz, hi - shift.xz
+	low, high := lo - shift.xz, hi - shift.xz
 	// Tile tx spans view x 256 tx - 64 .. 256 tx + 192.
-	t0 := [2]i32{i32(math.floor((lo.x + 64) / 256)), i32(math.floor((lo.y + 64) / 256))} - TILE_SPILL
-	t1 := [2]i32{i32(math.floor((hi.x + 64) / 256)), i32(math.floor((hi.y + 64) / 256))} + TILE_SPILL
+	t0 := [2]i32{i32(math.floor((low.x + 64) / 256)), i32(math.floor((low.y + 64) / 256))} - TILE_SPILL
+	t1 := [2]i32{i32(math.floor((high.x + 64) / 256)), i32(math.floor((high.y + 64) / 256))} + TILE_SPILL
 	for tz in max(t0.y, 0) ..= min(t1.y, i32(h.rows) - 1) {
 		row := (^Map_Row)(ram_ptr(header + u32(h.row_at) + u32(tz) * size_of(Map_Row)))^
 		for tx in max(t0.x, i32(row.x)) ..= min(t1.x, i32(row.x) + i32(row.count) - 1) {
@@ -1775,8 +1774,8 @@ layer_tris :: proc(layer: u32, shift: [3]f32, lo, hi: [2]f32, out: []Map_Tri) ->
 		m := (^Placed_Model)(ram_ptr(at))^
 		at += size_of(Placed_Model)
 		base := [3]f32{f32(m.x) * 16 - 64, f32(m.y) * 16, f32(m.z) * 16 - 64}
-		if m.flags & PLACED_DRAWN == 0 || base.x < lo.x - MODEL_REACH || base.x > hi.x + MODEL_REACH ||
-		   base.z < lo.y - MODEL_REACH || base.z > hi.y + MODEL_REACH {
+		if m.flags & PLACED_DRAWN == 0 || base.x < low.x - MODEL_REACH || base.x > high.x + MODEL_REACH ||
+		   base.z < low.y - MODEL_REACH || base.z > high.y + MODEL_REACH {
 			continue
 		}
 		group := block_entry_of(1, 0x24, u32(m.group))
