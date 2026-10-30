@@ -54,9 +54,9 @@ default) or 4 times the PS1's resolution, with sub-pixel vertices and
 perspective-correct textures. `psx/render/raster.odin` draws the hi-res target on
 several threads; the result is identical to drawing in order.
 
-Perspective textures use whole numbers only, so the software and GL
+Perspective textures use whole numbers only, so the software and Vulkan
 renderers pick the same texels (`Persp`, `persp_setup`, `persp_coord` in
-`psx/render/gpu.odin`; `persp_coord` in the GL fragment shader). At triangle set-up
+`psx/render/gpu.odin`; `persp_coord` in `shaders/hi_draw.glsl`). At triangle set-up
 each corner gets a weight w = round(2^15 * nearest depth / its depth). A
 pixel's coordinate in 256ths of a texel is floor(256 * sum(a t w) / sum(a w))
 over its edge weights a (shifted right for triangles of area 2^29 or more,
@@ -116,15 +116,19 @@ a game frame and the music and ambience stuttered with smooth motion on.
 
 ## Hardware renderer
 
-By default the hi-res target is drawn with OpenGL 4.5 (`psx/render/gl_target.odin`)
-instead of the CPU rasterizer. `[window] hardware = false` in bof4.ini (the
-Display page's "GPU draw", read at start) keeps it on the CPU, and the
-environment variable `BOF4_GPU=gl` or `BOF4_GPU=sw` (or the older
-`BOF4_GL=1` and `BOF4_GL=0`) overrides the setting. If the GL context or a
-shader fails, the port falls back to software. `BOF4_GPU=vk` starts the
-Vulkan backend (`psx/render/vk_target.odin`), experimental: it draws the
-target's walks on the GPU and the rest in software, and a Vulkan failure ends
-the game. The CPU
+By default the hi-res target is drawn and converted for the window with
+Vulkan (`psx/render/vk_target.odin`) instead of the CPU rasterizer.
+`[window] hardware = false` in bof4.ini (the Display page's "GPU draw", read
+at start) keeps it on the CPU, and the environment variable `BOF4_GPU=vk` or
+`BOF4_GPU=sw` overrides the setting (`gpu_init`, `psx/render/gpu.odin`).
+`BOF4_GL` (the OpenGL target's old switch) is ignored, with a message. With no
+Vulkan 1.3 device that will do (it needs dynamic rendering local read and
+64-bit shader arithmetic too), the port draws in software and says so, with
+a `BOF4_GPU=vk:` prefix when that was asked for; a Vulkan failure after
+start-up ends the game. The device is the first one that will do, named on
+stderr (`vulkan: <device>`). The OpenGL 4.5 target this section first
+described is gone from ps-recomp (cf6db95); notes below that name GL are its
+history, kept where the Vulkan target works the same way. The CPU
 rasterizer at detail 2 cannot hold 60 fps in busy towns (every game frame
 took 18-26 ms of host work in Sarai's square, against 16.7 ms). The VRAM
 target is always drawn in software, because the game reads VRAM back and
@@ -132,13 +136,13 @@ textures come from it.
 
 How it works:
 
-- The hi-res target is an `R32UI` integer texture holding true-colour
-  pixels (`r<<16 | g<<8 | b`, 8 bits per channel, mask in bit 31). Texels
+- The hi-res target holds true-colour pixels as 32-bit integers (`r<<16 | g<<8 | b`, 8 bits per channel, mask in bit 31). Texels
   from VRAM are widened 5 to 8 bits; shading, blend modes and fades are
   worked at 8 bits per channel with no dither, so gradients and fades do
   not band. The VRAM target keeps exact 15-bit PS1 pixels. The software
   plot (blend modes, fades, mask, see-through, ghosts, portals, door and
-  walk tags) runs in the fragment shader with image load/store, using the
+  walk tags) runs in the fragment shader (`shaders/hi_draw.glsl`), which
+  reads the picture in place (dynamic rendering local read), using the
   same integer arithmetic as the software hi-res target (`Target.rgb`), so
   both give the same pixels.
 - `[window] smooth_effects` (Display page "Soft FX", default off) samples
@@ -162,13 +166,14 @@ How it works:
   magnified texel stays a flat square with a one-pixel blended edge, so
   texel staircases on slanted or turning faces soften and edges glide
   instead of snapping as the camera moves; a shrunk texture (far ground)
-  gets the plain mix instead of shimmer. The value rides in `Gl_Prim.e.w`
-  with flag `Smooth_All`; same integer math in both renderers (checked: no
-  new pixel differences between GL and software in Sarai). Soft FX, when
+  gets the plain mix instead of shimmer. The value rides in `Gpu_Prim.e.w`
+  with flag `Smooth_All` (`prim_queue.odin`); same integer math in both
+  renderers (checked on the GL target: no new pixel differences between GL
+  and software in Sarai). Soft FX, when
   on, keeps the plain mix for effects.
 - Glow floor: on the hi-res target a filed (sprite-like, `m.flat`) additive
   (blend mode 1) texel has 6/31 taken off each channel, saturating
-  (`GLOW_FLOOR` in psx/render/gpu.odin and the GL shader). The footstep dust puff's
+  (`GLOW_FLOOR` in psx/render/gpu.odin and `shaders/hi_draw.glsl`). The footstep dust puff's
   gradient stops at 6/31 at its quad's edge, so at the port's scale it lifted
   a hard-edged grey box out of the leader's shadow; with the floor taken off
   the puff fades out to nothing. VRAM keeps the PS1's sum.
@@ -181,16 +186,17 @@ How it works:
   (1 8 28 56 70 56 28 8 1, sum 256, edge pixel repeated), stretched back
   bilinearly and added at gain 160/256, clamped to 255. The target keeps
   what was drawn; only the window picture glows. Software (`bloom.odin`,
-  SIMD lanes per channel) and the shader (`BLOOM_CS`, three dispatches
-  into `R32UI` images, then `CONV_CS`) use the same integer rounding, so
-  both give the same pixels. Hi-res target (detail 2 or 4) only.
+  SIMD lanes per channel) and the shaders (`shaders/bloom.comp`,
+  three dispatches, then `shaders/frame.comp`) use the same integer
+  rounding, so both give the same pixels. Hi-res target (detail 2 or 4) only.
   Software keeps a flag per 16 x 16 VRAM tile, set wherever a glowing
   pixel is drawn or copied (`move_image`, door pictures) and cleared when
   the tile averages to nothing, so it averages only flagged tiles and a
   frame with no glow costs next to nothing.
 - GLSL pitfall: `smooth`, `flat` and `noperspective` are reserved words.
-  A variable named `smooth` fails the draw shader's compile, and the port
-  then falls back to software drawing with only a log line to show it.
+  A variable named `smooth` fails the shader build (`shaders/build.sh`,
+  glslc); the GL target compiled at start-up and fell back to software
+  drawing with only a log line to show it.
 - The CPU still sets each triangle up (edges and attributes, as in
   software) and ships it in a storage buffer; the GPU draws each one as a
   box over its bounds.
@@ -205,43 +211,25 @@ How it works:
   a level, since any order gives the same result. Both halves of a PS1
   quad share a level. This halved the barriers compared with cutting the
   queue in order at each conflict (73k to 39k per 1000 presents).
-- Batches are submitted every 512 primitives and flushed, so the GPU works
-  while the CPU runs the game.
-- Doorway pictures (`picture_take`, `picture_lay`) and `move_image` stay on
-  the GPU. Only the displayed area is read back each present: a compute
-  shader converts it to display colour into a mapped buffer, and the extra
-  frames used for smooth motion are read back asynchronously, behind a
-  fence, so the CPU does not wait for them. The CPU reads the mapped
-  buffer in place (still-picture check, frame dumps).
-  When SDL draws the window with OpenGL, the GL context shares objects with
-  SDL's, and present fills the window texture from that buffer on the GPU
-  (a pixel-unpack upload, fenced both ways between the two contexts)
-  instead of copying 4.9 MB per present through the driver at detail 2.
-  With any other SDL renderer the pixels are copied in with
-  `SDL_UpdateTexture` as before.
-  On the shared path the CPU no longer waits for the conversion at all:
-  only a reader of the pixels (still-picture check while loading, frame
-  dumps, snapshots) waits for it. The conversion shader also flags whether
-  the picture has a pixel above black, for the black-screen check; that
-  flag is waited for only when the last picture was black too, so a black
-  stretch is fast-forwarded from its second present instead of its first.
+- A queue holds up to `QUEUE_PRIMS` (65536) primitives, or fewer when its
+  levels run out (`levels_full`), and is drawn synchronously
+  (`vk_target_submit`): the box the queue covers is copied from the
+  software target's planes (host-cached memory laid out as the GPU's
+  pictures) to the GPU, drawn, and copied back before it returns. Every
+  other path (frozen-time passes, doorway pictures, the ghost flush,
+  `move_image`, present) then reads and writes the planes in place after
+  `raster_sync`, as on the software target.
+- Present converts the shown area on the GPU (`vk_frame`,
+  `shaders/frame.comp`, with the glow and the HD-2D effects) into a frame
+  slot's host-cached buffer and waits for it; the window is filled from
+  that buffer. The conversion also flags whether the picture has a pixel
+  above black, for the black-screen check (`vk_frame_bright`).
 - The VRAM target is drawn by four stream worker threads as draws are
   queued, instead of on the main thread at present time. Each worker owns
   interleaved 8-row bands of VRAM, so they never write the same pixel. When
   a draw samples a texture area that a queued draw writes (render to
   texture), the queue first waits for all workers to finish.
 
-Measured on the baseline replay (the second 1000 presents, RX 7900 XTX):
-
-| detail | software | GL |
-|---|---|---|
-| 2 | 104.6 presents/s | 339 presents/s |
-| 4 | 59.1 presents/s | 237 presents/s |
-
-With GL, the CPU waits for the GPU about 0.6 ms per present at detail 4;
-there the GPU is close to the limit, mostly the waits between levels.
-Finer cells (4 x 4) and larger batches gave no fewer levels.
-The rest is the main thread (game code, triangle setup, checkpoint copies).
 A frozen-time pass no longer copies the 2.9 MB depth cache both ways: it
 logs each slot the pass first changes and puts those back at restore
 (`Depth_Undo`, `psx/render/depth.odin`), which cut checkpoint save and
@@ -254,41 +242,15 @@ have every restore prove that no write went around the guard. VRAM (1 MB)
 is still copied whole: a pass changes 45-50 of its 64 8-row bands, so
 tracking it would save nothing. A VRAM fill (`fill_rows`) sets each row as at most
 two runs (split where it wraps at the right edge) instead of pixel by pixel.
-Drawing each triangle as itself instead of its bounding box (half the
-fragments) did not change GPU time, so fragment count is not the GPU cost.
-
-`build.sh` builds with `-debug` for symbols but turns off vendor:OpenGL's
-`GL_DEBUG`, which `-debug` would otherwise turn on: it calls `glGetError`
-after every GL call, a round trip to the driver each time (about 1.6% at
-detail 2). `BOF4_GL_DEBUG=true ./build.sh` keeps the checks.
-
-Mesa runs GL calls on a thread of its own (`mesa_glthread`; turning it off
-drops detail 2 from about 300 to 237 presents/s), but an upload from
-program memory makes the main thread wait for that thread to catch up.
-`gl_vram_sync` uploads changed VRAM cells (about 64 strips a present), so
-it copies them into a persistently mapped pixel buffer, a ring of
-`GL_STAGE_PARTS` parts, and uploads from there; a part is fenced when left
-and waited on before it is written again. That took detail 2 from 303 to
-318 presents/s.
-
-Every fence (`glFenceSync`) costs as much again: under the GL thread it
-runs on the main thread and flushes the driver's commands to the GPU, about
-2.5% of the main thread each. Fences are therefore made lazily on one
-timeline (`gl_point`, `gl_point_wait`): work that will need waiting for
-takes a point, and the fence for it is made only when a wait or `gl_show`
-needs one, so the fence `gl_show` makes for the window covers the
-conversion and the staging ring too. The conversion's lit flag is cleared
-from the CPU instead of by an upload, so `frame_black` trusts a flag that
-is already set without waiting. Together about +3%. Left per present: the
-`gl_show` fence, the switch to the SDL renderer's context and back, and its
-fence after drawing (dropping that one gains under 1%, not worth the race).
 
 `tween_record` (`qol/tween.odin`) puts a frame's primitives in address
 order to pair them with the previous frame's. It sorts them with two
 stable 13-bit counting passes on the address instead of `slice.sort_by`
-(which was 4.6% of the main thread): 325 to 339 presents/s, same order.
+(which was 4.6% of the main thread): 325 to 339 presents/s on the GL
+target, same order.
 Comparing VRAM pages with libc `memcmp` instead of Odin's slice compare
-(`draw_start_load` then, `gl_vram_sync`) made no difference.
+(`draw_start_load` then, and the GL target's `gl_vram_sync`) made no
+difference.
 
 `build.sh` targets the build machine's own CPU (`-microarch:native`) by
 default. `x86-64-v3` (AVX2) measured about 1% over baseline x86-64, and
@@ -376,8 +338,8 @@ trace ("pass read VRAM it did not draw"); the town replay has none. Room
 passes nested in an in-between pass inherit this; room passes in real
 frames draw both. Whole pass: 3.3 to 2.0 ms, frames identical.
 
-The GL target keeps up to 9 GPU copies of VRAM (`gl_vram_use`,
-`psx/render/gl_target.odin`), each with its own shadow. A door pass swaps in its
+The GL target (since removed) kept up to 9 GPU copies of VRAM (`gl_vram_use`),
+each with its own shadow; the rest of this paragraph describes it. A door pass swaps in its
 room's VRAM and names it (`vram_world`), and checkpoint restore names the
 town's again. Before this, every door pass uploaded nearly every read cell
 twice, once into the room's VRAM and once back. Uploads during passes
@@ -401,17 +363,67 @@ point where it needs the workers' results. The VRAM ghost flush is queued
 to the workers as a job of its own instead of waiting for them.
 
 The game moves a 2 x 1 area onto itself every frame; `move_image` returns
-early for such moves, since a GL target would otherwise read the area back
+early for such moves, since a GPU target would otherwise read the area back
 from the GPU twice and wait for it.
 
 Frames match software except for pixels one step off in depth (the
 see-through fade still works depth out in floats), and doorway pictures sometimes appearing a present earlier or
 later, because preloading timing differs.
 
-On machines with more than one GPU, the headless (offscreen) driver may
-pick the integrated GPU. `SDL_HINT_EGL_DEVICE=<n>` chooses the EGL device
-(on the test machine 0 was the integrated GPU, 1 the discrete one).
-The GL renderer prints its device to stderr at start-up.
+On machines with more than one GPU, the Vulkan target takes the first
+device that will do and prints it to stderr at start-up (`vulkan: <device>`).
+With Mesa drivers `MESA_VK_DEVICE_SELECT=<vendor id>:<device id>` puts
+another first (`MESA_VK_DEVICE_SELECT=list` lists them).
+
+### GL target (removed)
+
+The OpenGL 4.5 target (gone since ps-recomp cf6db95) was measured on the
+baseline replay (the second 1000 presents, RX 7900 XTX); the Vulkan target
+has not been measured (performance work is parked):
+
+| detail | software | GL target (removed) |
+|---|---|---|
+| 2 | 104.6 presents/s | 339 presents/s |
+| 4 | 59.1 presents/s | 237 presents/s |
+
+With GL, the CPU waited for the GPU about 0.6 ms per present at detail 4;
+there the GPU was close to the limit, mostly the waits between levels.
+Finer cells (4 x 4) and larger batches gave no fewer levels. The rest was
+the main thread (game code, triangle setup, checkpoint copies). Drawing
+each triangle as itself instead of its bounding box (half the fragments)
+did not change GPU time, so fragment count was not the GPU cost.
+
+`build.sh` built with `-debug` for symbols but turned off vendor:OpenGL's
+`GL_DEBUG`, which `-debug` would otherwise turn on: it calls `glGetError`
+after every GL call, a round trip to the driver each time (about 1.6% at
+detail 2).
+
+Mesa ran GL calls on a thread of its own (`mesa_glthread`; turning it off
+dropped detail 2 from about 300 to 237 presents/s), but an upload from
+program memory made the main thread wait for that thread to catch up.
+`gl_vram_sync` uploaded changed VRAM cells (about 64 strips a present), so
+it copied them into a persistently mapped pixel buffer, a ring of
+`GL_STAGE_PARTS` parts, and uploaded from there; a part was fenced when
+left and waited on before it was written again. That took detail 2 from
+303 to 318 presents/s.
+
+Every fence (`glFenceSync`) cost as much again: under the GL thread it ran
+on the main thread and flushed the driver's commands to the GPU, about
+2.5% of the main thread each. Fences were therefore made lazily on one
+timeline (`gl_point`, `gl_point_wait`): work that would need waiting for
+took a point, and the fence for it was made only when a wait or `gl_show`
+needed one, so the fence `gl_show` made for the window covered the
+conversion and the staging ring too. The conversion's lit flag was cleared
+from the CPU instead of by an upload, so `frame_black` trusted a flag that
+was already set without waiting. Together about +3%. Left per present: the
+`gl_show` fence, the switch to the SDL renderer's context and back, and its
+fence after drawing (dropping that one gained under 1%, not worth the race).
+
+When SDL drew the window with OpenGL, the GL context shared objects with
+SDL's, and present filled the window texture from the converted buffer on
+the GPU (a pixel-unpack upload, fenced both ways between the two contexts)
+instead of copying 4.9 MB per present through the driver at detail 2; with
+any other SDL renderer the pixels were copied in with `SDL_UpdateTexture`.
 
 ## Smooth camera (third person)
 
@@ -557,9 +569,10 @@ Each frame starts with a GP0 02 fill of the 320x240 draw buffer to black
 so the black never shows; the low third-person camera does, and sees a
 void. `render.backdrop_hook` (`psx/render/gpu.odin` `fill_rect`) lets qol give a
 black fill one colour per target row in the hi-res target only; VRAM stays
-black, so anything reading it back is unchanged. The hardware renderer
-clears one band per run of equal rows (`gl_fill`); door tags are cleared
-as for any fill.
+black, so anything reading it back is unchanged. With Vulkan the fill is
+written in software, after `raster_sync`, to the planes the GPU draws
+from (the GL target cleared one band per run of equal rows, `gl_fill`);
+door tags are cleared as for any fill.
 
 `qol/backdrop.odin` fills a sky gradient above the horizon and the map's
 ground fading out of a haze below it, for maps in its `SKIES` table (Sarai
@@ -597,8 +610,9 @@ F_FOG, uniforms `fog0`/`fog_c`) alike. Semi-transparent pixels are left
 alone. Sarai fogs from 380 to 2680 past the leader; the canyon, whose
 cliffs close in, from 1280. A room seen through a door (`interior_pass`) is not fogged. The fog
 lapses on its own 8 vblanks after the last sky fill (`FOG_VBLANKS`), so
-leaving a sky map, or the game's own camera, clears it. GL and software
-match bar a stray 1-step rounding pixel or two.
+leaving a sky map, or the game's own camera, clears it. The GL target and
+software matched bar a stray 1-step rounding pixel or two (not re-checked
+on Vulkan).
 
 ## Follower fade-in (third person)
 
@@ -628,19 +642,19 @@ Look page of the options (`[window] depth_of_field`, `color_grade`,
 (`see_through` set within 8 vblanks, leader in front of the lens) and only
 on the hi-res target (detail 2 or 4). The target keeps what was drawn; the
 effects go on as the shown area is converted for the window
-(`psx/render/post.odin` `post_pixel`, GL `CONV_CS`), in this order: depth of
+(`psx/render/post.odin` `post_pixel`, on Vulkan `shaders/frame.comp`), in this order: depth of
 field, glow (`bloom_effects`), colour grade, vignette.
 
 - **Depth per pixel.** Each hi-res pixel carries its view depth in the
   spare bits 25..30 (`HI_DEPTH`): `clamp(min(z, 0x10000) >> 6, 1, 63)`,
   so one step is 64 view units, 0 meaning none. Every opaque draw writes
-  it (`plot`, DRAW_FS); semi-transparent pixels keep what was under them;
+  it (`plot`, `shaders/hi_draw.glsl`); semi-transparent pixels keep what was under them;
   fills, VRAM copies, uploads and the party's sprites (z <= 0) give 0.
   Ghost and fade passes keep the bits (`pixel_kept`, `HI_KEPT`).
 - **Depth of field.** The focus is the depth step of the leader's middle
   (`see_through.target.z`). The area is averaged to PS1 resolution and
-  blurred across then down with the glow's 9 taps (`dof_prepare`, GL
-  `BLOOM_CS` with `every`), then stretched back bilinearly. A pixel mixes
+  blurred across then down with the glow's 9 taps (`dof_prepare`,
+  `shaders/bloom.comp` with `every`), then stretched back bilinearly. A pixel mixes
   toward the blur by `clamp((|z - focus| - DOF_BAND) * 256 / DOF_RAMP, 0,
   256)` (band 2 steps, ramp 8): the leader and what is round him stay
   sharp, set pieces near the lens and the far town go soft. Pixels with
@@ -654,8 +668,9 @@ field, glow (`bloom_effects`), colour grade, vignette.
 - **Vignette.** Darkens toward the corners: from 128/256 of the half
   diagonal squared, up to 80/256 darker at the corners.
 
-Integer arithmetic throughout, the same in software and GL; checked in
-Sarai: the two differ only where the raster already did (a few dozen
+Integer arithmetic throughout, the same in software and on the GPU;
+checked in Sarai on the GL target (not re-checked on Vulkan): the two
+differed only where the raster already did (a few dozen
 2x2 pixel blocks, the same with the effects off).
 
 ## Depth buffer (third person)
@@ -677,7 +692,8 @@ of the table draws with a depth buffer (`psx/render/depth_buffer.odin`):
   run on toward the lens, under the floor's own depth, so the floor cut off
   the sprite's bottom rows (the shadow's soft edge read as a hard line);
   `z_plane.z` holds 1 / the feet's depth and `z_on_plane` clamps to it, so
-  rows under the feet stay at the feet's depth (GL: `P.w.z`).
+  rows under the feet stay at the feet's depth (`P.w.z` in
+  `shaders/hi_draw.glsl`).
 - **Test and write.** Every pixel taking part is tested; only a solid
   pixel drawn in full writes (not see-through texels, ghosts or faded
   pixels), keeping the nearer depth. A pixel passes when no more than a
@@ -694,21 +710,26 @@ of the table draws with a depth buffer (`psx/render/depth_buffer.odin`):
   walk, at its first world-quad lookup: it sorts the walk's quads by view
   x and marks each one inside another's bounds, within 0.5 units of its
   plane and under 0.9 of its area. A decal's depth is taken `Z_LIFT` (4
-  units, past `Z_BIAS`) nearer (`Prim_Mode.decal`, GL `Z_Decal`), so the
+  units, past `Z_BIAS`) nearer (`Prim_Mode.decal`, `Z_Decal` in `prim_queue.odin`), so the
   surface under it never draws over it. Sarai: about 500 quads a walk, 10%
   of them decals, 0.25 ms a walk.
 - **No clears.** A buffer word is the walk's key `(0xffff - walk) << 16`
   plus the depth in quarter view units, so an earlier walk's word is larger
   than any of this one's and counts as empty; keeping the nearer is one
   min. The buffer is cleared only when the walk count wraps (65535 walks).
-- **GL.** `gpu_gl.zbuf` (R32UI image, binding 1). A level holding prims
-  with depth is drawn twice: a prepass (`zpass` 1) that lays down depths
-  with `atomicMin` and no colour, a `SHADER_IMAGE_ACCESS` barrier, then the
-  normal draw testing against them. No fragment-shader interlock on the
-  test machine (radeonsi), hence the prepass. It skips gouraud colours,
-  the smooth split and affine u, v for perspective prims, and discards at
-  once for prims that only test. Cost in Sarai: pull time 13.1 s per 1000
-  presents against 10.6 s without (about 2.5 ms a frame on the iGPU).
+- **Vulkan.** The depth buffer is a storage buffer, a word a pixel at
+  y * w + x (`vk_target.odin`). A draw level holding prims with depth is
+  drawn twice: a prepass (`zpass` 1) that lays down depths with
+  `atomicMin` (`z_min` in `shaders/draw.frag`) and no colour, a barrier,
+  then the normal draw testing against them. The prepass skips gouraud
+  colours, the smooth split and affine u, v for perspective prims, and
+  discards at once for prims that only test. With ordered pixel interlock
+  (`BOF4_VK_INTERLOCK=1`, off by default, and only where the device has
+  it) a queue is one level drawn by `draw.frag` built with `-DINTERLOCK`
+  (`draw_lock.frag.spv`, `shaders/build.sh`), and depths are laid as
+  drawn, with no prepass. The GL target did the same prepass; it cost
+  13.1 s of pull time per 1000 presents in Sarai against 10.6 s without
+  (about 2.5 ms a frame on the iGPU).
 
 - **Screen prims.** Packet addresses repeat: the prim pool alternates two
   buffers, so a see-through Flat filed for a sprite (kept up to
@@ -735,8 +756,9 @@ of the table draws with a depth buffer (`psx/render/depth_buffer.odin`):
   inside a Flat ever had all its corners projected. A packet filed by
   `see_flat_add` now skips `depth_fill` and always takes its Flat.
 
-Software and GL agree in Sarai except where the raster already differed (a
-1-step colour difference on one 2x2 block at present 3200).
+Software and the GL target agreed in Sarai except where the raster already
+differed (a 1-step colour difference on one 2x2 block at present 3200); not
+re-checked on Vulkan.
 
 ### Sprite seams (texels_cell)
 
@@ -748,8 +770,8 @@ upper piece's cell (transparent), and the ground shows. `texels_cell`
 hi-res target) narrows the read range for a triangle mapped straight onto
 the screen (u along x only, v along y only, exact integer cross products):
 the end where a coordinate runs out at the triangle's right or bottom edge,
-never drawn by the PS1 at its own scale, drops one texel. GL clamps with
-the same range (`READ_OK`).
+never drawn by the PS1 at its own scale, drops one texel. `shaders/hi_draw.glsl`
+clamps with the same range (`READ_OK`).
 
 ## Native 3D world (third person)
 

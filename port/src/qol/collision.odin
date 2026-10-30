@@ -594,7 +594,6 @@ tile_poly :: proc(poly: u32) -> bool {
 @(private = "file")
 triangle :: proc(a, b, c: u32) {
 	sc := &cpu.scratch
-	NCLIP :: 0x1400006
 	events()
 	sc_w16(SCG_XZ, u16(i16(i8(sc[a]))))
 	sc_w16(SCG_XZ + 2, u16(i16(i8(sc[a + 2]))))
@@ -604,11 +603,11 @@ triangle :: proc(a, b, c: u32) {
 	sc_w16(SCG_XZ + 10, u16(i16(i8(sc[c + 2]))))
 	pa, pb, pc := sc_u32(SCG_XZ), sc_u32(SCG_XZ + 4), sc_u32(SCG_XZ + 8)
 	area := proc(s0, s1, s2: u32) -> i32 {
-		gte.gte_write(12, s0)
-		gte.gte_write(14, s2)
-		gte.gte_write(13, s1)
-		gte.gte_cmd(NCLIP)
-		return i32(gte.gte_read(24))
+		gte.data_write(12, s0)
+		gte.data_write(14, s2)
+		gte.data_write(13, s1)
+		gte.cmd_nclip()
+		return i32(gte.data_read(24))
 	}
 	whole := area(pa, pb, pc)
 	sc_w32(SCG_AREAS + 12, u32(whole))

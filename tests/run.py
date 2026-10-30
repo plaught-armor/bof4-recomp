@@ -13,14 +13,12 @@ lost on a re-record; delete the reference to start the marks afresh.
     python3 tests/run.py list
     python3 tests/run.py record [-jN] [case|mode ...]
     python3 tests/run.py check  [-jN] [case|mode ...]
-    python3 tests/run.py glsw   [-jN] [case ...]    # GL against software reference
     python3 tests/run.py near   [-jN] [case|mode ...]  # GPU run against software, live
 
-A case name selects one case, a mode (gl, sw, vk) narrows to that renderer,
-and no names means every case in gl and sw (vk has no references yet).
+A case name selects one case, a mode (sw, vk) narrows to that renderer,
+and no names means every case in both.
 
-`near` runs each case in software and on a GPU backend (gl, vk; no mode
-means both) at once, each streaming its dumps whole down a pipe
+`near` runs each case in software and on the GPU backend (vk) at once, each streaming its dumps whole down a pipe
 (BOF4_DUMP_FD), and compares them as they come. RAM and VRAM must match
 exactly. The window and PS1 frame pictures may differ by a little: a pixel
 whose largest channel difference is 1 or 2 is counted, and one off by more
@@ -28,7 +26,7 @@ is listed in out/<case>.near.<mode>.tsv. A run passes when no picture has
 more pixels off by 1-2 than NEAR_SMALL allows and none is off by more.
 Presents unstable in either reference are skipped. Each near run takes two
 pool slots. Runs go to a pool of N instances at
-once (default and most 6, gl and sw mixed; -j1 runs them one at a time). Every
+once (default and most 6, sw and vk mixed; -j1 runs them one at a time). Every
 run has its own out directory, and guest time alone decides each frame, so
 the load the pool puts on the host does not change the hashes. Inputs that
 come from the disc or from saves (cards, replays, edited map blocks) live in
@@ -56,22 +54,21 @@ OUT = LOCAL / "out"
 JOBS = 6
 
 MODES = {
-    "gl": {"BOF4_GPU": "gl", "SDL_HINT_EGL_DEVICE": os.environ.get("SDL_HINT_EGL_DEVICE", "1")},
     "sw": {"BOF4_GPU": "sw"},
     "vk": {"BOF4_GPU": "vk"},
 }
 # The modes run when none is named, and a GPU mode's line in the log when it
 # came up (none means it fell back to software).
-DEFAULT_MODES = ["gl", "sw"]
-GPU_UP = {"gl": "filled on the GPU", "vk": "GPU: vk"}
+DEFAULT_MODES = ["sw", "vk"]
+GPU_UP = {"vk": "GPU: vk"}
 # Dumps compared near (pictures); every other kind must match exactly.
 PICTURES = ("frame", "window")
 # Lines of out/<case>.near.<mode>.tsv at most.
 NEAR_LIST = 100000
-# Pixels off by 1 or 2 one picture may have: the most gl had against sw on
-# the cases (street, present 3476, 2026-10-29); the window is the frame
-# scaled 2x. Every gl pixel off by more was a real difference (Δ up to 60+),
-# so none is allowed.
+# Pixels off by 1 or 2 one picture may have: the most the GL target (since
+# removed) had against sw on the cases (street, present 3476, 2026-10-29); the
+# window is the frame scaled 2x. Every GL pixel off by more was a real
+# difference (Δ up to 60+), so none is allowed.
 NEAR_SMALL = {"frame": 55, "window": 220}
 
 # Log checks: (label, pattern). The recorded value is the number of log lines
@@ -323,25 +320,6 @@ def check_report(name, mode, ref, result):
     return ok
 
 
-def glsw(pool, name, _mode):
-    """GL run against the software reference: the two renderers should draw
-    the same pictures, so this reports where they do not."""
-    ref = read_ref(name, "sw")
-    if ref is None:
-        return lambda: print(f"{name}: no sw reference, run record first") or False
-    got = pool.submit(run, name, "gl", OUT / f"{name}.glsw")
-    return lambda: glsw_report(name, ref, got.result())
-
-
-def glsw_report(name, ref, result):
-    want, unstable, _ = ref
-    got, _, rc = result
-    differ, only = compare(want, got, unstable)
-    print(f"{name} gl vs sw: exit {rc}, {len(differ)} dumps differ ({spans(differ) or 'none'}), "
-          f"{len(only)} on one side only")
-    return not differ and not only
-
-
 def near(pool, name, mode):
     """Software and `mode` runs of a case at once, their dumps compared as
     they stream; see the module notes."""
@@ -365,8 +343,8 @@ def near_run(name, mode, skip):
     for m in ("sw", mode):
         r, w = os.pipe()
         readers.append(open(r, "rb"))
-        # The software run's directory is per mode: near gl and near vk of a
-        # case run at once, each with its own software run.
+        # The software run's directory is per mode, so a second GPU mode's
+        # near run of a case would get its own software run.
         out = OUT / (f"{name}.near.{mode}.sw" if m == "sw" else f"{name}.near.{m}")
         threads.append(threading.Thread(target=side, args=(m, w, out)))
         threads[-1].start()
@@ -401,9 +379,12 @@ def dumps(f):
 
 def ppm(data):
     """A P6 picture as an h x w x 3 array."""
-    magic, w, h, top, rest = data.split(maxsplit=4)
+    magic, w, h, top, _ = data.split(maxsplit=4)
     assert magic == b"P6" and top == b"255"
-    return np.frombuffer(rest, np.uint8).reshape(int(h), int(w), 3)
+    # The pixels are the last w*h*3 bytes: split() would also eat any
+    # leading pixel bytes that happen to be whitespace.
+    n = int(w) * int(h) * 3
+    return np.frombuffer(data[-n:], np.uint8).reshape(int(h), int(w), 3)
 
 
 class Near:
@@ -503,7 +484,7 @@ def near_report(name, mode, result):
 
 def main():
     args = sys.argv[1:]
-    if not args or args[0] not in ("list", "record", "check", "glsw", "near"):
+    if not args or args[0] not in ("list", "record", "check", "near"):
         sys.exit(__doc__)
     if args[0] == "list":
         for name, case in CASES.items():
@@ -516,7 +497,7 @@ def main():
     if not 1 <= jobs <= JOBS:
         sys.exit(f"-j takes 1 to {JOBS}")
     names = [a for a in args[1:] if a in CASES] or list(CASES)
-    modes = [a for a in args[1:] if a in MODES] or (["gl", "vk"] if args[0] == "near" else DEFAULT_MODES)
+    modes = [a for a in args[1:] if a in MODES] or (["vk"] if args[0] == "near" else DEFAULT_MODES)
     unknown = [a for a in args[1:] if a not in CASES and a not in MODES]
     if unknown:
         sys.exit(f"unknown case or mode: {' '.join(unknown)}")
@@ -531,12 +512,10 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         sys.exit(f"another run.py is running in {LOCAL}")
-    action = {"record": record, "check": check, "glsw": glsw, "near": near}[args[0]]
-    if args[0] == "glsw":
-        modes = ["gl"]
+    action = {"record": record, "check": check, "near": near}[args[0]]
     if args[0] == "near":
         if "sw" in modes:
-            sys.exit("near compares gl or vk with sw")
+            sys.exit("near compares vk with sw")
         jobs = max(1, jobs // 2)
     with ThreadPoolExecutor(jobs) as pool:
         reports = [action(pool, n, m) for n in names for m in modes]

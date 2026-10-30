@@ -782,7 +782,7 @@ What a load does that the switch redoes by hand:
   the curtain's, so the opening is there even where the town drew no
   curtain. The walk tests each pixel against the opening after reading the
   cover, in picture coordinates; a warped cover clamps to the picture's
-  edges. The GL path does the same (`pic_blank` uniform).
+  edges. The GL target (since removed) did the same (`pic_blank` uniform).
 - `scene.cover_add` takes the opening by pointer (`&d.cover_hole`) and
   `picture_flush` copies it as it lays the cover: the frame's own cover pass
   runs after `cover_add` and overwrites the pixels and the opening, and a

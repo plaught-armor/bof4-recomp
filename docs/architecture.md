@@ -48,7 +48,7 @@ Every call the game makes goes through `cpu.call(addr)` (`psx/cpu/cpu.odin`):
    you see one of those, the function is missing from `funcs.tsv`: add it and
    regenerate.
 
-Under the CPU, `psx/` emulates the rest of the console: GPU (an OpenGL
+Under the CPU, `psx/` emulates the rest of the console: GPU (a Vulkan
 renderer by default, a software one with `[window] hardware` off, both
 with extensions, see [graphics.md](graphics.md)), GTE, SPU and XA
 audio, CD-ROM reading the real disc image, MDEC movies, pads and memory cards,
@@ -256,9 +256,9 @@ build passes it as `-collection:ps` with `-define:ENV_PREFIX=BOF4_`, so its
 environment variables keep the `BOF4_` names). From `port/`:
 
 ```sh
-./build.sh                 # optimized with debug info, writes ./bof4
+./build.sh                 # optimized, writes ./bof4
+./build.sh debug           # with debug info
 BOF4_OPT=none ./build.sh   # unoptimized
-BOF4_GL_DEBUG=true ./build.sh  # check glGetError after every GL call (slower)
 BOF4_ARCH=x86-64-v3 ./build.sh # for other machines (AVX2); the default is this CPU (native)
 ./bof4                     # reads ../disc/SLUS_013.24 and "../Breath of Fire IV.cue"
 ```

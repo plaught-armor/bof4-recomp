@@ -4,7 +4,7 @@ A native PC port of Breath of Fire IV (PlayStation, US release SLUS-01324),
 made by statically recompiling the game's MIPS code to [Odin](https://odin-lang.org/).
 The recompiled code runs on a reimplemented PS1 (CPU, GTE, GPU, SPU, CD-ROM,
 MDEC, XA, pads, memory cards), with no emulator core and no BIOS image. On
-top of that, a quality-of-life layer adds hi-res OpenGL rendering, smooth
+top of that, a quality-of-life layer adds hi-res Vulkan rendering, smooth
 60/120/240 Hz motion, a free third-person camera, seamless towns, faster
 doors and text, battle and balance options, restored cut content and more.
 See [docs/port-changes.md](docs/port-changes.md) for the full list.
@@ -22,10 +22,11 @@ Requirements:
 - [Odin](https://odin-lang.org/) (developed with `dev-2026-10`); on Windows
   Odin also needs the MSVC build tools and Windows SDK (see Odin's install
   guide)
-- OpenGL 4.5 drivers; on Linux also SDL2 (Windows uses the `SDL2.dll` that
-  ships with Odin)
-- optional, for the experimental Vulkan renderer only: a Vulkan 1.3 driver
-  with dynamic rendering local read and 64-bit shader integers and floats
+- on Linux SDL2 (Windows uses the `SDL2.dll` that ships with Odin)
+- about 10 GB of free RAM to build
+- for drawing on the GPU: a Vulkan 1.3 driver with dynamic rendering local
+  read and 64-bit shader integers and floats (without one the port draws in
+  software)
 - ps-recomp (its recompiler, the emulated PS1 in its `psx` package, and
   the `core` package: tracing, capture, PNG, environment): a submodule at
   `ps-recomp/`, fetched by `git clone --recursive` or
@@ -55,20 +56,20 @@ Steps:
 The build targets the build machine's CPU (`-microarch:native`). To build a
 binary for other machines, set `BOF4_ARCH=x86-64-v3` before running setup.
 After the first setup, `port/build.sh` (`port\build.bat`) rebuilds on its
-own.
+own; `port/build.sh debug` (`port\build.bat debug`) adds debug info.
 
 On Windows the port does not load rooms ahead in the background: Linux does
 that in a `fork()` copy of the game, which Windows lacks. Rooms load when the
 party walks in, as on the PS1.
 
-The hi-res picture is drawn with OpenGL by default. The environment variable
-`BOF4_GPU` picks the renderer: `gl` (OpenGL), `sw` (the CPU rasterizer, also
-`[window] hardware = false` in bof4.ini) or `vk` (Vulkan, experimental: it
-draws only part of the picture on the GPU, and a Vulkan failure ends the
-game). If OpenGL fails to start, the port falls back to `sw`. See
+The hi-res picture is drawn with Vulkan by default. The environment variable
+`BOF4_GPU` picks the renderer: `vk` (Vulkan) or `sw` (the CPU rasterizer,
+also `[window] hardware = false` in bof4.ini). With no Vulkan device that
+will do, the port draws in software. See
 [docs/graphics.md](docs/graphics.md#hardware-renderer).
 
-Settings are in `port/bof4.ini`. Most can also be changed in game, from the
+Settings are in `port/bof4.ini` (written when a setting changes in game;
+missing means defaults). Most can also be changed in game, from the
 camp menu's Setting > Extras page. Memory cards are
 `port/bof4_slot1.mcd` and `port/bof4_slot2.mcd`.
 
@@ -80,6 +81,7 @@ camp menu's Setting > Extras page. Memory cards are
 | `port/src/rec` | generated: the recompiled game code (not in the repo) |
 | `tools/` | `bof4tools` (in Odin): setup, disc and overlay extractors, map block tool, research helpers; Ghidra scripts |
 | `docs/` | reverse-engineering and modding notes: start at [docs/README.md](docs/README.md) |
+| `tests/` | `run.py`: replays recorded sessions and routes headless and compares every present against a recorded reference, see [tests/README.md](tests/README.md) |
 
 ## Modding
 

@@ -863,25 +863,25 @@ world_turn :: proc(a, b, c: [3]f32) -> i32 {
 @(private = "file")
 quad_draw :: proc(d: ^Quad_Draw, q: Quad_Code) -> Quad_End {
 	xy :: #force_inline proc(v: [3]i16) -> u32 {return u32(u16(v[0])) | u32(u16(v[1])) << 16}
-	gte.gte_write(0, xy(d.v[0]))
-	gte.gte_write(1, u32(u16(d.v[0][2])))
-	gte.gte_write(2, xy(d.v[1]))
-	gte.gte_write(3, u32(u16(d.v[1][2])))
-	gte.gte_write(4, xy(d.v[2]))
-	gte.gte_write(5, u32(u16(d.v[2][2])))
-	gte.gte_cmd(0x280030) // RTPT
+	gte.data_write(0, xy(d.v[0]))
+	gte.data_write(1, u32(u16(d.v[0][2])))
+	gte.data_write(2, xy(d.v[1]))
+	gte.data_write(3, u32(u16(d.v[1][2])))
+	gte.data_write(4, xy(d.v[2]))
+	gte.data_write(5, u32(u16(d.v[2][2])))
+	gte.cmd_rtpt(0x280030)
 	sxy: [4]u32
 	sz: [4]i32
-	sxy[0], sxy[1], sxy[2] = gte.gte_read(12), gte.gte_read(13), gte.gte_read(14)
-	sz[0], sz[1], sz[2] = i32(gte.gte_read(17)), i32(gte.gte_read(18)), i32(gte.gte_read(19))
-	gte.gte_cmd(0x1400006) // NCLIP
-	turn0 := i32(gte.gte_read(24))
-	gte.gte_write(0, xy(d.v[3]))
-	gte.gte_write(1, u32(u16(d.v[3][2])))
-	gte.gte_cmd(0x180001) // RTPS
-	gte.gte_cmd(0x1400006)
-	turn1 := i32(gte.gte_read(24))
-	sxy[3], sz[3] = gte.gte_read(14), i32(gte.gte_read(19))
+	sxy[0], sxy[1], sxy[2] = gte.data_read(12), gte.data_read(13), gte.data_read(14)
+	sz[0], sz[1], sz[2] = i32(gte.data_read(17)), i32(gte.data_read(18)), i32(gte.data_read(19))
+	gte.cmd_nclip()
+	turn0 := i32(gte.data_read(24))
+	gte.data_write(0, xy(d.v[3]))
+	gte.data_write(1, u32(u16(d.v[3][2])))
+	gte.cmd_rtps(0x180001)
+	gte.cmd_nclip()
+	turn1 := i32(gte.data_read(24))
+	sxy[3], sz[3] = gte.data_read(14), i32(gte.data_read(19))
 	spend(q.project[0], q.project[1])
 	// Drawn in 3D (scene.world_on), the quad is tested by its corners in view
 	// space: the GTE's screen corners are clamped, and nonsense behind the

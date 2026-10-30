@@ -23,7 +23,7 @@ up, fix or open up what it already does.
 - Window: fullscreen toggle (Alt+Enter / F11), fit or integer scaling,
   nearest or linear filter, pause when unfocused (and Pause/P/guide button).
 - Hi-res drawing: the scene at 1, 2 or 4 times the PS1 resolution, drawn on
-  the GPU (OpenGL 4.5, default) or the CPU, in true colour with no dither.
+  the GPU (Vulkan 1.3, default) or the CPU, in true colour with no dither.
 - Smooth motion: an in-between picture for every repeated frame, so the
   30 fps game shows at 60/120/240 Hz (field and battle redraw the scene with
   blended matrices; other screens blend their prims).

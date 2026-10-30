@@ -18,7 +18,7 @@
 //                          ; and battles redraw the scene, other screens
 //                          ; blend prims
 //   hardware = true        ; draw the hi-res picture on the graphics card
-//                          ; (OpenGL 4.5); false = on the CPU. Read at start
+//                          ; (Vulkan 1.3); false = on the CPU. Read at start
 //   smooth_effects = false ; semi-transparent effects mix their texels
 //                          ; (bilinear) at detail 2 and 4
 //   smooth_textures = false ; the world's textures and people mix their

@@ -65,7 +65,6 @@ package qol
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
-import "core:mem"
 import "core:sync"
 import "core:time"
 
@@ -1198,7 +1197,6 @@ door_pass :: proc(d: ^Door, w: ^World, between := false, cover := false) -> bool
 	scene.pictures_clear()
 	psx.draw_start_load(w.start)
 	render.vram = w.vram^
-	render.vram_world(u32(mem.ptr_sub(w, &interiors.worlds[0])) + 1)
 	w.used = cpu.vblanks()
 	interior_pass, cover_pass = true, cover
 	defer interior_pass, cover_pass = false, false
