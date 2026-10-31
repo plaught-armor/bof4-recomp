@@ -25,7 +25,7 @@ main :: proc() {
 	ok := psx.run(
 		{
 			exe = exe,
-			cue = cue,
+			disc = cue,
 			title = "Breath of Fire IV",
 			funcs = rec.EXE_FUNCS[:],
 			overlays = rec.register_overlays,
