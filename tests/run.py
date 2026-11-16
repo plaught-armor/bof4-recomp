@@ -187,6 +187,8 @@ def prepare(case, mode, out):
         "BOF4_DUMP_WINDOW": "1",
         "BOF4_DUMP_EVERY": "1",
         "BOF4_DUMP_RAM": "300",
+        # Mods the user dropped into port/mods/ would change every hash.
+        "BOF4_MODS": "",
         **case["env"],
         **MODES[mode],
     }

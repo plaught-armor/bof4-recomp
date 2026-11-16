@@ -8,6 +8,7 @@ import "core:fmt"
 import "core:os"
 
 import "ps:core"
+import "ps:core/disc"
 import psx "ps:psx"
 import "qol"
 import "rec"
@@ -21,6 +22,17 @@ main :: proc() {
 	if err != nil {
 		fmt.eprintln("cannot read", exe_path)
 		os.exit(1)
+	}
+	// Mods (ps-recomp docs/porting.md "Mods"): every subdirectory of `mods/`
+	// beside bof4.ini with a mod.tsv, or of BOF4_MODS when set ("" none).
+	// The port does not compile them, so they run interpreted. The disc's
+	// id is what a mod's `disc` field is checked against.
+	mods, mods_set := core.env_lookup("MODS")
+	if !mods_set {mods = "mods"}
+	disc_id := ""
+	if d, opened := disc.open(cue); opened {
+		disc_id, _ = disc.id(&d)
+		disc.close(&d)
 	}
 	ok := psx.run(
 		{
@@ -36,6 +48,8 @@ main :: proc() {
 			cards = {"bof4_slot1.mcd", "bof4_slot2.mcd"},
 			setup = qol.boot,
 			hooks = qol.init,
+			mods = mods,
+			disc_id = disc_id,
 		},
 	)
 	if !ok {

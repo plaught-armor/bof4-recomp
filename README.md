@@ -73,6 +73,16 @@ missing means defaults). Most can also be changed in game, from the
 camp menu's Setting > Extras page. Memory cards are
 `port/bof4_slot1.mcd` and `port/bof4_slot2.mcd`.
 
+Mods go in `port/mods/`, one directory each with a `mod.tsv` and a
+`mod.elf` (`BOF4_MODS` names another directory, or `""` for none). They
+are ps-recomp mods: C hooks on the game's functions, built against this
+game's mod API. See ps-recomp's
+[docs/porting.md](ps-recomp/docs/porting.md#mods) for the format and the
+build (`recomp --mod-api tools/recomp.tsv <api dir>`, then
+`ps-recomp/mods/build.sh <api dir> <mod dir>`). The port runs mod code
+interpreted. A replay recorded without mods will not play with mods
+loaded.
+
 ## Layout
 
 | Path | What |
