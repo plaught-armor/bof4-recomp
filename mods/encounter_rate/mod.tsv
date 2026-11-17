@@ -1,0 +1,8 @@
+# Random encounter rate as a ps-recomp mod (the port's [field]
+# encounter_rate, moved out of the port). Build: mods/build.sh.
+id	encounter_rate
+version	1.0.0
+api	1
+name	Encounter rate
+game	Breath of Fire IV
+disc	SLUS-01324

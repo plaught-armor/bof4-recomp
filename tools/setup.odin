@@ -1,8 +1,9 @@
 // Prepare a checkout from your own copy of the disc: extract the disc's
 // files to disc/, its code overlays to overlays/, and recompile the game's
-// code into port/src/rec. Runs from the top of the checkout, as setup.sh and
-// setup.bat do before they build the port. Steps whose output is already
-// there are skipped, except the recompile, which takes seconds.
+// code into port/src/rec, and write the game's mod API (mod_api.h, mod.ld,
+// game/game.odin) to mods/api for mods/build.sh. Runs from the top of the checkout, as
+// setup.sh and setup.bat do before they build the port. Steps whose output
+// is already there are skipped, except the recompile, which takes seconds.
 package tools
 
 import "core:os"
@@ -41,4 +42,5 @@ setup_main :: proc(args: []string) {
 	o := mips.load_options("tools/recomp.tsv")
 	o.values["quiet"] = "true"
 	r3000.generate(o)
+	r3000.mod_api_write(o, "mods/api")
 }

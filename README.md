@@ -75,13 +75,18 @@ camp menu's Setting > Extras page. Memory cards are
 
 Mods go in `port/mods/`, one directory each with a `mod.tsv` and a
 `mod.elf` (`BOF4_MODS` names another directory, or `""` for none). They
-are ps-recomp mods: C hooks on the game's functions, built against this
-game's mod API. See ps-recomp's
-[docs/porting.md](ps-recomp/docs/porting.md#mods) for the format and the
-build (`recomp --mod-api tools/recomp.tsv <api dir>`, then
-`ps-recomp/mods/build.sh <api dir> <mod dir>`). The port runs mod code
-interpreted. A replay recorded without mods will not play with mods
-loaded.
+are ps-recomp mods: hooks on the game's functions, in Odin or C, built
+against this game's mod API, which setup writes to `mods/api/`.
+`sh mods/build.sh` builds the mods in `mods/` (needs clang, ld.lld and
+llvm-nm, and odin and llc for Odin); copy a built mod's directory into
+`port/mods/` to use it. `mods/encounter_rate` is one, in Odin: the random
+encounter rate, a setting. A mod's settings are set in
+`port/mods/settings.tsv`, a line each of the mod's id, the setting's name
+and its value, tab separated (`encounter_rate`, `rate`, `1024`); they take
+effect at the next start. See ps-recomp's
+[docs/porting.md](ps-recomp/docs/porting.md#mods) for the format. The
+port runs mod code interpreted. A replay recorded without mods will not
+play with mods loaded.
 
 ## Layout
 
@@ -91,6 +96,7 @@ loaded.
 | `port/src/rec` | generated: the recompiled game code (not in the repo) |
 | `tools/` | `bof4tools` (in Odin): setup, disc and overlay extractors, map block tool, research helpers; Ghidra scripts |
 | `docs/` | reverse-engineering and modding notes: start at [docs/README.md](docs/README.md) |
+| `mods/` | mods built against the game's mod API (`mods/build.sh`) |
 | `tests/` | `run.py`: replays recorded sessions and routes headless and compares every present against a recorded reference, see [tests/README.md](tests/README.md) |
 
 ## Modding

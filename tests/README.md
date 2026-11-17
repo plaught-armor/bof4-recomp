@@ -44,6 +44,11 @@ disc or from saves:
 | `local/ref/<case>.<mode>.tsv` | references written by `record` |
 | `local/out/` | the last runs: `log.txt`, `trace.log`, `hashes.tsv` |
 
+The `encounter_mod` case loads `mods/encounter_rate`, so build it first
+(`sh mods/build.sh`). A replay made without mods will not play with them, so
+the case's load record is a copy of `local/c1/load.rec` tagged with the mod
+set's hash, which a one-present probe run prints.
+
 The routes (`routes/*.txt`, autoplay scripts) and the route configs
 (`configs/*.ini`) are tracked. To add a replay case, copy a `port/debug/<stamp>`
 session into `local/replays/` and add a `replay_case` line to `CASES` in

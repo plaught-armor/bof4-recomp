@@ -1,0 +1,45 @@
+# Pace along row 3 of 040f.0 (a dungeon with random encounters) until
+# a battle starts, for the encounter_rate mod.
+timeout 6000
+until field
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+stick 90 40
+stick 270 40
+quit

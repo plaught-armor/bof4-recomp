@@ -10,6 +10,9 @@
 !/docs/
 !/tools/
 !/tests/
+!/mods/
+/mods/api/
+/mods/*/mod.elf
 !/ps-recomp
 !/.gitmodules
 /tests/local/

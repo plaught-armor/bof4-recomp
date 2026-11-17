@@ -104,6 +104,8 @@ def replay_case(stamp, timeout=600):
 
 
 TOWN = {"BOF4_WARP": "1000.0:26,32"}
+# A tracked mod a case loads (built by mods/build.sh).
+MODS = ROOT / "mods"
 CASES = {
     # Walk round Sarai (1000): tiles, models, third-person camera.
     "town": route_case("town.txt", "d2.ini", TOWN, [DONE]),
@@ -119,6 +121,13 @@ CASES = {
                        [("map check", r"(\d+ drawings.*differ.*)")]),
     # The door route again with smooth motion off.
     "video": route_case("video.txt", "d2off.ini", TOWN, []),
+    # The encounter_rate mod (mods/encounter_rate, built-in rate 1.0) pacing
+    # a dungeon until a battle starts. The mod at 1024/256 gave the same
+    # steps, battle present and RAM (but the stack and a timer reading) as
+    # the built-in [field] encounter_rate = 4 with no mod.
+    "encounter_mod": {**route_case("encounter.txt", "d2.ini", {"BOF4_WARP": "040f.0:2,3"},
+                                   [("battle", r"autoplay: mode 5 map 040f at present (\d+)")]),
+                      "mods": ["encounter_rate"]},
     # Recorded play sessions (F12 debug sessions), replayed to their end.
     "bar": replay_case("20261025-090339"),
     "street": replay_case("20261025-095816"),
@@ -192,13 +201,36 @@ def prepare(case, mode, out):
         **case["env"],
         **MODES[mode],
     }
+    if case.get("mods"):
+        mod_setup(case, out, env)
     return env
+
+
+def mod_setup(case, out, env):
+    """Load the case's mods from out/mods. A replay made without mods will
+    not play with them, so the load record gets a copy tagged with the mod
+    set's hash (its `X` line), which a short probe run prints."""
+    for m in case["mods"]:
+        shutil.copytree(MODS / m, out / "mods" / m)
+    env["BOF4_MODS"] = str(out / "mods")
+    probe = {**env, "BOF4_FRAMES": "1", "BOF4_REPLAY": "", "BOF4_AUTO": "", "BOF4_DUMP": "",
+             "BOF4_DEBUG_DIR": "", "BOF4_TRACE_FILE": str(out / "probe.log")}
+    text = subprocess.run([str(PORT / "bof4")], cwd=PORT, env=probe, stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT, text=True, errors="replace", timeout=60).stdout
+    found = re.search(r"psx: mod set ([0-9a-f]{16})", text)
+    if not found:
+        raise RuntimeError(f"no mod set in the probe run:\n{text[-2000:]}")
+    lines = case["replay"].read_text().splitlines(keepends=True)
+    (out / "load.rec").write_text(lines[0] + f"X {found[1]}\n" + "".join(lines[1:]))
+    env["BOF4_REPLAY"] = str(out / "load.rec")
 
 
 def missing(name):
     """The local inputs a case needs that are not there."""
     case = CASES[name]
-    return [p for p in (case["cards"] / "bof4_slot1.mcd", case["replay"]) if not p.exists()]
+    need = [case["cards"] / "bof4_slot1.mcd", case["replay"]]
+    need += [MODS / m / "mod.elf" for m in case.get("mods", [])]
+    return [p for p in need if not p.exists()]
 
 
 def log_checks(checks, text):
