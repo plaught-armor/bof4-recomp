@@ -5,6 +5,7 @@
 !/.gitignore
 !/README.md
 !/LICENSE
+!/.recomp.json
 !/setup.sh
 !/setup.bat
 !/docs/
