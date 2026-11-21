@@ -18,13 +18,14 @@
 // from the user's copy of the patch and disc into dengeki/ in the working
 // directory. When they are there and the option is on, the game's file table
 // points those two files at sectors past the disc's end, where
-// spu.sector_hook serves them. The patched files are longer than the disc's,
+// disc.read_hook serves them. The patched files are longer than the disc's,
 // so they cannot take the disc's place; the game sizes reads from the EMI
 // header, not from the table.
 package qol
 
 import "core:fmt"
 import "core:os"
+import disc "ps:core/disc"
 import cpu "ps:psx/cpu"
 import spu "ps:psx/spu"
 
@@ -71,27 +72,35 @@ dengeki_init :: proc() -> bool {
 		found = true
 	}
 	if found {
-		spu.sector_hook = dengeki_sector
+		disc.read_hook = dengeki_read
 	}
 	return true
 }
 
+// disc.read_hook: fill each sector of buf that falls in an added file's
+// span (past its end, zeros). The rest keeps what the image gave; the read
+// is valid if the image held it or every sector was filled.
 @(private = "file")
-dengeki_sector :: proc(lba: u32) -> []u8 {
-	if lba < ADDED_LBA {
-		return nil
+dengeki_read :: proc(d: ^disc.Disc, lba: u32, buf: []u8, ok: bool) -> bool {
+	all := true
+	for s in 0 ..< len(buf) / disc.DATA {
+		at := lba + u32(s)
+		sector := buf[s * disc.DATA:][:disc.DATA]
+		i := (at - ADDED_LBA) / ADDED_SPAN
+		if at < ADDED_LBA || i >= u32(len(dengeki)) || dengeki[i].data == nil {
+			all = false
+			continue
+		}
+		from := int(at - ADDED_LBA - i * ADDED_SPAN) * disc.DATA
+		n := 0
+		if from < len(dengeki[i].data) {
+			n = copy(sector, dengeki[i].data[from:])
+		}
+		for &b in sector[n:] {
+			b = 0
+		}
 	}
-	i := (lba - ADDED_LBA) / ADDED_SPAN
-	if i >= len(dengeki) || dengeki[i].data == nil {
-		return nil
-	}
-	at := int(lba - ADDED_LBA - i * ADDED_SPAN) * spu.DISC_DATA
-	@(static) sector: [spu.DISC_DATA]u8
-	sector = {}
-	if at < len(dengeki[i].data) {
-		copy(sector[:], dengeki[i].data[at:])
-	}
-	return sector[:]
+	return ok || all
 }
 
 @(private)
