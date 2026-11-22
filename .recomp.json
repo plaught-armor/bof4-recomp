@@ -1,14 +1,43 @@
 {
   "$schema": "https://recomp.fyi/schema/v1.json",
+  "type": "recomp",
   "game": "Breath of Fire IV",
   "system": "PS1",
-  "type": "recomp",
-  "original": { "region": "USA", "serial": "SLUS-01324" },
-  "project": "Breath of Fire IV recomp",
   "status": "playable",
-  "targets": ["Linux"],
-  "toolchain": "ps-recomp",
+  "wikidata": "Q796510",
+  "original": {
+    "region": "USA",
+    "serial": "SLUS-01324",
+    "sha1": "24b49e9063e015dd54cd34c74bcb2c2cdc47ebd3"
+  },
+  "project": "Breath of Fire IV recomp",
   "approach": "Static recompilation of the MIPS code to Odin on a reimplemented PS1, no BIOS; Vulkan renderer",
-  "maintainers": [{ "name": "plaught-armor", "link": "https://github.com/plaught-armor" }],
-  "links": [{ "label": "ps-recomp", "url": "https://github.com/plaught-armor/ps-recomp" }]
+  "targets": [
+    "Linux"
+  ],
+  "toolchain": "ps-recomp",
+  "maintainers": [
+    {
+      "name": "plaught-armor",
+      "link": "https://github.com/plaught-armor"
+    }
+  ],
+  "links": [
+    {
+      "label": "ps-recomp",
+      "url": "https://github.com/plaught-armor/ps-recomp"
+    }
+  ],
+  "tags": [
+    "odin",
+    "vulkan",
+    "hi-res",
+    "60fps",
+    "mods"
+  ],
+  "help": [
+    "Testing on Windows and macOS",
+    "Play-testing to the ending"
+  ],
+  "notes": "Runs on a reimplemented PS1 with no emulator core and no BIOS image. Adds hi-res Vulkan rendering, 60/120/240 Hz motion, a free third-person camera, seamless towns, faster doors and text, battle and balance options and restored cut content. Linux tested."
 }
